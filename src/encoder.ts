@@ -1,9 +1,5 @@
 import { EncoderErrorType, Mp4EncoderError } from "./types";
-import type {
-  EncoderConfig,
-  MainThreadMessage,
-  WorkerMessage,
-} from "./types";
+import type { EncoderConfig, MainThreadMessage, WorkerMessage } from "./types";
 
 // Define the onData callback type for real-time streaming
 export type RealtimeDataCallback = (

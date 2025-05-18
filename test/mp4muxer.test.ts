@@ -61,7 +61,8 @@ describe("Mp4MuxerWrapper", () => {
     // ファクトリ関数内で定義されたスパイを取得します。
     const mp4MuxerModule = await import("mp4-muxer");
     // mp4MuxerModule を unknown 経由で定義した型にキャストします
-    mockMuxerMethods = (mp4MuxerModule as unknown as MockedMp4Muxer)._mockMuxerMethods;
+    mockMuxerMethods = (mp4MuxerModule as unknown as MockedMp4Muxer)
+      ._mockMuxerMethods;
 
     // すべてのモック呼び出し履歴等をクリア
     vi.clearAllMocks(); // これは MuxerMockInFactory や ArrayBufferTargetMockInFactory の呼び出し回数をクリアします
