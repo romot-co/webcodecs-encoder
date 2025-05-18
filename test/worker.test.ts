@@ -196,7 +196,10 @@ describe("worker", () => {
     expect(mockSelf.postMessage).not.toHaveBeenCalled();
 
     // Reinitialize should reset the cancelled state
-    const initMessage2: InitializeWorkerMessage = { type: "initialize", config };
+    const initMessage2: InitializeWorkerMessage = {
+      type: "initialize",
+      config,
+    };
     await global.self.onmessage({ data: initMessage2 } as MessageEvent);
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       {
