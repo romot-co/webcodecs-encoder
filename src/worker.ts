@@ -356,13 +356,14 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
       // Ignore if closing fails
     }
     processedFrames++;
-    if (totalFramesToProcess) {
-      postMessageToMainThread({
-        type: "progress",
-        processedFrames,
-        totalFrames: totalFramesToProcess,
-      } as MainThreadMessage);
+    const progressMessage: any = {
+      type: "progress",
+      processedFrames,
+    };
+    if (typeof totalFramesToProcess !== "undefined") {
+      progressMessage.totalFrames = totalFramesToProcess;
     }
+    postMessageToMainThread(progressMessage as MainThreadMessage);
   } catch (error: any) {
     postMessageToMainThread({
       type: "error",
