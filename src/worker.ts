@@ -1,4 +1,4 @@
-import { Mp4MuxerWrapper } from './mp4muxer';
+import { Mp4MuxerWrapper } from "./mp4muxer";
 import type {
   EncoderConfig,
   WorkerMessage,
@@ -8,8 +8,8 @@ import type {
   FinalizeWorkerMessage,
   CancelWorkerMessage,
   MainThreadMessage,
-} from './types';
-import { EncoderErrorType } from './types';
+} from "./types";
+import { EncoderErrorType } from "./types";
 
 let videoEncoder: VideoEncoder | null = null;
 let audioEncoder: AudioEncoder | null = null;
@@ -20,40 +20,68 @@ let processedFrames: number = 0;
 let isCancelled: boolean = false;
 
 // --- 追加: グローバル API を安全に取るヘルパ ---
-const getVideoEncoder = () => (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
-const getAudioEncoder = () => (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
-const getVideoFrame = () => (self as any).VideoFrame ?? (globalThis as any).VideoFrame;
-const getAudioData = () => (self as any).AudioData ?? (globalThis as any).AudioData;
+const getVideoEncoder = () =>
+  (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
+const getAudioEncoder = () =>
+  (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
+const getVideoFrame = () =>
+  (self as any).VideoFrame ?? (globalThis as any).VideoFrame;
+const getAudioData = () =>
+  (self as any).AudioData ?? (globalThis as any).AudioData;
 
-function postMessageToMainThread(message: MainThreadMessage, transfer?: Transferable[]): void {
+function postMessageToMainThread(
+  message: MainThreadMessage,
+  transfer?: Transferable[],
+): void {
   self.postMessage(message, transfer as any);
 }
 
-async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> {
+async function initializeEncoders(
+  data: InitializeWorkerMessage,
+): Promise<void> {
   currentConfig = data.config;
   totalFramesToProcess = data.totalFrames;
   processedFrames = 0;
   isCancelled = false;
 
   if (!currentConfig) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: Configuration is missing.', type: EncoderErrorType.InitializationFailed }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: "Worker: Configuration is missing.",
+        type: EncoderErrorType.InitializationFailed,
+      },
+    });
     return;
   }
 
-  if (currentConfig.container === 'webm') {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: WebM container is not supported in this version.', type: EncoderErrorType.NotSupported }});
+  if (currentConfig.container === "webm") {
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: "Worker: WebM container is not supported in this version.",
+        type: EncoderErrorType.NotSupported,
+      },
+    });
     return;
   }
 
   try {
     muxer = new Mp4MuxerWrapper(currentConfig, postMessageToMainThread);
   } catch (e: any) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Failed to initialize MP4 Muxer: ${e.message}`, type: EncoderErrorType.InitializationFailed, stack: e.stack }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: `Worker: Failed to initialize MP4 Muxer: ${e.message}`,
+        type: EncoderErrorType.InitializationFailed,
+        stack: e.stack,
+      },
+    });
     cleanup();
     return;
   }
-  
-  let videoCodec = currentConfig.codec?.video ?? 'avc';
+
+  let videoCodec = currentConfig.codec?.video ?? "avc";
   let finalVideoEncoderConfig: VideoEncoderConfig | null = null;
 
   const baseVideoConfig = {
@@ -61,40 +89,77 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
     height: currentConfig.height,
     framerate: currentConfig.frameRate,
     bitrate: currentConfig.videoBitrate,
-    ...(currentConfig.latencyMode && { latencyMode: currentConfig.latencyMode }),
-    ...(videoCodec === 'vp9' && { codec: 'vp09.00.50.08', scalabilityMode: 'L1T2' }), 
-    ...(videoCodec === 'avc' && { codec: 'avc1.42001f', avc: { format: 'avcc' } }),
+    ...(currentConfig.latencyMode && {
+      latencyMode: currentConfig.latencyMode,
+    }),
+    ...(videoCodec === "vp9" && {
+      codec: "vp09.00.50.08",
+      scalabilityMode: "L1T2",
+    }),
+    ...(videoCodec === "avc" && {
+      codec: "avc1.42001f",
+      avc: { format: "avcc" },
+    }),
   };
 
   const VideoEncoderCtor: any = getVideoEncoder();
   if (!VideoEncoderCtor) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoEncoder not available', type: EncoderErrorType.NotSupported }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: "Worker: VideoEncoder not available",
+        type: EncoderErrorType.NotSupported,
+      },
+    });
     cleanup();
     return;
   }
 
-  let videoSupport = await VideoEncoderCtor.isConfigSupported(baseVideoConfig as any); 
+  let videoSupport = await VideoEncoderCtor.isConfigSupported(
+    baseVideoConfig as any,
+  );
   if (videoSupport?.supported) {
     finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
-  } else if (videoCodec === 'vp9' || videoCodec === 'av1' || videoCodec === 'hevc') {
-    console.warn(`Worker: Video codec ${videoCodec} not supported or config invalid. Falling back to AVC.`);
-    videoCodec = 'avc';
+  } else if (
+    videoCodec === "vp9" ||
+    videoCodec === "av1" ||
+    videoCodec === "hevc"
+  ) {
+    console.warn(
+      `Worker: Video codec ${videoCodec} not supported or config invalid. Falling back to AVC.`,
+    );
+    videoCodec = "avc";
     const fallbackVideoConfig = {
-        ...baseVideoConfig,
-        codec: 'avc1.42001f',
-        avc: { format: 'avcc' }
+      ...baseVideoConfig,
+      codec: "avc1.42001f",
+      avc: { format: "avcc" },
     };
     delete (fallbackVideoConfig as any).scalabilityMode;
-    videoSupport = await VideoEncoderCtor.isConfigSupported(fallbackVideoConfig as any);
+    videoSupport = await VideoEncoderCtor.isConfigSupported(
+      fallbackVideoConfig as any,
+    );
     if (videoSupport?.supported) {
       finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
     } else {
-      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AVC (H.264) video codec is not supported after fallback.', type: EncoderErrorType.NotSupported }});
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message:
+            "Worker: AVC (H.264) video codec is not supported after fallback.",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
       cleanup();
       return;
     }
   } else {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Video codec ${videoCodec} config not supported.`, type: EncoderErrorType.NotSupported }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: `Worker: Video codec ${videoCodec} config not supported.`,
+        type: EncoderErrorType.NotSupported,
+      },
+    });
     cleanup();
     return;
   }
@@ -107,63 +172,109 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
       },
       error: (error: any) => {
         if (isCancelled) return;
-        postMessageToMainThread({ type: 'error', errorDetail: { message: `VideoEncoder error: ${error.message}`, type: EncoderErrorType.VideoEncodingError, stack: error.stack }});
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `VideoEncoder error: ${error.message}`,
+            type: EncoderErrorType.VideoEncodingError,
+            stack: error.stack,
+          },
+        });
         cleanup();
-      }
+      },
     });
     if (videoEncoder) {
       videoEncoder.configure(finalVideoEncoderConfig as any);
     } else {
-      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoEncoder instance is null after creation.', type: EncoderErrorType.InitializationFailed }});
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: VideoEncoder instance is null after creation.",
+          type: EncoderErrorType.InitializationFailed,
+        },
+      });
       cleanup();
       return;
     }
   } catch (e: any) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Failed to initialize VideoEncoder: ${e.message}`, type: EncoderErrorType.InitializationFailed, stack: e.stack }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: `Worker: Failed to initialize VideoEncoder: ${e.message}`,
+        type: EncoderErrorType.InitializationFailed,
+        stack: e.stack,
+      },
+    });
     cleanup();
     return;
   }
 
-  let audioCodec = currentConfig.codec?.audio ?? 'aac';
+  let audioCodec = currentConfig.codec?.audio ?? "aac";
   let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
 
   const baseAudioConfig = {
     sampleRate: currentConfig.sampleRate,
     numberOfChannels: currentConfig.channels,
     bitrate: currentConfig.audioBitrate,
-    ...(currentConfig.latencyMode && { latencyMode: currentConfig.latencyMode }),
-    ...(audioCodec === 'opus' && { codec: 'opus' }),
-    ...(audioCodec === 'aac' && { codec: 'mp4a.40.2' }),
+    ...(currentConfig.latencyMode && {
+      latencyMode: currentConfig.latencyMode,
+    }),
+    ...(audioCodec === "opus" && { codec: "opus" }),
+    ...(audioCodec === "aac" && { codec: "mp4a.40.2" }),
   };
 
   const AudioEncoderCtor: any = getAudioEncoder();
   if (!AudioEncoderCtor) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioEncoder not available', type: EncoderErrorType.NotSupported }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: "Worker: AudioEncoder not available",
+        type: EncoderErrorType.NotSupported,
+      },
+    });
     cleanup();
     return;
   }
 
-  let audioSupport = await AudioEncoderCtor.isConfigSupported(baseAudioConfig as any);
+  let audioSupport = await AudioEncoderCtor.isConfigSupported(
+    baseAudioConfig as any,
+  );
   if (audioSupport?.supported) {
     finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
-  } else if (audioCodec === 'opus') {
-    console.warn(`Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`);
-    audioCodec = 'aac';
-    const fallbackAudioConfig = { ...baseAudioConfig, codec: 'mp4a.40.2' };
-    audioSupport = await AudioEncoderCtor.isConfigSupported(fallbackAudioConfig as any);
+  } else if (audioCodec === "opus") {
+    console.warn(
+      `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
+    );
+    audioCodec = "aac";
+    const fallbackAudioConfig = { ...baseAudioConfig, codec: "mp4a.40.2" };
+    audioSupport = await AudioEncoderCtor.isConfigSupported(
+      fallbackAudioConfig as any,
+    );
     if (audioSupport?.supported) {
       finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
     } else {
-      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AAC audio codec is not supported after fallback.', type: EncoderErrorType.NotSupported }});
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: AAC audio codec is not supported after fallback.",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
       cleanup();
       return;
     }
   } else {
-     postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Audio codec ${audioCodec} config not supported.`, type: EncoderErrorType.NotSupported }});
-     cleanup();
-     return;
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: `Worker: Audio codec ${audioCodec} config not supported.`,
+        type: EncoderErrorType.NotSupported,
+      },
+    });
+    cleanup();
+    return;
   }
-  
+
   try {
     audioEncoder = new AudioEncoderCtor({
       output: (chunk: any, meta: any) => {
@@ -172,25 +283,45 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
       },
       error: (error: any) => {
         if (isCancelled) return;
-        postMessageToMainThread({ type: 'error', errorDetail: { message: `AudioEncoder error: ${error.message}`, type: EncoderErrorType.AudioEncodingError, stack: error.stack }});
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder error: ${error.message}`,
+            type: EncoderErrorType.AudioEncodingError,
+            stack: error.stack,
+          },
+        });
         cleanup();
-      }
+      },
     });
     if (audioEncoder) {
       audioEncoder.configure(finalAudioEncoderConfig as any);
     } else {
-      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioEncoder instance is null after creation.', type: EncoderErrorType.InitializationFailed }});
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: AudioEncoder instance is null after creation.",
+          type: EncoderErrorType.InitializationFailed,
+        },
+      });
       cleanup();
       return;
     }
   } catch (e: any) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Failed to initialize AudioEncoder: ${e.message}`, type: EncoderErrorType.InitializationFailed, stack: e.stack }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: `Worker: Failed to initialize AudioEncoder: ${e.message}`,
+        type: EncoderErrorType.InitializationFailed,
+        stack: e.stack,
+      },
+    });
     cleanup();
     return;
   }
 
   postMessageToMainThread({
-    type: 'initialized',
+    type: "initialized",
     actualVideoCodec: finalVideoEncoderConfig?.codec,
     actualAudioCodec: finalAudioEncoderConfig?.codec,
   } as MainThreadMessage);
@@ -199,36 +330,63 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
 async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
   if (isCancelled || !videoEncoder || !currentConfig) return;
   try {
-    const frameDuration = 1_000_000 / currentConfig.frameRate; 
+    const frameDuration = 1_000_000 / currentConfig.frameRate;
     const VideoFrameCtor: any = getVideoFrame();
     if (!VideoFrameCtor) {
-        postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoFrame not available', type: EncoderErrorType.NotSupported }});
-        cleanup();
-        return;
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: VideoFrame not available",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
+      cleanup();
+      return;
     }
-    const frame = new VideoFrameCtor(data.frameBitmap, { timestamp: data.timestamp, duration: frameDuration });
+    const frame = new VideoFrameCtor(data.frameBitmap, {
+      timestamp: data.timestamp,
+      duration: frameDuration,
+    });
     videoEncoder.encode(frame);
     frame.close();
     processedFrames++;
     if (totalFramesToProcess) {
-      postMessageToMainThread({ type: 'progress', processedFrames, totalFrames: totalFramesToProcess } as MainThreadMessage);
+      postMessageToMainThread({
+        type: "progress",
+        processedFrames,
+        totalFrames: totalFramesToProcess,
+      } as MainThreadMessage);
     }
   } catch (error: any) {
     postMessageToMainThread({
-        type: 'error',
-        errorDetail: { message: `Error encoding video frame: ${error.message}`, type: EncoderErrorType.VideoEncodingError, stack: error.stack }
-      } as MainThreadMessage);
+      type: "error",
+      errorDetail: {
+        message: `Error encoding video frame: ${error.message}`,
+        type: EncoderErrorType.VideoEncodingError,
+        stack: error.stack,
+      },
+    } as MainThreadMessage);
     cleanup();
   }
 }
 
 async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
-  if (isCancelled || !audioEncoder || !currentConfig || !data.audioData || data.audioData.length === 0) return;
-  
+  if (
+    isCancelled ||
+    !audioEncoder ||
+    !currentConfig ||
+    !data.audioData ||
+    data.audioData.length === 0
+  )
+    return;
+
   if (data.audioData.length !== currentConfig.channels) {
     postMessageToMainThread({
-      type: 'error',
-      errorDetail: { message: `Audio data channel count (${data.audioData.length}) does not match configured channels (${currentConfig.channels}).`, type: EncoderErrorType.ConfigurationError }
+      type: "error",
+      errorDetail: {
+        message: `Audio data channel count (${data.audioData.length}) does not match configured channels (${currentConfig.channels}).`,
+        type: EncoderErrorType.ConfigurationError,
+      },
     } as MainThreadMessage);
     return;
   }
@@ -243,129 +401,168 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     interleavedOrConcatenatedPlanarData.set(firstChannelData);
   } else {
     for (let i = 0; i < currentConfig.channels; i++) {
-        interleavedOrConcatenatedPlanarData.set(data.audioData[i], offset);
-        offset += data.audioData[i].length;
+      interleavedOrConcatenatedPlanarData.set(data.audioData[i], offset);
+      offset += data.audioData[i].length;
     }
   }
-  
+
   const AudioDataCtor: any = getAudioData();
   if (!AudioDataCtor) {
-    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioData not available', type: EncoderErrorType.NotSupported }});
+    postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: "Worker: AudioData not available",
+        type: EncoderErrorType.NotSupported,
+      },
+    });
     cleanup();
     return;
   }
 
   try {
     const audioDataInit: AudioDataInit = {
-      format: 'f32-planar',
+      format: "f32-planar",
       sampleRate: currentConfig.sampleRate,
       numberOfFrames: numberOfFrames,
       numberOfChannels: currentConfig.channels,
       timestamp: data.timestamp,
-      data: interleavedOrConcatenatedPlanarData.buffer
+      data: interleavedOrConcatenatedPlanarData.buffer,
     };
     const audioFrame = new AudioDataCtor(audioDataInit);
     audioEncoder.encode(audioFrame);
     audioFrame.close();
   } catch (error: any) {
     postMessageToMainThread({
-        type: 'error',
-        errorDetail: { message: `Error encoding audio data: ${error.message}`, type: EncoderErrorType.AudioEncodingError, stack: error.stack }
-      } as MainThreadMessage);
+      type: "error",
+      errorDetail: {
+        message: `Error encoding audio data: ${error.message}`,
+        type: EncoderErrorType.AudioEncodingError,
+        stack: error.stack,
+      },
+    } as MainThreadMessage);
     cleanup();
   }
 }
 
-async function handleFinalize(): Promise<void> {
+async function handleFinalize(_message: FinalizeWorkerMessage): Promise<void> {
   if (isCancelled) return;
 
   try {
     if (videoEncoder) await videoEncoder.flush();
     if (audioEncoder) await audioEncoder.flush();
-    
+
     if (muxer) {
       const output = muxer.finalize();
       if (output) {
-        postMessageToMainThread({ type: 'finalized', output }, [output.buffer]);
-      } else if (currentConfig?.latencyMode === 'realtime') {
-        postMessageToMainThread({ type: 'finalized', output: null });
+        postMessageToMainThread({ type: "finalized", output }, [output.buffer]);
+      } else if (currentConfig?.latencyMode === "realtime") {
+        postMessageToMainThread({ type: "finalized", output: null });
       } else {
-         postMessageToMainThread({ type: 'error', errorDetail: { message: 'Muxer finalized without output in non-realtime mode.', type: EncoderErrorType.MuxingFailed }});
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: "Muxer finalized without output in non-realtime mode.",
+            type: EncoderErrorType.MuxingFailed,
+          },
+        });
       }
     } else {
-      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Muxer not initialized during finalize.', type: EncoderErrorType.MuxingFailed }});
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Muxer not initialized during finalize.",
+          type: EncoderErrorType.MuxingFailed,
+        },
+      });
     }
   } catch (error: any) {
     postMessageToMainThread({
-        type: 'error',
-        errorDetail: { message: `Error during finalization: ${error.message}`, type: EncoderErrorType.MuxingFailed, stack: error.stack }
-      } as MainThreadMessage);
+      type: "error",
+      errorDetail: {
+        message: `Error during finalization: ${error.message}`,
+        type: EncoderErrorType.MuxingFailed,
+        stack: error.stack,
+      },
+    } as MainThreadMessage);
   } finally {
     cleanup();
   }
 }
 
-function handleCancel(): void {
+function handleCancel(_message: CancelWorkerMessage): void {
   if (isCancelled) return;
   isCancelled = true;
-  console.log('Worker: Received cancel signal.');
+  console.log("Worker: Received cancel signal.");
   videoEncoder?.close();
   audioEncoder?.close();
   cleanup();
-  postMessageToMainThread({ type: 'cancelled' } as MainThreadMessage);
+  postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
 }
 
 function cleanup(): void {
-  console.log('Worker: Cleaning up resources.');
-  if (videoEncoder && videoEncoder.state !== 'closed') videoEncoder.close();
-  if (audioEncoder && audioEncoder.state !== 'closed') audioEncoder.close();
+  console.log("Worker: Cleaning up resources.");
+  if (videoEncoder && videoEncoder.state !== "closed") videoEncoder.close();
+  if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
   videoEncoder = null;
   audioEncoder = null;
-  muxer = null; 
+  muxer = null;
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
-  isCancelled = false; 
+  isCancelled = false;
 }
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
-  if (isCancelled && event.data.type !== 'initialize' && event.data.type !== 'cancel') {
-    console.warn(`Worker: Ignoring message type '${event.data.type}' because worker is cancelled.`);
+  if (
+    isCancelled &&
+    event.data.type !== "initialize" &&
+    event.data.type !== "cancel"
+  ) {
+    console.warn(
+      `Worker: Ignoring message type '${event.data.type}' because worker is cancelled.`,
+    );
     return;
   }
 
   try {
     switch (event.data.type) {
-      case 'initialize':
+      case "initialize":
         isCancelled = false;
         cleanup();
         await initializeEncoders(event.data);
         break;
-      case 'addVideoFrame':
+      case "addVideoFrame":
         if (isCancelled) break;
         await handleAddVideoFrame(event.data);
         break;
-      case 'addAudioData':
+      case "addAudioData":
         if (isCancelled) break;
         await handleAddAudioData(event.data);
         break;
-      case 'finalize':
+      case "finalize":
         if (isCancelled) break;
-        await handleFinalize();
+        await handleFinalize(event.data);
         break;
-      case 'cancel':
-        handleCancel();
+      case "cancel":
+        handleCancel(event.data);
         break;
       default:
-        console.warn('Worker received unknown message type:', (event.data as any)?.type);
+        console.warn(
+          "Worker received unknown message type:",
+          (event.data as any)?.type,
+        );
     }
   } catch (error: any) {
     postMessageToMainThread({
-        type: 'error',
-        errorDetail: { message: `Unhandled error in worker onmessage: ${error.message}`, type: EncoderErrorType.InternalError, stack: error.stack }
-      } as MainThreadMessage);
+      type: "error",
+      errorDetail: {
+        message: `Unhandled error in worker onmessage: ${error.message}`,
+        type: EncoderErrorType.InternalError,
+        stack: error.stack,
+      },
+    } as MainThreadMessage);
     cleanup();
   }
 };
 
-console.log('Worker script loaded.');
+console.log("Worker script loaded.");
