@@ -349,6 +349,12 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
     });
     videoEncoder.encode(frame);
     frame.close();
+    // Release the transferred ImageBitmap after use
+    try {
+      data.frameBitmap.close();
+    } catch {
+      // Ignore if closing fails
+    }
     processedFrames++;
     if (totalFramesToProcess) {
       postMessageToMainThread({
