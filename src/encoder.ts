@@ -3,7 +3,6 @@ import type {
   EncoderConfig,
   MainThreadMessage,
   WorkerMessage,
-  WorkerDataChunkMessage,
 } from "./types";
 
 // Define the onData callback type for real-time streaming
@@ -11,7 +10,7 @@ export type RealtimeDataCallback = (
   chunk: Uint8Array,
   offset?: number,
   isHeader?: boolean,
-  // container?: 'mp4' | 'webm' // Container info is in WorkerDataChunkMessage
+  // container?: 'mp4' | 'webm' // Provided via worker messages when streaming
 ) => void;
 
 export interface Mp4EncoderInitializeOptions {

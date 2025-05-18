@@ -108,13 +108,13 @@ describe("Mp4Encoder", () => {
           this.format = "RGBA"; // Or a common default
         }
         // @ts-ignore
-        allocationSize(options?: VideoFrameCopyToOptions): number {
+        allocationSize(_options?: VideoFrameCopyToOptions): number {
           return 0;
         }
         // @ts-ignore
         copyTo(
-          destination: AllowSharedBufferSource,
-          options?: VideoFrameCopyToOptions,
+          _destination: AllowSharedBufferSource,
+          _options?: VideoFrameCopyToOptions,
         ): Promise<PlaneLayout[]> {
           return Promise.resolve([]);
         }
