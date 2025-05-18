@@ -352,6 +352,10 @@ export class Mp4Encoder {
         type: "addAudioData",
         audioData: planarData,
         timestamp: timestamp,
+        format: "f32-planar", // AudioBuffer.getChannelData は Float32Array を返すので planar f32
+        sampleRate: audioBuffer.sampleRate,
+        numberOfFrames: audioBuffer.length, // audioBuffer.length はフレーム数を返す
+        numberOfChannels: numChannels, // 使用するチャンネル数
       };
       this.worker.postMessage(message, transferableBuffers);
     } catch (e: any) {

@@ -403,17 +403,34 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
   }
 
   try {
-    const audioDataInit: AudioDataInit = {
-      format: "f32-planar",
-      sampleRate: currentConfig.sampleRate,
-      numberOfFrames: numberOfFrames,
-      numberOfChannels: currentConfig.channels,
-      timestamp: data.timestamp,
-      data: interleavedOrConcatenatedPlanarData.buffer,
+    // data.audioData (Float32Array[]) をインターリーブして単一の Float32Array にするヘルパー関数
+    const interleaveFloat32Arrays = (planarArrays: Float32Array[]): Float32Array => {
+      if (!planarArrays || planarArrays.length === 0) {
+        return new Float32Array(0);
+      }
+      const numChannels = planarArrays.length;
+      const numFrames = planarArrays[0].length;
+      const interleaved = new Float32Array(numFrames * numChannels);
+      for (let i = 0; i < numFrames; i++) {
+        for (let ch = 0; ch < numChannels; ch++) {
+          interleaved[i * numChannels + ch] = planarArrays[ch][i];
+        }
+      }
+      return interleaved;
     };
-    const audioFrame = new AudioDataCtor(audioDataInit);
-    audioEncoder.encode(audioFrame);
-    audioFrame.close();
+
+    const interleavedData = interleaveFloat32Arrays(data.audioData);
+
+    const audioData = new AudioDataCtor({
+      format: "f32", // インターリーブしたので 'f32'
+      sampleRate: data.sampleRate,
+      numberOfFrames: data.numberOfFrames,
+      numberOfChannels: data.numberOfChannels,
+      timestamp: data.timestamp,
+      data: interleavedData.buffer, // インターリーブされたデータの ArrayBuffer を渡す
+    });
+
+    audioEncoder.encode(audioData);
   } catch (error: any) {
     postMessageToMainThread({
       type: "error",
@@ -435,9 +452,12 @@ async function handleFinalize(_message: FinalizeWorkerMessage): Promise<void> {
     if (audioEncoder) await audioEncoder.flush();
 
     if (muxer) {
-      const output = muxer.finalize();
-      if (output) {
-        postMessageToMainThread({ type: "finalized", output }, [output.buffer]);
+      const uint8ArrayOrNullOutput = muxer.finalize();
+      if (uint8ArrayOrNullOutput) {
+        postMessageToMainThread(
+          { type: "finalized", output: uint8ArrayOrNullOutput },
+          [uint8ArrayOrNullOutput.buffer]
+        );
       } else if (currentConfig?.latencyMode === "realtime") {
         postMessageToMainThread({ type: "finalized", output: null });
       } else {

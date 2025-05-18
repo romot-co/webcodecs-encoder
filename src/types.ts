@@ -70,6 +70,10 @@ export interface AddAudioDataMessage {
   // The ArrayBuffer of each Float32Array should be transferred.
   audioData: Float32Array[];
   timestamp: number; // microseconds
+  format: AudioSampleFormat; // e.g., "f32-planar" or "s16" etc. (AudioSampleFormat from WebCodecs)
+  sampleRate: number;
+  numberOfFrames: number;
+  numberOfChannels: number;
 }
 
 export interface FinalizeWorkerMessage {

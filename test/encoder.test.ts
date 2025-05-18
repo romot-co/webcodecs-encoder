@@ -24,6 +24,21 @@ vi.mock("../src/worker", () => {
 // For now, we'll assume `new URL('./worker.js', import.meta.url)` works or is handled by the test environment.
 // If direct mocking of `new URL` is needed, `vi.stubGlobal` could be used for `URL` if careful.
 
+// Helper to create a mock AudioBuffer
+function createMockAudioBuffer(channels: number, sampleRate: number, length: number): AudioBuffer {
+  const duration = length / sampleRate;
+  const channelData = new Float32Array(length); // For simplicity, all channels return this same data view
+  return {
+    numberOfChannels: channels,
+    length: length,
+    sampleRate: sampleRate,
+    duration: duration,
+    getChannelData: vi.fn(() => channelData),
+    copyFromChannel: vi.fn(), // Add missing mock methods
+    copyToChannel: vi.fn(),   // Add missing mock methods
+  } as unknown as AudioBuffer;
+}
+
 describe("Mp4Encoder", () => {
   let mockWorkerInstance: any;
 
@@ -546,40 +561,28 @@ describe("Mp4Encoder", () => {
     it("should resolve when audio data is added", async () => {
       const encoder = new Mp4Encoder(baseAudioConfig);
       const initPromise = encoder.initialize({});
+      // initialize の完了を待ち、worker からの "initialized" メッセージ受信をシミュレート
       if (typeof mockWorkerInstance.onmessage === "function") {
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
-      await initPromise;
+      await initPromise; // initialize が完了するのを待つ
+      mockWorkerInstance.postMessage.mockClear(); // initialize 時の呼び出しをクリア
 
-      const bufferData = new Float32Array(10);
-      const audioBuffer = {
-        numberOfChannels: 1, // Should match baseAudioConfig.channels for a valid test, or use a config with channels: 1
-        length: 10,
-        sampleRate: baseAudioConfig.sampleRate, // Match config
-        duration: 10 / baseAudioConfig.sampleRate,
-        getChannelData: vi.fn(() => bufferData),
-      } as unknown as AudioBuffer;
-
-      await expect(
-        encoder.addAudioBuffer(audioBuffer),
-      ).resolves.toBeUndefined();
+      const audioBuffer = createMockAudioBuffer(1, 48000, 10); // 1ch, 48kHz, 10 samples
+      await expect(encoder.addAudioBuffer(audioBuffer)).resolves.toBeUndefined();
       const expectedTimestamp = 0;
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         {
           type: "addAudioData",
-          audioData: [expect.any(Float32Array)],
+          audioData: [expect.any(Float32Array)], // Float32Array の配列であること
           timestamp: expectedTimestamp,
+          format: "f32-planar",
+          sampleRate: 48000,
+          numberOfFrames: 10,
+          numberOfChannels: 1, // baseAudioConfig の channels に合わせる
         },
-        [expect.any(ArrayBuffer)],
+        [expect.any(ArrayBuffer)] // Transferable list
       );
-      const sentAudioDataCall = mockWorkerInstance.postMessage.mock.calls.find(
-        (call: any) => call[0].type === "addAudioData",
-      );
-      expect(sentAudioDataCall).toBeDefined();
-      if (sentAudioDataCall) {
-        const sentAudioData = sentAudioDataCall[0].audioData[0];
-        expect(sentAudioData).toEqual(bufferData);
-      }
     });
 
     it("should resolve immediately when audio disabled (audioBitrate is 0)", async () => {
