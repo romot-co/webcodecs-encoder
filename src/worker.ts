@@ -501,11 +501,11 @@ function handleCancel(_message: CancelWorkerMessage): void {
   console.log("Worker: Received cancel signal.");
   videoEncoder?.close();
   audioEncoder?.close();
-  cleanup();
+  cleanup(false);
   postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
 }
 
-function cleanup(): void {
+function cleanup(resetCancelled: boolean = true): void {
   console.log("Worker: Cleaning up resources.");
   if (videoEncoder && videoEncoder.state !== "closed") videoEncoder.close();
   if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
@@ -515,7 +515,9 @@ function cleanup(): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
-  isCancelled = false;
+  if (resetCancelled) {
+    isCancelled = false;
+  }
 }
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {

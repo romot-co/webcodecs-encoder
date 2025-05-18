@@ -188,7 +188,24 @@ describe("worker", () => {
       { type: "cancelled" },
       undefined,
     );
-    // Optionally, check if encoders/muxer were closed if the mock allows that level of detail
+
+    // After cancellation, other messages should be ignored
+    mockSelf.postMessage.mockClear();
+    const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
+    await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
+    expect(mockSelf.postMessage).not.toHaveBeenCalled();
+
+    // Reinitialize should reset the cancelled state
+    const initMessage2: InitializeWorkerMessage = { type: "initialize", config };
+    await global.self.onmessage({ data: initMessage2 } as MessageEvent);
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "initialized",
+        actualVideoCodec: "avc1.42001f",
+        actualAudioCodec: "mp4a.40.2",
+      },
+      undefined,
+    );
   });
 
   // Add more tests for addVideoData, addAudioData, error handling, etc.
