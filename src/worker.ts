@@ -349,14 +349,21 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
     });
     videoEncoder.encode(frame);
     frame.close();
-    processedFrames++;
-    if (totalFramesToProcess) {
-      postMessageToMainThread({
-        type: "progress",
-        processedFrames,
-        totalFrames: totalFramesToProcess,
-      } as MainThreadMessage);
+    // Release the transferred ImageBitmap after use
+    try {
+      data.frameBitmap.close();
+    } catch {
+      // Ignore if closing fails
     }
+    processedFrames++;
+    const progressMessage: any = {
+      type: "progress",
+      processedFrames,
+    };
+    if (typeof totalFramesToProcess !== "undefined") {
+      progressMessage.totalFrames = totalFramesToProcess;
+    }
+    postMessageToMainThread(progressMessage as MainThreadMessage);
   } catch (error: any) {
     postMessageToMainThread({
       type: "error",
@@ -495,11 +502,11 @@ function handleCancel(_message: CancelWorkerMessage): void {
   console.log("Worker: Received cancel signal.");
   videoEncoder?.close();
   audioEncoder?.close();
-  cleanup();
+  cleanup(false);
   postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
 }
 
-function cleanup(): void {
+function cleanup(resetCancelled: boolean = true): void {
   console.log("Worker: Cleaning up resources.");
   if (videoEncoder && videoEncoder.state !== "closed") videoEncoder.close();
   if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
@@ -509,7 +516,9 @@ function cleanup(): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
-  isCancelled = false;
+  if (resetCancelled) {
+    isCancelled = false;
+  }
 }
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {

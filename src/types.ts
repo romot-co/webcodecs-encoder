@@ -18,7 +18,7 @@ export interface EncoderConfig {
 
 export type ProgressCallback = (
   processedFrames: number,
-  totalFrames: number,
+  totalFrames?: number,
 ) => void;
 
 // --- Custom Error for the library ---
@@ -111,7 +111,7 @@ export interface AudioChunkMessage {
 export interface ProgressMessage {
   type: "progress";
   processedFrames: number;
-  totalFrames: number;
+  totalFrames?: number;
 }
 
 export interface WorkerFinalizedMessage {

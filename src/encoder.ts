@@ -10,7 +10,7 @@ export type RealtimeDataCallback = (
 ) => void;
 
 export interface Mp4EncoderInitializeOptions {
-  onProgress?: (processedFrames: number, totalFrames: number) => void;
+  onProgress?: (processedFrames: number, totalFrames?: number) => void;
   totalFrames?: number;
   onError?: (error: Mp4EncoderError) => void;
   onData?: RealtimeDataCallback;
@@ -33,7 +33,7 @@ export class Mp4Encoder {
     reject: (reason?: any) => void;
   } | null = null;
   private onProgressCallback:
-    | ((processedFrames: number, totalFrames: number) => void)
+    | ((processedFrames: number, totalFrames?: number) => void)
     | null = null;
   private onErrorCallback: ((error: Mp4EncoderError) => void) | null = null;
   private onDataCallback: RealtimeDataCallback | null = null; // For real-time data
