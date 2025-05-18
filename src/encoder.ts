@@ -41,10 +41,14 @@ export class Mp4Encoder {
 
   constructor(config: EncoderConfig) {
     this.config = {
-        ...config, 
-        // Default container if not specified, or could be auto-selected by worker based on codec
-        container: config.container ?? 'mp4', 
-        latencyMode: config.latencyMode ?? 'quality' 
+      // Default values first
+      container: 'mp4',
+      latencyMode: 'quality',
+      ...config, // User-provided config overrides defaults
+      codec: { // Ensure codec object exists and has defaults
+        video: config.codec?.video ?? 'avc', // Use 'avc' as per type
+        audio: config.codec?.audio ?? 'aac', // Use 'aac' as per type
+      },
     };
 
     if (this.config.container === 'webm') {
@@ -53,14 +57,15 @@ export class Mp4Encoder {
         // Depending on strictness, could throw here or let worker handle container choice.
         // For now, let it pass to worker which will error out if it only supports mp4.
     }
+
+    // Initialize worker later, only if supported and initialize() is called.
+    // This avoids creating a worker if the class is just instantiated.
   }
 
   public static isSupported(): boolean {
-    return typeof VideoEncoder !== 'undefined' && 
-           typeof AudioEncoder !== 'undefined' && 
-           typeof Worker !== 'undefined' &&
-           typeof createImageBitmap !== 'undefined' && // Used in addVideoFrame
-           typeof AudioData !== 'undefined'; // Used in worker
+    return typeof VideoEncoder !== 'undefined' &&
+           typeof AudioEncoder !== 'undefined' &&
+           typeof Worker !== 'undefined';
   }
 
   public async initialize(options?: Mp4EncoderInitializeOptions): Promise<void> {
@@ -146,12 +151,14 @@ export class Mp4Encoder {
         this.onProgressCallback?.(message.processedFrames, message.totalFrames);
         break;
       case 'dataChunk': // Handle real-time data chunks
-        if (this.onDataCallback) {
-          const { chunk, offset, isHeader, container } = message as WorkerDataChunkMessage;
-          // Currently, container is fixed to 'mp4' or worker would error.
-          // If WebM were supported, `container` would be useful.
-          this.onDataCallback(chunk, offset, isHeader);
-        } else if (this.config.latencyMode === 'realtime') {
+        if (this.config.latencyMode === 'realtime' && this.onDataCallback) {
+          const { chunk, isHeader } = message as WorkerDataChunkMessage;
+          // Pass only chunk and isHeader as offset is not reliably used/provided yet
+          this.onDataCallback(chunk, undefined, isHeader);
+        } else if (this.onDataCallback && this.config.latencyMode !== 'realtime') {
+            // console.warn('Mp4Encoder: Received dataChunk, but not in real-time mode or no onData callback was provided.');
+            // Do not call onDataCallback if not in real-time mode
+        } else if (!this.onDataCallback && this.config.latencyMode === 'realtime'){
             console.warn('Mp4Encoder: Received dataChunk in real-time mode, but no onData callback was provided.');
         }
         break;
@@ -185,8 +192,9 @@ export class Mp4Encoder {
         break;
       case 'cancelled':
         console.log('Mp4Encoder: Cancelled by worker.');
-        this.onInitializeError?.(new Mp4EncoderError(EncoderErrorType.Cancelled, 'Initialization cancelled.'));
-        this.onFinalizedPromise?.reject(new Mp4EncoderError(EncoderErrorType.Cancelled, 'Finalization cancelled.'));
+        const cancelErrWorker = new Mp4EncoderError(EncoderErrorType.Cancelled, 'Operation cancelled by worker.');
+        this.onInitializeError?.(cancelErrWorker);
+        this.onFinalizedPromise?.reject(cancelErrWorker);
         this.cleanupWorker(); // Worker has already cleaned itself up, main thread cleans its ref.
         break;
       default:

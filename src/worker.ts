@@ -19,8 +19,14 @@ let totalFramesToProcess: number | undefined;
 let processedFrames: number = 0;
 let isCancelled: boolean = false;
 
+// --- 追加: グローバル API を安全に取るヘルパ ---
+const getVideoEncoder = () => (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
+const getAudioEncoder = () => (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
+const getVideoFrame = () => (self as any).VideoFrame ?? (globalThis as any).VideoFrame;
+const getAudioData = () => (self as any).AudioData ?? (globalThis as any).AudioData;
+
 function postMessageToMainThread(message: MainThreadMessage, transfer?: Transferable[]): void {
-  postMessage(message, transfer as any);
+  self.postMessage(message, transfer as any);
 }
 
 async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> {
@@ -60,7 +66,14 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
     ...(videoCodec === 'avc' && { codec: 'avc1.42001f', avc: { format: 'avcc' } }),
   };
 
-  let videoSupport = await VideoEncoder.isConfigSupported(baseVideoConfig as any); 
+  const VideoEncoderCtor: any = getVideoEncoder();
+  if (!VideoEncoderCtor) {
+    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoEncoder not available', type: EncoderErrorType.NotSupported }});
+    cleanup();
+    return;
+  }
+
+  let videoSupport = await VideoEncoderCtor.isConfigSupported(baseVideoConfig as any); 
   if (videoSupport?.supported) {
     finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
   } else if (videoCodec === 'vp9' || videoCodec === 'av1' || videoCodec === 'hevc') {
@@ -72,7 +85,7 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
         avc: { format: 'avcc' }
     };
     delete (fallbackVideoConfig as any).scalabilityMode;
-    videoSupport = await VideoEncoder.isConfigSupported(fallbackVideoConfig as any);
+    videoSupport = await VideoEncoderCtor.isConfigSupported(fallbackVideoConfig as any);
     if (videoSupport?.supported) {
       finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
     } else {
@@ -87,18 +100,24 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
   }
 
   try {
-    videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => {
+    videoEncoder = new VideoEncoderCtor({
+      output: (chunk: any, meta: any) => {
         if (isCancelled || !muxer) return;
         muxer.addVideoChunk(chunk, meta);
       },
-      error: (error) => {
+      error: (error: any) => {
         if (isCancelled) return;
         postMessageToMainThread({ type: 'error', errorDetail: { message: `VideoEncoder error: ${error.message}`, type: EncoderErrorType.VideoEncodingError, stack: error.stack }});
         cleanup();
       }
     });
-    videoEncoder.configure(finalVideoEncoderConfig as any);
+    if (videoEncoder) {
+      videoEncoder.configure(finalVideoEncoderConfig as any);
+    } else {
+      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoEncoder instance is null after creation.', type: EncoderErrorType.InitializationFailed }});
+      cleanup();
+      return;
+    }
   } catch (e: any) {
     postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Failed to initialize VideoEncoder: ${e.message}`, type: EncoderErrorType.InitializationFailed, stack: e.stack }});
     cleanup();
@@ -117,14 +136,21 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
     ...(audioCodec === 'aac' && { codec: 'mp4a.40.2' }),
   };
 
-  let audioSupport = await AudioEncoder.isConfigSupported(baseAudioConfig as any);
+  const AudioEncoderCtor: any = getAudioEncoder();
+  if (!AudioEncoderCtor) {
+    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioEncoder not available', type: EncoderErrorType.NotSupported }});
+    cleanup();
+    return;
+  }
+
+  let audioSupport = await AudioEncoderCtor.isConfigSupported(baseAudioConfig as any);
   if (audioSupport?.supported) {
     finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
   } else if (audioCodec === 'opus') {
     console.warn(`Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`);
     audioCodec = 'aac';
     const fallbackAudioConfig = { ...baseAudioConfig, codec: 'mp4a.40.2' };
-    audioSupport = await AudioEncoder.isConfigSupported(fallbackAudioConfig as any);
+    audioSupport = await AudioEncoderCtor.isConfigSupported(fallbackAudioConfig as any);
     if (audioSupport?.supported) {
       finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
     } else {
@@ -139,18 +165,24 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
   }
   
   try {
-    audioEncoder = new AudioEncoder({
-      output: (chunk, meta) => {
+    audioEncoder = new AudioEncoderCtor({
+      output: (chunk: any, meta: any) => {
         if (isCancelled || !muxer) return;
         muxer.addAudioChunk(chunk, meta);
       },
-      error: (error) => {
+      error: (error: any) => {
         if (isCancelled) return;
         postMessageToMainThread({ type: 'error', errorDetail: { message: `AudioEncoder error: ${error.message}`, type: EncoderErrorType.AudioEncodingError, stack: error.stack }});
         cleanup();
       }
     });
-    audioEncoder.configure(finalAudioEncoderConfig as any);
+    if (audioEncoder) {
+      audioEncoder.configure(finalAudioEncoderConfig as any);
+    } else {
+      postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioEncoder instance is null after creation.', type: EncoderErrorType.InitializationFailed }});
+      cleanup();
+      return;
+    }
   } catch (e: any) {
     postMessageToMainThread({ type: 'error', errorDetail: { message: `Worker: Failed to initialize AudioEncoder: ${e.message}`, type: EncoderErrorType.InitializationFailed, stack: e.stack }});
     cleanup();
@@ -166,7 +198,13 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
   if (isCancelled || !videoEncoder || !currentConfig) return;
   try {
     const frameDuration = 1_000_000 / currentConfig.frameRate; 
-    const frame = new VideoFrame(data.frameBitmap, { timestamp: data.timestamp, duration: frameDuration });
+    const VideoFrameCtor: any = getVideoFrame();
+    if (!VideoFrameCtor) {
+        postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: VideoFrame not available', type: EncoderErrorType.NotSupported }});
+        cleanup();
+        return;
+    }
+    const frame = new VideoFrameCtor(data.frameBitmap, { timestamp: data.timestamp, duration: frameDuration });
     videoEncoder.encode(frame);
     frame.close();
     processedFrames++;
@@ -208,6 +246,13 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     }
   }
   
+  const AudioDataCtor: any = getAudioData();
+  if (!AudioDataCtor) {
+    postMessageToMainThread({ type: 'error', errorDetail: { message: 'Worker: AudioData not available', type: EncoderErrorType.NotSupported }});
+    cleanup();
+    return;
+  }
+
   try {
     const audioDataInit: AudioDataInit = {
       format: 'f32-planar',
@@ -217,7 +262,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
       timestamp: data.timestamp,
       data: interleavedOrConcatenatedPlanarData.buffer
     };
-    const audioFrame = new AudioData(audioDataInit);
+    const audioFrame = new AudioDataCtor(audioDataInit);
     audioEncoder.encode(audioFrame);
     audioFrame.close();
   } catch (error: any) {
