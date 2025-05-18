@@ -11,13 +11,6 @@ import { EncoderErrorType } from "./types";
 type BaseOptions = ConstructorParameters<
   typeof Muxer<ArrayBufferTarget | StreamTarget>
 >[0];
-type InferredMuxerOptions = BaseOptions & {
-  fastStart?:
-    | false
-    | "in-memory"
-    | "fragmented"
-    | { expectedVideoChunks?: number; expectedAudioChunks?: number };
-};
 
 // Infer the options type for Muxer constructor, which is not directly exported.
 // It seems the InferredMuxerOptions might not be perfectly capturing all variations,
