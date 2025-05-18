@@ -431,8 +431,12 @@ describe("Mp4Encoder", () => {
         mockWorkerInstance.onmessage({
           data: { type: "progress", processedFrames: 10, totalFrames: 100 },
         });
+        mockWorkerInstance.onmessage({
+          data: { type: "progress", processedFrames: 20 },
+        });
       }
-      expect(onProgress).toHaveBeenCalledWith(10, 100);
+      expect(onProgress).toHaveBeenNthCalledWith(1, 10, 100);
+      expect(onProgress).toHaveBeenNthCalledWith(2, 20, undefined);
     });
   });
 
