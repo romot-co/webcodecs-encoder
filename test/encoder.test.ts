@@ -400,12 +400,53 @@ describe('Mp4Encoder', () => {
       await expect(finalizePromise).rejects.toThrow('Encoding cancelled by user.');
     });
 
-    it('should reject subsequent operations after cancel', async () => {
+  it('should reject subsequent operations after cancel', async () => {
       const encoder = new Mp4Encoder(config);
       encoder['worker'] = mockWorkerInstance;
       encoder.cancel();
       await expect(encoder.addVideoFrame({} as CanvasImageSource))
         .rejects.toThrow('Encoder cancelled');
+    });
+  });
+
+  describe('worker message handling', () => {
+    const config = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it('cleans up when worker sends cancelled', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+      mockWorkerInstance.onmessage({ data: { type: 'cancelled' } });
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
+    });
+
+    it('warns on unknown message type', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockWorkerInstance.onmessage({ data: { type: 'bogus' } });
+      expect(warnSpy).toHaveBeenCalledWith('Mp4Encoder: Unknown message from worker:', { type: 'bogus' });
+      warnSpy.mockRestore();
+    });
+
+    it('rejects initialize promise when cancelled early', async () => {
+      const encoder = new Mp4Encoder(config);
+      const initPromise = encoder.initialize();
+      encoder.cancel();
+      await expect(initPromise).rejects.toThrow('Encoding cancelled by user.');
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'cancel' });
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
     });
   });
 
