@@ -8,8 +8,8 @@ import type {
   FinalizeWorkerMessage,
   CancelWorkerMessage,
   MainThreadMessage,
-  EncoderErrorType
 } from './types';
+import { EncoderErrorType } from './types';
 
 let videoEncoder: VideoEncoder | null = null;
 let audioEncoder: AudioEncoder | null = null;
@@ -58,7 +58,7 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
       console.error('VideoEncoder error:', error);
       postMessage({
         type: 'error',
-        errorDetail: { message: error.message, type: 'video-encode' as EncoderErrorType, stack: error.stack }
+        errorDetail: { message: error.message, type: EncoderErrorType.VideoEncodingError, stack: error.stack }
       } as MainThreadMessage);
       cleanup();
     }
@@ -111,7 +111,7 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
     console.error('Error encoding video frame:', error);
     postMessage({
         type: 'error',
-        errorDetail: { message: error.message, type: 'video-encode' as EncoderErrorType, stack: error.stack }
+        errorDetail: { message: error.message, type: EncoderErrorType.VideoEncodingError, stack: error.stack }
       } as MainThreadMessage);
     cleanup();
   }
@@ -165,7 +165,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     console.error('Error encoding audio data:', error);
     postMessage({
         type: 'error',
-        errorDetail: { message: error.message, type: 'audio-encode' as EncoderErrorType, stack: error.stack }
+        errorDetail: { message: error.message, type: EncoderErrorType.AudioEncodingError, stack: error.stack }
       } as MainThreadMessage);
     cleanup();
   }
@@ -187,7 +187,7 @@ async function handleFinalize(): Promise<void> {
     console.error('Error during finalization:', error);
      postMessage({
         type: 'error',
-        errorDetail: { message: error.message, type: 'muxer' as EncoderErrorType, stack: error.stack }
+        errorDetail: { message: error.message, type: EncoderErrorType.MuxingFailed, stack: error.stack }
       } as MainThreadMessage);
   } finally {
     cleanup();
@@ -250,7 +250,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     console.error('Unhandled error in worker onmessage:', error);
     postMessage({
       type: 'error',
-      errorDetail: { message: error.message || 'Unknown worker error', type: 'worker-internal' as EncoderErrorType, stack: error.stack }
+      errorDetail: { message: error.message || 'Unknown worker error', type: EncoderErrorType.InternalError, stack: error.stack }
     } as MainThreadMessage);
     cleanup(); // General cleanup on unhandled errors
   }
