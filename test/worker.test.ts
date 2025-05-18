@@ -57,7 +57,7 @@ describe('worker', () => {
         state: 'unconfigured',
     }));
     // @ts-ignore
-    mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: {} }));
+    mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: 'avc1.42001f' } }));
 
     // @ts-ignore
     mockSelf.AudioEncoder = vi.fn(() => ({
@@ -68,7 +68,7 @@ describe('worker', () => {
         state: 'unconfigured',
     }));
     // @ts-ignore
-    mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: {} }));
+    mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: 'mp4a.40.2' } }));
 
     // Make worker-internal mocks also available on globalThis for the helper functions in worker.ts
     globalThis.VideoEncoder = mockSelf.VideoEncoder;
@@ -125,7 +125,10 @@ describe('worker', () => {
     // Simulate receiving an initialize message
     const initMessage: InitializeWorkerMessage = { type: 'initialize', config };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: 'initialized' }, undefined);
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: 'initialized', actualVideoCodec: 'avc1.42001f', actualAudioCodec: 'mp4a.40.2' },
+      undefined
+    );
 
     // Simulate receiving a finalize message
     mockSelf.postMessage.mockClear(); // Clear previous calls
@@ -147,7 +150,10 @@ describe('worker', () => {
     // Initialize first (or part of it, enough to set up for cancel)
     const initMessage: InitializeWorkerMessage = { type: 'initialize', config };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: 'initialized' }, undefined);
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: 'initialized', actualVideoCodec: 'avc1.42001f', actualAudioCodec: 'mp4a.40.2' },
+      undefined
+    );
     mockSelf.postMessage.mockClear();
 
     // Simulate receiving a cancel message

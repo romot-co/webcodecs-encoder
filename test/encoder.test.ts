@@ -48,7 +48,7 @@ describe('Mp4Encoder', () => {
       close: vi.fn(),
       // state: 'unconfigured', 
     })) as any;
-    (globalThis.VideoEncoder as any).isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: {} })); 
+    (globalThis.VideoEncoder as any).isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: 'avc1.42001f' } }));
 
     globalThis.AudioEncoder = vi.fn(() => ({
       configure: vi.fn(),
@@ -57,7 +57,7 @@ describe('Mp4Encoder', () => {
       close: vi.fn(),
       // state: 'unconfigured',
     })) as any;
-    (globalThis.AudioEncoder as any).isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: {} }));
+    (globalThis.AudioEncoder as any).isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: 'mp4a.40.2' } }));
 
     // Mock ErrorEvent for Node.js environment if not available (e.g. via JSDOM)
     if (typeof globalThis.ErrorEvent === 'undefined') {
@@ -249,9 +249,18 @@ describe('Mp4Encoder', () => {
         },
         totalFrames: undefined,
       });
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      mockWorkerInstance.onmessage({ data: { type: 'initialized', actualVideoCodec: 'avc1.42001f', actualAudioCodec: 'mp4a.40.2' } });
 
       await expect(initPromise).resolves.toBeUndefined();
+    });
+
+    it('stores actual codecs from initialization', async () => {
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({});
+      mockWorkerInstance.onmessage({ data: { type: 'initialized', actualVideoCodec: 'avc1.42001f', actualAudioCodec: 'mp4a.40.2' } });
+      await initPromise;
+      expect(encoder.getActualVideoCodec()).toBe('avc1.42001f');
+      expect(encoder.getActualAudioCodec()).toBe('mp4a.40.2');
     });
 
     it('should reject if worker posts an error during initialization', async () => {

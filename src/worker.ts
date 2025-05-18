@@ -189,8 +189,10 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
     return;
   }
 
-  postMessageToMainThread({ 
+  postMessageToMainThread({
     type: 'initialized',
+    actualVideoCodec: finalVideoEncoderConfig?.codec,
+    actualAudioCodec: finalAudioEncoderConfig?.codec,
   } as MainThreadMessage);
 }
 

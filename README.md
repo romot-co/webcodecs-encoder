@@ -138,17 +138,38 @@ async function encodeVideoRealtime() {
     mediaSource = new MediaSource();
     videoElement.src = URL.createObjectURL(mediaSource);
 
-    mediaSource.addEventListener('sourceopen', () => {
+    mediaSource.addEventListener('sourceopen', async () => {
       console.log("MediaSource opened");
+
+      await encoder.initialize({
+        onData: (chunk, isHeader) => {
+          if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState == 'open') {
+            try {
+              sourceBuffer.appendBuffer(chunk);
+            } catch (e) {
+              console.error('Error appending buffer:', e);
+            }
+          } else {
+            console.warn('SourceBuffer not ready or updating, or MediaSource not open. Skipping append.');
+          }
+        },
+        onProgress: (processedFrames, totalFrames) => {
+          console.log(`Progress (Real-time): ${processedFrames}`);
+        },
+        onError: (error) => {
+          console.error('Encoder error during initialization or processing:', error);
+        }
+      });
+
       // Determine actual codecs used after potential fallbacks
       const actualVideoCodec = encoder.getActualVideoCodec() || config.codec.video;
       const actualAudioCodec = encoder.getActualAudioCodec() || config.codec.audio;
-      
+
       try {
         sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${actualVideoCodec}, ${actualAudioCodec}"`);
         sourceBuffer.mode = 'sequence'; // Important for streaming
         console.log("SourceBuffer added");
-        
+
         sourceBuffer.addEventListener('error', (e) => console.error('SourceBuffer error:', e));
         sourceBuffer.addEventListener('updateend', () => {
           // console.log('SourceBuffer update end');
@@ -158,7 +179,7 @@ async function encodeVideoRealtime() {
         console.error("Error adding SourceBuffer:", e);
         return;
       }
-      
+
       // Start encoding once source buffer is ready
       startEncoding();
     });
@@ -175,25 +196,6 @@ async function encodeVideoRealtime() {
   async function startEncoding() {
     console.log("Starting encoding process...");
     try {
-      await encoder.initialize({
-        onData: (chunk, isHeader) => {
-          if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
-            try {
-              sourceBuffer.appendBuffer(chunk);
-            } catch (e) {
-              console.error('Error appending buffer:', e);
-            }
-          } else {
-            console.warn('SourceBuffer not ready or updating, or MediaSource not open. Skipping append.');
-          }
-        },
-        onProgress: (processedFrames, totalFrames) => { // totalFrames might be undefined in pure realtime
-          console.log(`Progress (Real-time): ${processedFrames}`);
-        },
-        onError: (error) => {
-          console.error('Encoder error during initialization or processing:', error);
-        }
-      });
 
       const canvas = document.createElement('canvas');
       canvas.width = config.width;
