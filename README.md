@@ -12,7 +12,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
-- **WebM Container Support (β)**: Basic WebM muxing is available via `container: 'webm'` option. Currently, this is experimental and may have limitations (e.g., only VP9/Opus might be well-supported by browsers). MP4 remains the default and most stable option.
+- **WebM Container Support (β)**: Basic WebM muxing is available via `container: 'webm'` option. However, in the current version, specifying `'webm'` may result in a warning, and the content might still be processed as MP4 or an error may occur in the worker if it's not fully supported. Full WebM support with appropriate EBML structure and codec combinations (typically VP9/Opus) is a goal for future versions. MP4 remains the default and most stable option.
 
 ## Installation
 
@@ -268,7 +268,7 @@ async function encodeVideoRealtime() {
 - **`new Mp4Encoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
-    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'` if not specified.
+    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. See "WebM Container Support" section for details on 'webm'.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
     - `width: number`: Video width.
     - `height: number`: Video height.
@@ -277,18 +277,18 @@ async function encodeVideoRealtime() {
     - `audioBitrate: number`: Audio bitrate in bits per second.
     - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
-    - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs.
+    - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
   `Mp4EncoderInitializeOptions`:
     - `onProgress?: (processedFrames: number, totalFrames?: number) => void`: Callback for encoding progress. `totalFrames` might be undefined in real-time or if not provided.
     - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
-    - `onError?: (error: Error) => void`: Callback for errors occurring in the worker after initialization.
+    - `onError?: (error: Mp4EncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `Mp4EncoderError` object.
     - `onData?: (chunk: Uint8Array, isHeader?: boolean) => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial MP4 header chunk.
 
-- **`encoder.addVideoFrame(frameSource: CanvasImageSource | VideoFrame): Promise<void>`**
-  Adds a video frame for encoding. `frameSource` can be an `HTMLCanvasElement`, `ImageBitmap`, `HTMLVideoElement`, etc., or a `VideoFrame`.
+- **`encoder.addVideoFrame(frame: VideoFrame): Promise<void>`**
+  Adds a `VideoFrame` object for encoding. Ensure the source is converted to a `VideoFrame` before calling this method.
 
 - **`encoder.addAudioBuffer(audioBuffer: AudioBuffer): Promise<void>`**
   Adds an entire `AudioBuffer` for encoding. Useful for adding complete audio tracks.
