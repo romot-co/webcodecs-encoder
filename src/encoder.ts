@@ -1,7 +1,6 @@
-import { EncoderErrorType } from './types';
+import { EncoderErrorType, Mp4EncoderError } from './types';
 import type {
   EncoderConfig,
-  Mp4EncoderError,
   MainThreadMessage,
   WorkerMessage,
 } from './types';
@@ -42,8 +41,10 @@ export class Mp4Encoder {
     this.onProgressCallback = onProgress || null;
 
     if (!Mp4Encoder.isSupported()) {
-      const err = new Error('WebCodecs API or Web Workers are not supported in this browser.') as Mp4EncoderError;
-      err.type = EncoderErrorType.NotSupported;
+      const err = new Mp4EncoderError(
+        EncoderErrorType.NotSupported,
+        'WebCodecs API or Web Workers are not supported in this browser.'
+      );
       this.handleError(err);
       throw err;
     }
@@ -76,8 +77,11 @@ export class Mp4Encoder {
 
         this.worker.onerror = (event: ErrorEvent) => {
           console.error('Worker error:', event.message);
-          const err = new Error(`Worker error: ${event.message}`) as Mp4EncoderError;
-          err.type = EncoderErrorType.WorkerError;
+          const err = new Mp4EncoderError(
+            EncoderErrorType.WorkerError,
+            `Worker error: ${event.message}`,
+            event
+          );
           this.handleError(err);
           if (this.onInitializeError) this.onInitializeError(err);
           if (this.onFinalizeError) this.onFinalizeError(err);
@@ -91,9 +95,11 @@ export class Mp4Encoder {
         };
         this.worker.postMessage(initMessage);
       } catch (e: any) {
-        const err = new Error(`Failed to initialize worker: ${e.message}`) as Mp4EncoderError;
-        err.type = EncoderErrorType.InitializationFailed;
-        err.stack = e.stack;
+        const err = new Mp4EncoderError(
+          EncoderErrorType.InitializationFailed,
+          `Failed to initialize worker: ${e.message}`,
+          e
+        );
         this.handleError(err);
         this.onInitializeError?.(err);
         this.cleanupWorker();
@@ -122,9 +128,11 @@ export class Mp4Encoder {
         break;
       case 'error':
         console.error('Error from worker:', message.errorDetail);
-        const err = new Error(message.errorDetail.message) as Mp4EncoderError;
-        err.type = message.errorDetail.type;
-        err.stack = message.errorDetail.stack;
+        const err = new Mp4EncoderError(
+          message.errorDetail.type,
+          message.errorDetail.message,
+          message.errorDetail
+        );
         this.handleError(err);
         this.onInitializeError?.(err);
         this.onFinalizeError?.(err);
@@ -150,7 +158,11 @@ export class Mp4Encoder {
   public async addVideoFrame(frameSource: CanvasImageSource): Promise<void> {
     if (!this.worker || this.isCancelled) {
       // Consider throwing an error or returning a rejected promise
-      return Promise.reject(new Error(this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized'));
+      const err = new Mp4EncoderError(
+        this.isCancelled ? EncoderErrorType.Cancelled : EncoderErrorType.InternalError,
+        this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized'
+      );
+      return Promise.reject(err);
     }
 
     try {
@@ -165,8 +177,11 @@ export class Mp4Encoder {
       };
       this.worker.postMessage(message, [frameBitmap]);
     } catch (e: any) {
-      const err = new Error(`Failed to add video frame: ${e.message}`) as Mp4EncoderError;
-      err.type = EncoderErrorType.VideoEncodingError;
+      const err = new Mp4EncoderError(
+        EncoderErrorType.VideoEncodingError,
+        `Failed to add video frame: ${e.message}`,
+        e
+      );
       this.handleError(err);
       throw err; // Re-throw to reject the promise from this method
     }
@@ -174,7 +189,11 @@ export class Mp4Encoder {
 
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
     if (!this.worker || this.isCancelled) {
-      return Promise.reject(new Error(this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized'));
+      const err = new Mp4EncoderError(
+        this.isCancelled ? EncoderErrorType.Cancelled : EncoderErrorType.InternalError,
+        this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized'
+      );
+      return Promise.reject(err);
     }
     if (this.config.channels === 0 || this.config.sampleRate === 0) {
         console.warn('Audio encoding is disabled (channels or sampleRate is 0). Skipping addAudioBuffer.');
@@ -210,8 +229,11 @@ export class Mp4Encoder {
       };
       this.worker.postMessage(message, transferableBuffers);
     } catch (e: any) {
-      const err = new Error(`Failed to add audio buffer: ${e.message}`) as Mp4EncoderError;
-      err.type = EncoderErrorType.AudioEncodingError;
+      const err = new Mp4EncoderError(
+        EncoderErrorType.AudioEncodingError,
+        `Failed to add audio buffer: ${e.message}`,
+        e
+      );
       this.handleError(err);
       throw err;
     }
@@ -219,7 +241,11 @@ export class Mp4Encoder {
 
   public finalize(): Promise<Uint8Array> {
     if (!this.worker || this.isCancelled) {
-      return Promise.reject(new Error(this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized or already finalized'));
+      const err = new Mp4EncoderError(
+        this.isCancelled ? EncoderErrorType.Cancelled : EncoderErrorType.InternalError,
+        this.isCancelled ? 'Encoder cancelled' : 'Encoder not initialized or already finalized'
+      );
+      return Promise.reject(err);
     }
 
     return new Promise<Uint8Array>((resolve, reject) => {
@@ -243,8 +269,10 @@ export class Mp4Encoder {
     }
 
     // Reject any pending promises
-    const cancelError = new Error('Encoding cancelled by user.') as Mp4EncoderError;
-    cancelError.type = EncoderErrorType.Cancelled;
+    const cancelError = new Mp4EncoderError(
+      EncoderErrorType.Cancelled,
+      'Encoding cancelled by user.'
+    );
 
     if (this.onInitializeError) {
         this.onInitializeError(cancelError);
