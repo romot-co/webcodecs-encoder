@@ -16,15 +16,15 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 ## Installation
 
 ```bash
-npm install webcodec-muxer
+npm install webcodecs-muxer
 # or
-yarn add webcodec-muxer
+yarn add webcodecs-muxer
 ```
 
 ## Basic Usage (File Output)
 
 ```typescript
-import { Mp4Encoder } from 'webcodec-muxer';
+import { Mp4Encoder } from 'webcodecs-muxer';
 
 async function encodeVideoToFile() {
   if (!Mp4Encoder.isSupported()) {
@@ -105,7 +105,7 @@ encodeVideoToFile();
 For applications like live streaming, you can configure the encoder to output data in chunks. This is typically used with Media Source Extensions (MSE) to play the video in an HTML `<video>` element as it's being encoded.
 
 ```typescript
-import { Mp4Encoder } from 'webcodec-muxer';
+import { Mp4Encoder } from 'webcodecs-muxer';
 
 async function encodeVideoRealtime() {
   if (!Mp4Encoder.isSupported()) {
