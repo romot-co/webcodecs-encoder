@@ -70,7 +70,7 @@ async function initializeEncoders(data: InitializeWorkerMessage): Promise<void> 
     codec: currentConfig.codec?.audio === 'opus' ? 'opus' : 'mp4a.40.2', // Default to AAC-LC
     sampleRate: currentConfig.sampleRate,
     numberOfChannels: currentConfig.channels,
-    bitrate: currentConfig.audioBitrate, 
+    bitrate: currentConfig.audioBitrate,
   };
 
   audioEncoder = new AudioEncoder({
@@ -138,7 +138,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
      // Potentially throw an error or try to handle it if possible.
      // For now, we'll proceed assuming the first channel or that the data is already interleaved if mono.
   }
-  
+
   // If audioData is planar (array of Float32Array per channel), it needs to be interleaved for many AAC encoders.
   // Let's create an AudioData object. The format (interleaved/planar) might depend on the encoder.
   // For AAC, mp4a.40.2, typically expects interleaved.
@@ -153,7 +153,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     numberOfChannels: currentConfig.channels,
     timestamp: data.timestamp, // microseconds
     data: audioDataBuffer // This needs to be the actual ArrayBuffer data.
-                           // If planar, AudioData might expect data.audioData itself if the API supports it, 
+                           // If planar, AudioData might expect data.audioData itself if the API supports it,
                            // or it needs to be a single ArrayBuffer with all channels interleaved.
                            // The spec for AudioData with 'f32-planar' needs to be checked for exact data layout.
   });
@@ -215,7 +215,7 @@ function cleanup(): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
-  isCancelled = false; 
+  isCancelled = false;
 }
 
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
@@ -256,4 +256,4 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   }
 };
 
-console.log('Worker script loaded.'); 
+console.log('Worker script loaded.');

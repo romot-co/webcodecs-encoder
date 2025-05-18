@@ -52,7 +52,7 @@ export class Mp4Encoder {
       console.warn('Mp4Encoder already initialized. Call cancel() before re-initializing.');
       // Potentially terminate existing worker and restart, or throw an error
       // For now, let's assume it should throw or be a no-op if already initialized and not cancelled.
-      return Promise.resolve(); 
+      return Promise.resolve();
     }
     this.isCancelled = false;
     this.processedFramesInternal = 0;
@@ -196,7 +196,7 @@ export class Mp4Encoder {
         planarData.push(channelData);
         transferableBuffers.push(channelData.buffer);
       }
-      
+
       // The timestamp here is a placeholder. Ideally, audio is added in chunks
       // aligned with video frames or with its own timing logic.
       const timestamp = this.nextAudioTimestamp;
@@ -206,7 +206,7 @@ export class Mp4Encoder {
       const message: WorkerMessage = {
         type: 'addAudioData',
         audioData: planarData, // Worker will receive Float32Arrays, their buffers are transferred.
-        timestamp: timestamp, 
+        timestamp: timestamp,
       };
       this.worker.postMessage(message, transferableBuffers);
     } catch (e: any) {
@@ -248,7 +248,7 @@ export class Mp4Encoder {
 
     if (this.onInitializeError) {
         this.onInitializeError(cancelError);
-        this.onInitializeError = null; 
+        this.onInitializeError = null;
         this.onInitialized = null;
     }
     if (this.onFinalizeError) {
@@ -273,4 +273,4 @@ export class Mp4Encoder {
     // or should be cleared if instance is strictly one-time use.
     // For now, let's assume they persist for the lifetime of the Mp4Encoder instance.
   }
-} 
+}
