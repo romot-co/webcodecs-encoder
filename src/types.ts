@@ -126,4 +126,4 @@ export type MainThreadMessage =
   | ProgressMessage
   | WorkerFinalizedMessage
   | WorkerErrorMessage
-  | WorkerCancelledMessage; 
+  | WorkerCancelledMessage;

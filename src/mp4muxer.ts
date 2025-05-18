@@ -70,7 +70,7 @@ export class Mp4MuxerWrapper {
     const buffer = this.target.buffer;
     // It's good practice to create a new target if the muxer were to be reused,
     // or to help with GC, though Mp4Muxer instances are typically for a single session.
-    this.target = new ArrayBufferTarget(); 
+    this.target = new ArrayBufferTarget();
     return new Uint8Array(buffer);
   }
-} 
+}

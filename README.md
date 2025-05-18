@@ -48,7 +48,7 @@ async function encodeVideo() {
       (processedFrames, totalFrames) => {
         console.log(`Progress: ${processedFrames}/${totalFrames}`);
       },
-      /* totalFrames (optional) */ 300 
+      /* totalFrames (optional) */ 300
     );
 
     const canvas = document.createElement('canvas');
@@ -64,7 +64,7 @@ async function encodeVideo() {
       ctx.fillStyle = 'white';
       ctx.font = '50px Arial';
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
-      
+
       await encoder.addVideoFrame(canvas);
     }
 
@@ -78,7 +78,7 @@ async function encodeVideo() {
     );
     // You would typically fill this buffer with actual audio data
     await encoder.addAudioBuffer(silentAudioBuffer);
-    
+
 
     const uint8Array = await encoder.finalize();
     console.log('Encoding finished! MP4 size:', uint8Array.byteLength);
@@ -129,4 +129,4 @@ encodeVideo();
 
 ## License
 
-MIT 
+MIT
