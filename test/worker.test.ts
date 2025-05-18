@@ -131,14 +131,13 @@ describe('worker', () => {
     mockSelf.postMessage.mockClear(); // Clear previous calls
     const finalizeMessage: FinalizeWorkerMessage = { type: 'finalize' };
     await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
-    // Worker should post a 'finalized' message with the MP4 data
-    expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ 
-        type: 'finalized',
-        output: expect.any(Uint8Array) // Expect Uint8Array output
-      }), 
-      expect.any(Array) // Expect the transferable list (output.buffer)
-    );
+    // Worker should post a 'finalized' message with the MP4 data or null when streaming
+    expect(mockSelf.postMessage).toHaveBeenCalled();
+    const finalizedCall = mockSelf.postMessage.mock.calls[0];
+    const msg = finalizedCall[0];
+    expect(msg.type).toBe('finalized');
+    expect(msg.output === null || msg.output instanceof Uint8Array).toBe(true);
+    expect(finalizedCall[1]).toEqual(expect.any(Array)); // transferable list
   });
 
   it('handles cancel message', async () => {

@@ -105,7 +105,7 @@ export interface ProgressMessage {
 
 export interface WorkerFinalizedMessage {
   type: 'finalized';
-  output: Uint8Array; // MP4 file data
+  output: Uint8Array | null; // MP4 file data or null when streaming
 }
 
 export interface WorkerDataChunkMessage {

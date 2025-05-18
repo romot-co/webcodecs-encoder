@@ -163,7 +163,7 @@ export class Mp4Encoder {
         }
         break;
       case 'finalized':
-        if (message.output) { // Non-realtime mode or final part of fragmented MP4 with full file
+        if (message.output !== null) { // Non-realtime mode or final part of fragmented MP4 with full file
           this.onFinalizedPromise?.resolve(message.output);
         } else { // Realtime mode, stream finished, no single file output from worker in this message
             if (this.config.latencyMode === 'realtime') {

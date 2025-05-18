@@ -284,9 +284,9 @@ async function handleFinalize(): Promise<void> {
     if (muxer) {
       const output = muxer.finalize();
       if (output) {
-        postMessageToMainThread({ type: 'finalized', output } as MainThreadMessage, [output.buffer]);
+        postMessageToMainThread({ type: 'finalized', output }, [output.buffer]);
       } else if (currentConfig?.latencyMode === 'realtime') {
-        postMessageToMainThread({ type: 'finalized', output: null as any } as MainThreadMessage);
+        postMessageToMainThread({ type: 'finalized', output: null });
       } else {
          postMessageToMainThread({ type: 'error', errorDetail: { message: 'Muxer finalized without output in non-realtime mode.', type: EncoderErrorType.MuxingFailed }});
       }
