@@ -37,28 +37,11 @@ describe("worker", () => {
   beforeEach(async () => {
     vi.resetModules(); // Reset modules to get a fresh worker state for each test
 
-    // Explicitly mock VideoEncoder and AudioEncoder on global.self AFTER resetModules
-    mockSelf.VideoEncoder = {
-      isConfigSupported: vi.fn(() =>
-        Promise.resolve({ supported: true, config: {} }),
-      ),
-      // Mock constructor and configure as they are used in the worker
-      // @ts-ignore
-      new: vi.fn(() => ({
-        configure: vi.fn(),
-        encode: vi.fn(),
-        flush: vi.fn(),
-        close: vi.fn(),
-        state: "unconfigured",
-      })),
-    };
-    // Simulate VideoEncoder constructor being part of the mockSelf.VideoEncoder object
-    // This is a common pattern for mocking classes with static methods and constructors.
     // @ts-ignore
     mockSelf.VideoEncoder = vi.fn(() => ({
       configure: vi.fn(),
       encode: vi.fn(),
-      flush: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(),
       state: "unconfigured",
     }));
@@ -66,12 +49,11 @@ describe("worker", () => {
     mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
       Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
     );
-
     // @ts-ignore
     mockSelf.AudioEncoder = vi.fn(() => ({
       configure: vi.fn(),
       encode: vi.fn(),
-      flush: vi.fn(),
+      flush: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(),
       state: "unconfigured",
     }));

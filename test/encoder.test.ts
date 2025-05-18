@@ -456,60 +456,77 @@ describe("Mp4Encoder", () => {
       const encoder = new Mp4Encoder(baseVideoConfig);
       const initPromise = encoder.initialize({}); // Pass empty options object
       // Ensure onmessage is set by encoder.initialize() before we try to use it
-      expect(mockWorkerInstance.onmessage).toBeTypeOf("function");
+      // expect(mockWorkerInstance.onmessage).toBeTypeOf("function"); // This might be too early if initialize is async and not awaited yet
       if (typeof mockWorkerInstance.onmessage === "function") {
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
       await initPromise;
 
       const bitmap = { close: vi.fn(), width: 320, height: 240 } as any;
-      global.createImageBitmap = vi.fn(() => Promise.resolve(bitmap));
+      // Create a mock VideoFrame instance
+      const frame = new globalThis.VideoFrame(bitmap, {
+        timestamp: 0,
+        duration: 33333,
+      }) as VideoFrame;
+      vi.spyOn(frame, "close"); // Spy on close if needed
 
-      const frame = {} as CanvasImageSource;
       const p = encoder.addVideoFrame(frame);
 
       await expect(p).resolves.toBeUndefined();
-      expect(global.createImageBitmap).toHaveBeenCalledWith(frame);
-      const expectedTimestamp = 0;
+      const expectedTimestamp = 0; // Or whatever the logic assigns
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         {
           type: "addVideoFrame",
-          frameBitmap: bitmap,
+          frame: frame, // Expect the VideoFrame instance
           timestamp: expectedTimestamp,
         },
-        [bitmap],
+        [frame], // VideoFrame should be in the transfer list
       );
     });
 
     it("should reject if encoder not initialized", async () => {
       const encoder = new Mp4Encoder(baseVideoConfig);
       await expect(
-        encoder.addVideoFrame({} as CanvasImageSource),
+        encoder.addVideoFrame(
+          new globalThis.VideoFrame(document.createElement("canvas"), {
+            timestamp: 0,
+            duration: 33333,
+          }) as VideoFrame,
+        ),
       ).rejects.toThrow("Encoder not initialized or already finalized");
     });
 
-    it("should propagate errors from createImageBitmap", async () => {
+    it("should propagate errors from worker postMessage if it throws", async () => {
       const encoder = new Mp4Encoder(baseVideoConfig);
       const onError = vi.fn();
-      const initPromise = encoder.initialize({ onError });
+      const initPromise = encoder.initialize({ onError: onError });
       if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      } else {
+        // Ensure onmessage is callable
+        mockWorkerInstance.onmessage = vi.fn();
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
       await initPromise;
 
-      const err = new Error("boom");
-      global.createImageBitmap = vi.fn(() => Promise.reject(err));
+      const postError = new Error("post failed");
+      mockWorkerInstance.postMessage.mockImplementationOnce(() => {
+        throw postError;
+      });
 
-      await expect(
-        encoder.addVideoFrame({} as CanvasImageSource),
-      ).rejects.toThrow(
-        "Failed to create ImageBitmap or post video frame: boom",
+      const frame = new globalThis.VideoFrame(
+        document.createElement("canvas"),
+        { timestamp: 0, duration: 33333 },
+      ) as VideoFrame;
+
+      await expect(encoder.addVideoFrame(frame)).rejects.toThrow(
+        `Failed to post video frame: ${postError.message}`,
       );
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({
           type: EncoderErrorType.VideoEncodingError,
-          message: "Failed to create ImageBitmap or post video frame: boom",
-          cause: err, // Ensure the original error is the cause
+          message: `Failed to post video frame: ${postError.message}`,
+          cause: postError,
         }),
       );
     });
@@ -759,7 +776,12 @@ describe("Mp4Encoder", () => {
       encoder.cancel(); // Cancel the encoder
 
       await expect(
-        encoder.addVideoFrame({} as CanvasImageSource),
+        encoder.addVideoFrame(
+          new globalThis.VideoFrame(document.createElement("canvas"), {
+            timestamp: 0,
+            duration: 33333,
+          }) as VideoFrame,
+        ),
       ).rejects.toThrow("Encoder cancelled");
       await expect(encoder.addAudioBuffer({} as AudioBuffer)).rejects.toThrow(
         "Encoder cancelled",

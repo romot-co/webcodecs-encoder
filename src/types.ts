@@ -60,7 +60,7 @@ export interface InitializeWorkerMessage {
 
 export interface AddVideoFrameMessage {
   type: "addVideoFrame";
-  frameBitmap: ImageBitmap;
+  frame: VideoFrame;
   timestamp: number; // microseconds
 }
 

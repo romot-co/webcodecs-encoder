@@ -4,14 +4,15 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 
 ## Features
 
-- Encodes `CanvasImageSource` (like `HTMLCanvasElement` or `ImageBitmap`) or `VideoFrame` to H.264/AVC or VP9 video.
-- Encodes `AudioData` or `AudioBuffer` to AAC or Opus audio.
+- Encodes `VideoFrame` to H.264/AVC or VP9 video. (Note: `CanvasImageSource` must be converted to `VideoFrame` before passing to `addVideoFrame`)
+- Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into a standard MP4 file.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
 - Uses Web Workers to offload encoding tasks from the main thread.
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
+- **WebM Container Support (β)**: Basic WebM muxing is available via `container: 'webm'` option. Currently, this is experimental and may have limitations (e.g., only VP9/Opus might be well-supported by browsers). MP4 remains the default and most stable option.
 
 ## Installation
 
@@ -56,6 +57,7 @@ async function encodeVideoToFile() {
     canvas.width = config.width;
     canvas.height = config.height;
     const ctx = canvas.getContext('2d');
+    let frameCount = 0;
 
     // Example: Encode 300 frames
     for (let i = 0; i < 300; i++) {
@@ -64,8 +66,12 @@ async function encodeVideoToFile() {
       ctx.fillStyle = 'white';
       ctx.font = '50px Arial';
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
-
-      await encoder.addVideoFrame(canvas);
+      
+      // Convert canvas to VideoFrame
+      const videoFrame = new VideoFrame(canvas, { timestamp: frameCount * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
+      await encoder.addVideoFrame(videoFrame); // Pass VideoFrame
+      // videoFrame will be closed automatically by the encoder after it's processed.
+      frameCount++;
     }
 
     // Example: Create a silent audio track
@@ -119,7 +125,7 @@ async function encodeVideoRealtime() {
     height: 720,
     frameRate: 30,
     codec: {
-      video: 'vp09', // Example: VP9 for lower latency
+      video: 'vp9', // Example: VP9 for lower latency
       audio: 'opus',
     },
     videoBitrate: 2_000_000,
@@ -209,11 +215,16 @@ async function encodeVideoRealtime() {
         ctx.fillStyle = 'black';
         ctx.font = '40px Arial';
         ctx.fillText(`Live Frame ${i + 1}`, 50, 80);
-        await encoder.addVideoFrame(canvas);
+        
+        // Convert canvas to VideoFrame for real-time encoding
+        // Note: In a real application, ensure timestamp is monotonically increasing and accurate.
+        const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
+        await encoder.addVideoFrame(videoFrame);
+        // videoFrame will be closed automatically by the encoder.
         await new Promise(resolve => setTimeout(resolve, 1000 / config.frameRate)); // Simulate real-time frame generation
       }
 
-      // For real-time audio, you would continuously call addAudioData or addAudioBuffer
+      // For real-time audio, you would continuously call addAudioBuffer
       // For this example, we'll add a silent track matching video duration after frames.
       // In a true real-time scenario, audio and video would be interleaved.
       const audioContext = new AudioContext({ sampleRate: config.sampleRate });

@@ -24,8 +24,6 @@ const getVideoEncoder = () =>
   (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
 const getAudioEncoder = () =>
   (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
-const getVideoFrame = () =>
-  (self as any).VideoFrame ?? (globalThis as any).VideoFrame;
 const getAudioData = () =>
   (self as any).AudioData ?? (globalThis as any).AudioData;
 
@@ -330,31 +328,9 @@ async function initializeEncoders(
 async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
   if (isCancelled || !videoEncoder || !currentConfig) return;
   try {
-    const frameDuration = 1_000_000 / currentConfig.frameRate;
-    const VideoFrameCtor: any = getVideoFrame();
-    if (!VideoFrameCtor) {
-      postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message: "Worker: VideoFrame not available",
-          type: EncoderErrorType.NotSupported,
-        },
-      });
-      cleanup();
-      return;
-    }
-    const frame = new VideoFrameCtor(data.frameBitmap, {
-      timestamp: data.timestamp,
-      duration: frameDuration,
-    });
+    const frame = data.frame;
     videoEncoder.encode(frame);
     frame.close();
-    // Release the transferred ImageBitmap after use
-    try {
-      data.frameBitmap.close();
-    } catch {
-      // Ignore if closing fails
-    }
     processedFrames++;
     const progressMessage: any = {
       type: "progress",

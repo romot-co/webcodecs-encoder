@@ -84,6 +84,17 @@ export class Mp4Encoder {
     this.onDataCallback = options?.onData || null; // Store onData callback
     this.totalFrames = options?.totalFrames;
 
+    if (this.config.latencyMode === "realtime" && !this.onDataCallback) {
+      const err = new Mp4EncoderError(
+        EncoderErrorType.ConfigurationError,
+        "onData callback must be provided when latencyMode is 'realtime'.",
+      );
+      // No need to call this.handleError as it will be caught by the promise reject or caller
+      // and this.onErrorCallback will be called by the caller if they wish.
+      // this.handleError(err);
+      throw err; // Throw immediately
+    }
+
     if (!Mp4Encoder.isSupported()) {
       const err = new Mp4EncoderError(
         EncoderErrorType.NotSupported,
@@ -253,9 +264,7 @@ export class Mp4Encoder {
     this.onErrorCallback?.(error);
   }
 
-  public async addVideoFrame(
-    frameSource: CanvasImageSource | VideoFrame,
-  ): Promise<void> {
+  public async addVideoFrame(frameSource: VideoFrame): Promise<void> {
     if (!this.worker || this.isCancelled) {
       const err = new Mp4EncoderError(
         this.isCancelled
@@ -270,41 +279,23 @@ export class Mp4Encoder {
     }
 
     try {
-      let frameData: ImageBitmap | VideoFrame;
-      let transferList: Transferable[] = [];
-
-      if (frameSource instanceof VideoFrame) {
-        // If it's a VideoFrame, we can transfer it directly if we don't need to use it on the main thread afterwards.
-        // For safety and to match ImageBitmap behavior (which is a snapshot),
-        // let's assume for now we should create an ImageBitmap from it unless specified otherwise.
-        // However, sending VideoFrame directly is more efficient if worker can handle it.
-        // The worker's addVideoFrame expects ImageBitmap. So we must convert.
-        // TODO: Re-evaluate if worker can take VideoFrame directly to avoid this conversion.
-        // Current worker expects ImageBitmap for VideoFrame constructor.
-        frameData = await createImageBitmap(frameSource);
-        transferList = [frameData];
-        // If the original VideoFrame is not needed anymore after creating the ImageBitmap,
-        // it should be closed by the caller or here if ownership is clearly defined.
-        // For now, assume caller manages the original VideoFrame if it was passed in.
-      } else {
-        frameData = await createImageBitmap(frameSource);
-        transferList = [frameData];
-      }
+      // VideoFrame is sent directly
+      const transferList: Transferable[] = [frameSource];
 
       const timestamp = this.nextVideoTimestamp;
       this.nextVideoTimestamp += 1_000_000 / this.config.frameRate;
 
       const message: WorkerMessage = {
         type: "addVideoFrame",
-        // Ensure this matches what worker expects (ImageBitmap)
-        frameBitmap: frameData, // Worker's addVideoFrame takes ImageBitmap
+        frame: frameSource, // Send VideoFrame directly
         timestamp: timestamp,
       };
       this.worker.postMessage(message, transferList);
+      // frameSource is not closed here, it will be closed in the worker.
     } catch (e: any) {
       const err = new Mp4EncoderError(
         EncoderErrorType.VideoEncodingError,
-        `Failed to create ImageBitmap or post video frame: ${e.message}`,
+        `Failed to post video frame: ${e.message}`,
         e,
       );
       this.handleError(err);
