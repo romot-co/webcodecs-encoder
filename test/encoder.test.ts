@@ -213,5 +213,200 @@ describe('Mp4Encoder', () => {
 
   });
 
-  // More tests for initialize, addVideoFrame, addAudioBuffer, finalize, cancel will go here
+  describe('addVideoFrame', () => {
+    const config = {
+      width: 320, height: 240, frameRate: 30,
+      videoBitrate: 500000, audioBitrate: 64000,
+      sampleRate: 48000, channels: 2
+    };
+
+    it('should resolve when a frame is added successfully', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const bitmap = { close: vi.fn() } as any;
+      global.createImageBitmap = vi.fn(() => Promise.resolve(bitmap));
+
+      const frame = {} as CanvasImageSource;
+      const p = encoder.addVideoFrame(frame);
+
+      await expect(p).resolves.toBeUndefined();
+      expect(global.createImageBitmap).toHaveBeenCalledWith(frame);
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        { type: 'addVideoFrame', frameBitmap: bitmap, timestamp: 0 },
+        [bitmap]
+      );
+    });
+
+    it('should reject if encoder not initialized', async () => {
+      const encoder = new Mp4Encoder(config);
+      await expect(encoder.addVideoFrame({} as CanvasImageSource))
+        .rejects.toThrow('Encoder not initialized');
+    });
+
+    it('should propagate errors from createImageBitmap', async () => {
+      const encoder = new Mp4Encoder(config);
+      const onError = vi.fn();
+      const init = encoder.initialize(undefined, undefined, onError);
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const err = new Error('boom');
+      global.createImageBitmap = vi.fn(() => Promise.reject(err));
+
+      await expect(encoder.addVideoFrame({} as CanvasImageSource))
+        .rejects.toThrow('Failed to add video frame: boom');
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: EncoderErrorType.VideoEncodingError,
+          message: 'Failed to add video frame: boom'
+        })
+      );
+    });
+  });
+
+  describe('addAudioBuffer', () => {
+    const config = {
+      width: 320, height: 240, frameRate: 30,
+      videoBitrate: 500000, audioBitrate: 64000,
+      sampleRate: 48000, channels: 2
+    };
+
+    it('should resolve when audio data is added', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const bufferData = new Float32Array(10);
+      const audioBuffer = {
+        numberOfChannels: 1,
+        length: 10,
+        sampleRate: 48000,
+        getChannelData: vi.fn(() => bufferData)
+      } as unknown as AudioBuffer;
+
+      await expect(encoder.addAudioBuffer(audioBuffer)).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        { type: 'addAudioData', audioData: [bufferData], timestamp: 0 },
+        [bufferData.buffer]
+      );
+    });
+
+    it('should resolve immediately when audio disabled', async () => {
+      const cfg = { ...config, channels: 0 };
+      const encoder = new Mp4Encoder(cfg);
+      encoder['worker'] = mockWorkerInstance;
+      await expect(encoder.addAudioBuffer({} as AudioBuffer)).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('should reject if encoder not initialized', async () => {
+      const encoder = new Mp4Encoder(config);
+      await expect(encoder.addAudioBuffer({} as AudioBuffer))
+        .rejects.toThrow('Encoder not initialized');
+    });
+
+    it('should propagate errors when gathering channel data', async () => {
+      const encoder = new Mp4Encoder(config);
+      const onError = vi.fn();
+      const init = encoder.initialize(undefined, undefined, onError);
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const audioBuffer = {
+        numberOfChannels: 1,
+        length: 10,
+        sampleRate: 48000,
+        getChannelData: vi.fn(() => { throw new Error('bad'); })
+      } as unknown as AudioBuffer;
+
+      await expect(encoder.addAudioBuffer(audioBuffer))
+        .rejects.toThrow('Failed to add audio buffer: bad');
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: EncoderErrorType.AudioEncodingError,
+          message: 'Failed to add audio buffer: bad'
+        })
+      );
+    });
+  });
+
+  describe('finalize', () => {
+    const config = {
+      width: 320, height: 240, frameRate: 30,
+      videoBitrate: 500000, audioBitrate: 64000,
+      sampleRate: 48000, channels: 2
+    };
+
+    it('should resolve with output when worker finalizes', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const p = encoder.finalize();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'finalize' });
+      const data = new Uint8Array([1, 2, 3]);
+      mockWorkerInstance.onmessage({ data: { type: 'finalized', output: data } });
+      await expect(p).resolves.toEqual(data);
+    });
+
+    it('should reject if not initialized', async () => {
+      const encoder = new Mp4Encoder(config);
+      await expect(encoder.finalize()).rejects.toThrow('Encoder not initialized');
+    });
+
+    it('should reject if worker reports error', async () => {
+      const encoder = new Mp4Encoder(config);
+      const onError = vi.fn();
+      const init = encoder.initialize(undefined, undefined, onError);
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const p = encoder.finalize();
+      const workerError = {
+        message: 'mux fail',
+        type: EncoderErrorType.MuxingFailed,
+        stack: 's'
+      };
+      mockWorkerInstance.onmessage({ data: { type: 'error', errorDetail: workerError } });
+      await expect(p).rejects.toThrow('mux fail');
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'mux fail', type: EncoderErrorType.MuxingFailed })
+      );
+    });
+  });
+
+  describe('cancel', () => {
+    const config = {
+      width: 320, height: 240, frameRate: 30,
+      videoBitrate: 500000, audioBitrate: 64000,
+      sampleRate: 48000, channels: 2
+    };
+
+    it('should signal worker and reject pending finalize', async () => {
+      const encoder = new Mp4Encoder(config);
+      const init = encoder.initialize();
+      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      await init;
+
+      const finalizePromise = encoder.finalize();
+      encoder.cancel();
+
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'cancel' });
+      await expect(finalizePromise).rejects.toThrow('Encoding cancelled by user.');
+    });
+
+    it('should reject subsequent operations after cancel', async () => {
+      const encoder = new Mp4Encoder(config);
+      encoder['worker'] = mockWorkerInstance;
+      encoder.cancel();
+      await expect(encoder.addVideoFrame({} as CanvasImageSource))
+        .rejects.toThrow('Encoder cancelled');
+    });
+  });
+
 }); 
