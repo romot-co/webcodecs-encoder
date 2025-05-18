@@ -36,14 +36,10 @@ async function encodeVideoToFile() {
     width: 1280,
     height: 720,
     frameRate: 30,
-    video: {
-      bitrate: 2_000_000, // 2 Mbps
-    },
-    audio: {
-      bitrate: 128_000,  // 128 kbps
-      sampleRate: 48000, // Recommended: 48000 for Opus
-      numberOfChannels: 2,
-    }
+    videoBitrate: 2_000_000, // 2 Mbps
+    audioBitrate: 128_000,   // 128 kbps
+    sampleRate: 48000,       // Recommended: 48000 for Opus
+    channels: 2,
   };
 
   const encoder = new Mp4Encoder(config);
@@ -73,9 +69,9 @@ async function encodeVideoToFile() {
     }
 
     // Example: Create a silent audio track
-    const audioContext = new AudioContext({ sampleRate: config.audio.sampleRate });
+    const audioContext = new AudioContext({ sampleRate: config.sampleRate });
     const silentAudioBuffer = audioContext.createBuffer(
-      config.audio.numberOfChannels,
+      config.channels,
       audioContext.sampleRate * (300 / config.frameRate), // duration matching video
       audioContext.sampleRate
     );
@@ -122,16 +118,14 @@ async function encodeVideoRealtime() {
     width: 1280,
     height: 720,
     frameRate: 30,
-    video: {
-      codec: 'vp09', // Example: VP9 for lower latency
-      bitrate: 2_000_000,
+    codec: {
+      video: 'vp09', // Example: VP9 for lower latency
+      audio: 'opus',
     },
-    audio: {
-      codec: 'opus', // Example: Opus for lower latency
-      bitrate: 128_000,
-      sampleRate: 48000,
-      numberOfChannels: 2,
-    }
+    videoBitrate: 2_000_000,
+    audioBitrate: 128_000,
+    sampleRate: 48000,
+    channels: 2,
   };
 
   let mediaSource;
@@ -140,15 +134,15 @@ async function encodeVideoRealtime() {
   videoElement.controls = true;
   document.body.appendChild(videoElement);
 
-  if ('MediaSource' in window && MediaSource.isTypeSupported(`video/mp4; codecs="${config.video.codec}.0, ${config.audio.codec}"`)) { // Basic check
+  if ('MediaSource' in window && MediaSource.isTypeSupported(`video/mp4; codecs="${config.codec.video}.0, ${config.codec.audio}"`)) { // Basic check
     mediaSource = new MediaSource();
     videoElement.src = URL.createObjectURL(mediaSource);
 
     mediaSource.addEventListener('sourceopen', () => {
       console.log("MediaSource opened");
       // Determine actual codecs used after potential fallbacks
-      const actualVideoCodec = encoder.getActualVideoCodec() || config.video.codec;
-      const actualAudioCodec = encoder.getActualAudioCodec() || config.audio.codec;
+      const actualVideoCodec = encoder.getActualVideoCodec() || config.codec.video;
+      const actualAudioCodec = encoder.getActualAudioCodec() || config.codec.audio;
       
       try {
         sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${actualVideoCodec}, ${actualAudioCodec}"`);
@@ -220,9 +214,9 @@ async function encodeVideoRealtime() {
       // For real-time audio, you would continuously call addAudioData or addAudioBuffer
       // For this example, we'll add a silent track matching video duration after frames.
       // In a true real-time scenario, audio and video would be interleaved.
-      const audioContext = new AudioContext({ sampleRate: config.audio.sampleRate });
+      const audioContext = new AudioContext({ sampleRate: config.sampleRate });
       const silentAudioBuffer = audioContext.createBuffer(
-        config.audio.numberOfChannels,
+        config.channels,
         audioContext.sampleRate * (300 / config.frameRate),
         audioContext.sampleRate
       );
@@ -261,21 +255,16 @@ async function encodeVideoRealtime() {
 - **`new Mp4Encoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
-    - `container?: 'mp4'`: (Optional) The container format. Currently, only `'mp4'` is supported and is the default.
+    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'` if not specified.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
     - `width: number`: Video width.
     - `height: number`: Video height.
     - `frameRate: number`: Video frame rate.
-    - `video: VideoEncoderConfigOptions`:
-        - `codec?: 'avc1' | 'vp09'`: (Optional) Video codec. `'avc1'` (H.264, default), `'vp09'` (VP9).
-        - `bitrate: number`: Video bitrate in bits per second.
-        - `hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software'`: (Optional) WebCodecs `hardwareAcceleration` hint.
-    - `audio: AudioEncoderConfigOptions`:
-        - `codec?: 'mp4a' | 'opus'`: (Optional) Audio codec. `'mp4a'` (AAC, default), `'opus'`.
-        - `bitrate: number`: Audio bitrate in bits per second.
-        - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
-        - `numberOfChannels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
-        - `bitDepth?: 8 | 16 | 32`: (Optional) Sample bit depth for PCM input. Defaults to 16 if using `AudioBuffer`.
+    - `videoBitrate: number`: Video bitrate in bits per second.
+    - `audioBitrate: number`: Audio bitrate in bits per second.
+    - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
+    - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
+    - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
