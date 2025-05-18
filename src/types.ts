@@ -6,10 +6,12 @@ export interface EncoderConfig {
   audioBitrate: number; // bps
   sampleRate: number;   // Hz
   channels: number;     // e.g., 1 for mono, 2 for stereo
+  container?: 'mp4' | 'webm'; // Default: 'mp4' or auto-selected based on codec
   codec?: {
     video?: 'avc' | 'hevc' | 'vp9' | 'av1'; // Default: 'avc' (H.264)
     audio?: 'aac' | 'opus'; // Default: 'aac'
   };
+  latencyMode?: 'quality' | 'realtime'; // Default: 'quality'
   /** Total frames for progress calculation if known in advance. */
   totalFrames?: number;
 }
@@ -106,6 +108,14 @@ export interface WorkerFinalizedMessage {
   output: Uint8Array; // MP4 file data
 }
 
+export interface WorkerDataChunkMessage {
+  type: 'dataChunk';
+  chunk: Uint8Array;
+  isHeader?: boolean; // Indicates if this chunk is a header (e.g., moov for MP4, EBML for WebM)
+  offset?: number;    // For MP4 fragmented streaming
+  container: 'mp4' | 'webm'; // To inform the main thread which muxer this chunk belongs to
+}
+
 export interface WorkerErrorMessage {
   type: 'error';
   errorDetail: { // Renamed from 'error' to avoid conflict with global Error
@@ -121,9 +131,10 @@ export interface WorkerCancelledMessage {
 
 export type MainThreadMessage =
   | WorkerInitializedMessage
-  | VideoChunkMessage
-  | AudioChunkMessage
+  // | VideoChunkMessage // These are handled internally by the muxer in the worker
+  // | AudioChunkMessage // These are handled internally by the muxer in the worker
   | ProgressMessage
   | WorkerFinalizedMessage
+  | WorkerDataChunkMessage
   | WorkerErrorMessage
   | WorkerCancelledMessage;

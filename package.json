@@ -1,5 +1,5 @@
 {
-  "name": "webcodecs-mp4-encoder",
+  "name": "webcodec-muxer",
   "version": "0.1.0",
   "description": "Encode video (H.264) and audio (AAC) using WebCodecs and mux into an MP4 container.",
   "main": "dist/index.js",

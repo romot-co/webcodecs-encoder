@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { Mp4Encoder } from '../src/index'; // Assuming index.ts exports Mp4Encoder
 import { EncoderErrorType, Mp4EncoderError } from '../src/types'; // Import EncoderErrorType and Mp4EncoderError for error checking
+import { EncoderConfig } from '../src/types'; // Import EncoderConfig for type checking
 
 // Mock the Worker class
 vi.mock('../src/worker', () => {
@@ -99,21 +100,36 @@ describe('Mp4Encoder', () => {
   });
 
   describe('initialize', () => {
-    const config = {
-      width: 640, height: 480, frameRate: 30, 
-      videoBitrate: 1000000, audioBitrate: 128000, 
-      sampleRate: 48000, channels: 2
+    const baseConfig: EncoderConfig = { // Explicitly type baseConfig for clarity
+      width: 640,
+      height: 480,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+      // `container`, `latencyMode`, and specific `codec.*` are optional
+      // and will be defaulted by Mp4Encoder constructor if not provided.
     };
 
     it('should resolve when worker sends initialized message', async () => {
-      const encoder = new Mp4Encoder(config);
-      const initPromise = encoder.initialize();
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({}); // Pass empty options object
 
-      // Simulate worker sending initialized message
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
         type: 'initialize',
-        config: config,
-        totalFrames: undefined, 
+        config: {
+          ...baseConfig, // Spread the provided base config
+          container: 'mp4', // Default added by constructor
+          latencyMode: 'quality', // Default added by constructor
+          codec: { // Default codecs added by constructor
+            video: 'avc1',
+            audio: 'mp4a'
+          },
+          // Ensure other defaults from Mp4Encoder constructor are considered if they exist
+          // e.g. video.hardwareAcceleration, audio.bitDepth might be set by constructor
+        },
+        totalFrames: undefined,
       });
       mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
 
@@ -121,112 +137,138 @@ describe('Mp4Encoder', () => {
     });
 
     it('should reject if worker posts an error during initialization', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseConfig);
       const onErrorCallback = vi.fn();
-      const initPromise = encoder.initialize(undefined, undefined, onErrorCallback);
+      const initPromise = encoder.initialize({ onError: onErrorCallback });
 
       const workerError = { message: 'Init failed', type: EncoderErrorType.WorkerError, stack: 'worker stack' };
-      mockWorkerInstance.onmessage({ data: { type: 'error', errorDetail: workerError } });
+      // Ensure onmessage is set before trying to call it
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: 'error', errorDetail: workerError } });
+      } else {
+        console.warn("mockWorkerInstance.onmessage was not set before emitting error for 'initialization error' test");
+      }
 
       await expect(initPromise).rejects.toThrow(workerError.message);
       expect(onErrorCallback).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.WorkerError, message: workerError.message }));
     });
 
     it('should reject if worker script itself throws an error (onerror)', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseConfig);
       const onErrorCallback = vi.fn();
-      const initPromise = encoder.initialize(undefined, undefined, onErrorCallback);
+      // Initialize should set up the worker.onerror handler
+      const initPromise = encoder.initialize({ onError: onErrorCallback });
       
       const errorMessage = 'Worker script broke';
-      // ErrorEvent の代わりにプレーンオブジェクトを使用
-      const mockErrorEvent = { message: errorMessage, type: 'error' }; // type を追加して ErrorEvent に近づける
-      mockWorkerInstance.onerror(mockErrorEvent as ErrorEvent); // 型キャストで合わせる
+      const mockErrorEvent = new ErrorEvent('error', { message: errorMessage }); // Use new ErrorEvent for proper typing
+      
+      // Check if the onerror handler was attached to the mock worker instance
+      expect(mockWorkerInstance.onerror).toBeTypeOf('function');
+      if (typeof mockWorkerInstance.onerror === 'function') {
+        mockWorkerInstance.onerror(mockErrorEvent);
+      }
 
-      // Expect the promise to reject with an error message containing the original worker error message
       await expect(initPromise).rejects.toThrow(new RegExp(`Worker error: ${errorMessage}`));
       
-      // Ensure the onErrorCallback was called with an error of the correct type
       expect(onErrorCallback).toHaveBeenCalledWith(
         expect.objectContaining({ 
-          message: `Worker error: ${errorMessage}`, // Check the exact message
+          message: `Worker error: ${errorMessage}`,
           type: EncoderErrorType.WorkerError 
         })
       );
-      expect(onErrorCallback).toHaveBeenCalledTimes(1); // Ensure it's called exactly once
+      expect(onErrorCallback).toHaveBeenCalledTimes(1);
     });
 
-    it('should reject if WebCodecs or Worker are not supported', async () => {
+    it('should reject if Required browser APIs are not supported', async () => {
       // @ts-ignore
       delete global.Worker; // Make it unsupported
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseConfig);
       const onErrorCallback = vi.fn();
       
       try {
-        await encoder.initialize(undefined, undefined, onErrorCallback);
-        // Should not reach here, force failure if it does
-        expect(true, 'Promise should have rejected').toBe(false); 
+        await encoder.initialize({ onError: onErrorCallback });
+        expect(true, 'Promise should have rejected but resolved instead.').toBe(false); 
       } catch (e: any) {
-        expect(e.message).toContain('WebCodecs API or Web Workers are not supported');
-        // Assuming Mp4EncoderError has a type property as defined
+        expect(e.message).toContain('Required browser APIs (WebCodecs, Worker, etc.) are not supported.');
         const customError = e as Mp4EncoderError;
         expect(customError.type).toBe(EncoderErrorType.NotSupported);
       }
       
-      // Check onErrorCallback after the try-catch block
       expect(onErrorCallback).toHaveBeenCalledWith(
         expect.objectContaining({ 
           type: EncoderErrorType.NotSupported,
-          message: 'WebCodecs API or Web Workers are not supported in this browser.'
+          message: 'Required browser APIs (WebCodecs, Worker, etc.) are not supported.'
         })
       );
       expect(onErrorCallback).toHaveBeenCalledTimes(1);
     });
 
     it('should pass totalFrames to worker if provided', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseConfig);
       const totalFrames = 150;
-      const initPromise = encoder.initialize(undefined, totalFrames);
+      const initPromise = encoder.initialize({ totalFrames });
       
-      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(expect.objectContaining({
         type: 'initialize',
-        config: config,
-        totalFrames: totalFrames, 
-      });
-      // Simulate worker init to resolve promise
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } }); 
+        totalFrames: totalFrames,
+        config: expect.objectContaining({
+            ...baseConfig,
+            container: 'mp4', 
+            latencyMode: 'quality', 
+            codec: { video: 'avc1', audio: 'mp4a' }
+        })
+      }));
+      if (mockWorkerInstance.onmessage) {
+          mockWorkerInstance.onmessage({ data: { type: 'initialized' } }); 
+      } else {
+          console.warn("mockWorkerInstance.onmessage was not set for 'totalFrames' test");
+      }
       await initPromise;
     });
 
-    it('should set onProgress callback if provided', async () => {
-      const encoder = new Mp4Encoder(config);
+    it('should set onProgress callback if provided and worker sends progress', async () => {
+      const encoder = new Mp4Encoder(baseConfig);
       const onProgress = vi.fn();
-      const initPromise = encoder.initialize(onProgress);
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      const initPromise = encoder.initialize({ onProgress });
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      } else {
+         console.warn("mockWorkerInstance.onmessage was not set for 'onProgress' test initialization");
+      }
       await initPromise;
 
-      // Simulate progress message from worker
-      mockWorkerInstance.onmessage({ data: { type: 'progress', processedFrames: 10, totalFrames: 100 } });
+      // Ensure onmessage is set on the worker instance by Mp4Encoder
+      expect(mockWorkerInstance.onmessage).toBeTypeOf('function'); 
+
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'progress', processedFrames: 10, totalFrames: 100 } });
+      }
       expect(onProgress).toHaveBeenCalledWith(10, 100);
-       // @ts-ignore access private member for test
-      expect(encoder.onProgressCallback).toBe(onProgress);
     });
 
   });
 
   describe('addVideoFrame', () => {
-    const config = {
+    const baseVideoConfig: EncoderConfig = {
       width: 320, height: 240, frameRate: 30,
-      videoBitrate: 500000, audioBitrate: 64000,
-      sampleRate: 48000, channels: 2
+      videoBitrate: 500000, 
+      audioBitrate: 64000,
+      sampleRate: 48000, 
+      channels: 2
+      // container, latencyMode, codec.* will use defaults
     };
 
     it('should resolve when a frame is added successfully', async () => {
-      const encoder = new Mp4Encoder(config);
-      const init = encoder.initialize();
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({}); // Pass empty options object
+      // Ensure onmessage is set by encoder.initialize() before we try to use it
+      expect(mockWorkerInstance.onmessage).toBeTypeOf('function');
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
-      const bitmap = { close: vi.fn() } as any;
+      const bitmap = { close: vi.fn(), width: 320, height: 240 } as any; 
       global.createImageBitmap = vi.fn(() => Promise.resolve(bitmap));
 
       const frame = {} as CanvasImageSource;
@@ -234,92 +276,121 @@ describe('Mp4Encoder', () => {
 
       await expect(p).resolves.toBeUndefined();
       expect(global.createImageBitmap).toHaveBeenCalledWith(frame);
+      const expectedTimestamp = 0;
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
-        { type: 'addVideoFrame', frameBitmap: bitmap, timestamp: 0 },
+        { type: 'addVideoFrame', frameBitmap: bitmap, timestamp: expectedTimestamp },
         [bitmap]
       );
     });
 
     it('should reject if encoder not initialized', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseVideoConfig);
       await expect(encoder.addVideoFrame({} as CanvasImageSource))
-        .rejects.toThrow('Encoder not initialized');
+        .rejects.toThrow('Encoder not initialized or already finalized');
     });
 
     it('should propagate errors from createImageBitmap', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseVideoConfig);
       const onError = vi.fn();
-      const init = encoder.initialize(undefined, undefined, onError);
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const initPromise = encoder.initialize({ onError });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const err = new Error('boom');
       global.createImageBitmap = vi.fn(() => Promise.reject(err));
 
       await expect(encoder.addVideoFrame({} as CanvasImageSource))
-        .rejects.toThrow('Failed to add video frame: boom');
+        .rejects.toThrow('Failed to create ImageBitmap or post video frame: boom');
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({
           type: EncoderErrorType.VideoEncodingError,
-          message: 'Failed to add video frame: boom'
+          message: 'Failed to create ImageBitmap or post video frame: boom'
         })
       );
     });
   });
 
   describe('addAudioBuffer', () => {
-    const config = {
+    const baseAudioConfig: EncoderConfig = {
       width: 320, height: 240, frameRate: 30,
-      videoBitrate: 500000, audioBitrate: 64000,
-      sampleRate: 48000, channels: 2
+      videoBitrate: 500000, 
+      audioBitrate: 64000,
+      sampleRate: 48000, 
+      channels: 2
     };
 
     it('should resolve when audio data is added', async () => {
-      const encoder = new Mp4Encoder(config);
-      const init = encoder.initialize();
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const bufferData = new Float32Array(10);
       const audioBuffer = {
-        numberOfChannels: 1,
+        numberOfChannels: 1, // Should match baseAudioConfig.channels for a valid test, or use a config with channels: 1
         length: 10,
-        sampleRate: 48000,
+        sampleRate: baseAudioConfig.sampleRate, // Match config
+        duration: 10 / baseAudioConfig.sampleRate,
         getChannelData: vi.fn(() => bufferData)
       } as unknown as AudioBuffer;
 
       await expect(encoder.addAudioBuffer(audioBuffer)).resolves.toBeUndefined();
+      const expectedTimestamp = 0;
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
-        { type: 'addAudioData', audioData: [bufferData], timestamp: 0 },
-        [bufferData.buffer]
+        { type: 'addAudioData', audioData: [expect.any(Float32Array)], timestamp: expectedTimestamp },
+        [expect.any(ArrayBuffer)]
       );
+      const sentAudioDataCall = mockWorkerInstance.postMessage.mock.calls.find((call:any) => call[0].type === 'addAudioData');
+      expect(sentAudioDataCall).toBeDefined();
+      if (sentAudioDataCall) {
+        const sentAudioData = sentAudioDataCall[0].audioData[0];
+        expect(sentAudioData).toEqual(bufferData);
+      }
     });
 
-    it('should resolve immediately when audio disabled', async () => {
-      const cfg = { ...config, channels: 0 };
+    it('should resolve immediately when audio disabled (audioBitrate is 0)', async () => {
+      const cfg: EncoderConfig = { ...baseAudioConfig, audioBitrate: 0 };
       const encoder = new Mp4Encoder(cfg);
-      encoder['worker'] = mockWorkerInstance;
+      
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
+ 
+      // @ts-ignore Accessing private worker for test verification - this is brittle.
+      // Better to test the public behavior (no postMessage for addAudioData).
+      // expect(encoder.worker).toBeDefined(); 
+      
       await expect(encoder.addAudioBuffer({} as AudioBuffer)).resolves.toBeUndefined();
-      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalled();
+      const addAudioDataCalls = mockWorkerInstance.postMessage.mock.calls.filter((call:any) => call[0].type === 'addAudioData');
+      expect(addAudioDataCalls.length).toBe(0);
     });
 
     it('should reject if encoder not initialized', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseAudioConfig);
       await expect(encoder.addAudioBuffer({} as AudioBuffer))
-        .rejects.toThrow('Encoder not initialized');
+        .rejects.toThrow('Encoder not initialized or already finalized');
     });
 
     it('should propagate errors when gathering channel data', async () => {
-      const encoder = new Mp4Encoder(config);
+      const encoder = new Mp4Encoder(baseAudioConfig);
       const onError = vi.fn();
-      const init = encoder.initialize(undefined, undefined, onError);
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const initPromise = encoder.initialize({ onError });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const audioBuffer = {
-        numberOfChannels: 1,
+        numberOfChannels: baseAudioConfig.channels,
         length: 10,
-        sampleRate: 48000,
+        sampleRate: baseAudioConfig.sampleRate,
+        duration: 10/baseAudioConfig.sampleRate,
         getChannelData: vi.fn(() => { throw new Error('bad'); })
       } as unknown as AudioBuffer;
 
@@ -335,36 +406,48 @@ describe('Mp4Encoder', () => {
   });
 
   describe('finalize', () => {
-    const config = {
+    const baseFinalizeConfig: EncoderConfig = {
       width: 320, height: 240, frameRate: 30,
-      videoBitrate: 500000, audioBitrate: 64000,
-      sampleRate: 48000, channels: 2
+      videoBitrate: 500000, 
+      audioBitrate: 64000,
+      sampleRate: 48000, 
+      channels: 2
     };
 
-    it('should resolve with output when worker finalizes', async () => {
-      const encoder = new Mp4Encoder(config);
-      const init = encoder.initialize();
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+    it('should resolve with output when worker finalizes in non-realtime mode', async () => {
+      // Non-realtime is default (latencyMode: 'quality')
+      const encoder = new Mp4Encoder(baseFinalizeConfig); 
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const p = encoder.finalize();
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'finalize' });
+      
+      // Ensure onmessage is still the one set by Mp4Encoder for handling worker messages
+      expect(mockWorkerInstance.onmessage).toBeTypeOf('function');
       const data = new Uint8Array([1, 2, 3]);
-      mockWorkerInstance.onmessage({ data: { type: 'finalized', output: data } });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'finalized', output: data } });
+      }
       await expect(p).resolves.toEqual(data);
     });
 
     it('should reject if not initialized', async () => {
-      const encoder = new Mp4Encoder(config);
-      await expect(encoder.finalize()).rejects.toThrow('Encoder not initialized');
+      const encoder = new Mp4Encoder(baseFinalizeConfig);
+      await expect(encoder.finalize()).rejects.toThrow('Encoder not initialized or already finalized');
     });
 
-    it('should reject if worker reports error', async () => {
-      const encoder = new Mp4Encoder(config);
+    it('should reject if worker reports error during finalization', async () => {
+      const encoder = new Mp4Encoder(baseFinalizeConfig);
       const onError = vi.fn();
-      const init = encoder.initialize(undefined, undefined, onError);
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const initPromise = encoder.initialize({ onError });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const p = encoder.finalize();
       const workerError = {
@@ -372,7 +455,9 @@ describe('Mp4Encoder', () => {
         type: EncoderErrorType.MuxingFailed,
         stack: 's'
       };
-      mockWorkerInstance.onmessage({ data: { type: 'error', errorDetail: workerError } });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'error', errorDetail: workerError } });
+      }
       await expect(p).rejects.toThrow('mux fail');
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ message: 'mux fail', type: EncoderErrorType.MuxingFailed })
@@ -381,32 +466,170 @@ describe('Mp4Encoder', () => {
   });
 
   describe('cancel', () => {
-    const config = {
+    const baseCancelConfig: EncoderConfig = {
       width: 320, height: 240, frameRate: 30,
-      videoBitrate: 500000, audioBitrate: 64000,
-      sampleRate: 48000, channels: 2
+      videoBitrate: 500000, 
+      audioBitrate: 64000,
+      sampleRate: 48000, 
+      channels: 2
     };
 
     it('should signal worker and reject pending finalize', async () => {
-      const encoder = new Mp4Encoder(config);
-      const init = encoder.initialize();
-      mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
-      await init;
+      const encoder = new Mp4Encoder(baseCancelConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
 
       const finalizePromise = encoder.finalize();
-      encoder.cancel();
+      encoder.cancel(); // This should trigger the rejection
 
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'cancel' });
-      await expect(finalizePromise).rejects.toThrow('Encoding cancelled by user.');
+      // Mp4Encoder.cancel() should also ensure the worker.terminate() is called.
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
+
+      try {
+        await finalizePromise;
+        expect(true, 'finalizePromise should have rejected').toBe(false);
+      } catch (e: any) {
+        expect(e).toBeInstanceOf(Mp4EncoderError);
+        expect(e.type).toBe(EncoderErrorType.Cancelled);
+        expect(e.message).toBe('Encoding cancelled by user.');
+      }
     });
 
     it('should reject subsequent operations after cancel', async () => {
-      const encoder = new Mp4Encoder(config);
-      encoder['worker'] = mockWorkerInstance;
-      encoder.cancel();
+      const encoder = new Mp4Encoder(baseCancelConfig);
+      // Initialize and then cancel to set the internal state to cancelled
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
+      
+      encoder.cancel(); // Cancel the encoder
+
       await expect(encoder.addVideoFrame({} as CanvasImageSource))
-        .rejects.toThrow('Encoder cancelled');
+        .rejects.toThrow('Encoder cancelled or already finalized'); // Message might vary slightly
+      await expect(encoder.addAudioBuffer({} as AudioBuffer))
+        .rejects.toThrow('Encoder cancelled or already finalized');
+      await expect(encoder.finalize())
+        .rejects.toThrow('Encoder cancelled or already finalized');
     });
+
+    it('should do nothing if worker is not initialized', () => {
+      const encoder = new Mp4Encoder(baseCancelConfig);
+      encoder.cancel(); // Call cancel before initialize
+      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith({ type: 'cancel' });
+      expect(mockWorkerInstance.terminate).not.toHaveBeenCalled();
+    });
+
+  });
+
+  // New describe block for Real-time Streaming tests
+  describe('Real-time Streaming', () => {
+    const realtimeConfig: EncoderConfig = {
+      width: 640, height: 480, frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+      latencyMode: 'realtime', // Key setting for these tests
+      container: 'mp4' // Explicitly mp4 for now
+    };
+
+    it('should initialize with latencyMode: realtime and call onData for dataChunks', async () => {
+      const onDataCallback = vi.fn();
+      const encoder = new Mp4Encoder(realtimeConfig);
+      
+      const initPromise = encoder.initialize({ onData: onDataCallback });
+
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'initialize',
+          config: expect.objectContaining({ latencyMode: 'realtime' }),
+        })
+      );
+      
+      // Simulate worker initialized
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
+
+      // Simulate worker sending a data chunk (e.g., header)
+      const headerChunk = new Uint8Array([1, 2, 3, 4]);
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ 
+          data: { type: 'dataChunk', chunk: headerChunk, isHeader: true, container: 'mp4' } 
+        });
+      }
+      expect(onDataCallback).toHaveBeenCalledWith(headerChunk, true);
+
+      // Simulate worker sending a media data chunk
+      const mediaChunk = new Uint8Array([5, 6, 7, 8]);
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ 
+          data: { type: 'dataChunk', chunk: mediaChunk, isHeader: false, container: 'mp4' } 
+        });
+      }
+      expect(onDataCallback).toHaveBeenCalledWith(mediaChunk, false);
+      expect(onDataCallback).toHaveBeenCalledTimes(2);
+    });
+
+    it('finalize() should resolve with an empty Uint8Array in realtime mode', async () => {
+      const onDataCallback = vi.fn(); // onData might or might not be used before finalize
+      const encoder = new Mp4Encoder(realtimeConfig);
+      const initPromise = encoder.initialize({ onData: onDataCallback });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
+
+      // Simulate some data chunks being sent
+      const chunk1 = new Uint8Array([1]);
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'dataChunk', chunk: chunk1, container: 'mp4' } });
+      }
+
+      const finalizePromise = encoder.finalize();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: 'finalize' });
+
+      // In realtime mode, worker sends 'finalized' with empty output (or null, which Encoder converts to empty)
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        // The worker sends `output: null` which becomes `new Uint8Array()` in main thread for realtime.
+        // Or worker could send `output: new Uint8Array()` directly.
+        // Let's assume worker sends a specific empty Uint8Array or null for this test.
+        mockWorkerInstance.onmessage({ data: { type: 'finalized', output: new Uint8Array() } });
+      }
+      
+      const result = await finalizePromise;
+      expect(result).toBeInstanceOf(Uint8Array);
+      expect(result.byteLength).toBe(0);
+      expect(onDataCallback).toHaveBeenCalledTimes(1); // With chunk1
+    });
+
+    it('should not call onData if latencyMode is quality, even if onData is provided', async () => {
+      const onDataCallback = vi.fn();
+      const qualityConfig: EncoderConfig = { ...realtimeConfig, latencyMode: 'quality' };
+      const encoder = new Mp4Encoder(qualityConfig);
+
+      const initPromise = encoder.initialize({ onData: onDataCallback });
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+        mockWorkerInstance.onmessage({ data: { type: 'initialized' } });
+      }
+      await initPromise;
+
+      const dataChunk = new Uint8Array([1,2,3]);
+      if (typeof mockWorkerInstance.onmessage === 'function') {
+         mockWorkerInstance.onmessage({ 
+          data: { type: 'dataChunk', chunk: dataChunk, isHeader: true, container: 'mp4' } 
+        });
+      }
+      expect(onDataCallback).not.toHaveBeenCalled();
+    });
+
   });
 
 }); 
