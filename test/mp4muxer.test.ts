@@ -33,7 +33,7 @@ describe('Mp4MuxerWrapper', () => {
   });
 
   it('adds video chunks', () => {
-    const wrapper = new Mp4MuxerWrapper(config);
+    const wrapper = new Mp4MuxerWrapper(config, () => {});
     const chunk = {} as EncodedVideoChunk;
     const meta = {} as EncodedVideoChunkMetadata;
     wrapper.addVideoChunk(chunk, meta);
@@ -41,7 +41,7 @@ describe('Mp4MuxerWrapper', () => {
   });
 
   it('adds audio chunks', () => {
-    const wrapper = new Mp4MuxerWrapper(config);
+    const wrapper = new Mp4MuxerWrapper(config, () => {});
     const chunk = {} as EncodedAudioChunk;
     const meta = {} as EncodedAudioChunkMetadata;
     wrapper.addAudioChunk(chunk, meta);
@@ -49,7 +49,7 @@ describe('Mp4MuxerWrapper', () => {
   });
 
   it('finalizes and returns Uint8Array', () => {
-    const wrapper = new Mp4MuxerWrapper(config);
+    const wrapper = new Mp4MuxerWrapper(config, () => {});
     const output = wrapper.finalize();
     expect(muxerMethods.finalize).toHaveBeenCalled();
     expect(output).toBeInstanceOf(Uint8Array);
