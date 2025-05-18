@@ -404,7 +404,9 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
 
   try {
     // data.audioData (Float32Array[]) をインターリーブして単一の Float32Array にするヘルパー関数
-    const interleaveFloat32Arrays = (planarArrays: Float32Array[]): Float32Array => {
+    const interleaveFloat32Arrays = (
+      planarArrays: Float32Array[],
+    ): Float32Array => {
       if (!planarArrays || planarArrays.length === 0) {
         return new Float32Array(0);
       }
@@ -456,7 +458,7 @@ async function handleFinalize(_message: FinalizeWorkerMessage): Promise<void> {
       if (uint8ArrayOrNullOutput) {
         postMessageToMainThread(
           { type: "finalized", output: uint8ArrayOrNullOutput },
-          [uint8ArrayOrNullOutput.buffer]
+          [uint8ArrayOrNullOutput.buffer],
         );
       } else if (currentConfig?.latencyMode === "realtime") {
         postMessageToMainThread({ type: "finalized", output: null });

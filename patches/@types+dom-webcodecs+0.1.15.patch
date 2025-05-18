@@ -1,0 +1,13 @@
+diff --git a/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts b/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
+index b614234..be46842 100644
+--- a/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
++++ b/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
+@@ -462,7 +462,7 @@ interface WebCodecsErrorCallback {
+ // type BitrateMode = "constant" | "variable";
+ // type ImageBufferSource = ArrayBuffer | ArrayBufferView | ReadableStream;
+ // type AlphaOption = "discard" | "keep";
+-// type AudioSampleFormat = "f32" | "f32-planar" | "s16" | "s16-planar" | "s32" | "s32-planar" | "u8" | "u8-planar";
++type AudioSampleFormat = "f32" | "f32-planar" | "s16" | "s16-planar" | "s32" | "s32-planar" | "u8" | "u8-planar";
+ // type AvcBitstreamFormat = "annexb" | "avc";
+ // type CodecState = "closed" | "configured" | "unconfigured";
+ // type EncodedAudioChunkType = "delta" | "key";

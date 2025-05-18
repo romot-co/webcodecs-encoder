@@ -25,7 +25,11 @@ vi.mock("../src/worker", () => {
 // If direct mocking of `new URL` is needed, `vi.stubGlobal` could be used for `URL` if careful.
 
 // Helper to create a mock AudioBuffer
-function createMockAudioBuffer(channels: number, sampleRate: number, length: number): AudioBuffer {
+function createMockAudioBuffer(
+  channels: number,
+  sampleRate: number,
+  length: number,
+): AudioBuffer {
   const duration = length / sampleRate;
   const channelData = new Float32Array(length); // For simplicity, all channels return this same data view
   return {
@@ -35,7 +39,7 @@ function createMockAudioBuffer(channels: number, sampleRate: number, length: num
     duration: duration,
     getChannelData: vi.fn(() => channelData),
     copyFromChannel: vi.fn(), // Add missing mock methods
-    copyToChannel: vi.fn(),   // Add missing mock methods
+    copyToChannel: vi.fn(), // Add missing mock methods
   } as unknown as AudioBuffer;
 }
 
@@ -569,7 +573,9 @@ describe("Mp4Encoder", () => {
       mockWorkerInstance.postMessage.mockClear(); // initialize 時の呼び出しをクリア
 
       const audioBuffer = createMockAudioBuffer(1, 48000, 10); // 1ch, 48kHz, 10 samples
-      await expect(encoder.addAudioBuffer(audioBuffer)).resolves.toBeUndefined();
+      await expect(
+        encoder.addAudioBuffer(audioBuffer),
+      ).resolves.toBeUndefined();
       const expectedTimestamp = 0;
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         {
@@ -581,7 +587,7 @@ describe("Mp4Encoder", () => {
           numberOfFrames: 10,
           numberOfChannels: 1, // baseAudioConfig の channels に合わせる
         },
-        [expect.any(ArrayBuffer)] // Transferable list
+        [expect.any(ArrayBuffer)], // Transferable list
       );
     });
 

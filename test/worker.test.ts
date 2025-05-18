@@ -48,7 +48,9 @@ async function importWorker() {
 
 describe("worker", () => {
   let config: EncoderConfig;
-  let Mp4MuxerWrapperMock: ReturnType<typeof vi.mocked<typeof ActualMp4MuxerWrapper>>;
+  let Mp4MuxerWrapperMock: ReturnType<
+    typeof vi.mocked<typeof ActualMp4MuxerWrapper>
+  >;
 
   beforeEach(async () => {
     vi.resetModules(); // Reset modules to get a fresh worker state for each test
@@ -57,7 +59,9 @@ describe("worker", () => {
     const mp4muxerModule = await import("../src/mp4muxer");
     Mp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
     // Ensure it defaults to returning the standard mock instance for each top-level test
-    Mp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
+    Mp4MuxerWrapperMock.mockImplementation(
+      () => mockMuxerInstanceForWorker as any,
+    );
 
     // @ts-ignore
     mockSelf.VideoEncoder = vi.fn(() => ({
@@ -192,9 +196,11 @@ describe("worker", () => {
     const transferredObject = finalizedCall[1][0];
     expect(transferredObject).toBeInstanceOf(ArrayBuffer);
     // Ensure the transferred ArrayBuffer has the same content as the output Uint8Array's buffer
-    expect(new Uint8Array(transferredObject as ArrayBuffer)).toEqual(expectedOutputArray);
+    expect(new Uint8Array(transferredObject as ArrayBuffer)).toEqual(
+      expectedOutputArray,
+    );
     // The transferred ArrayBuffer should be the .buffer of the msg.output Uint8Array
-    expect(transferredObject).toBe(expectedOutputArray.buffer); 
+    expect(transferredObject).toBe(expectedOutputArray.buffer);
   });
 
   it("handles cancel message", async () => {
@@ -247,14 +253,18 @@ describe("worker", () => {
   // Add more tests for addVideoData, addAudioData, error handling, etc.
   describe("worker error handling during initialization", () => {
     it("should post an error if video codec is not supported", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: false, config: null })
+        Promise.resolve({ supported: false, config: null }),
       );
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
@@ -263,21 +273,25 @@ describe("worker", () => {
           errorDetail: {
             message: "Worker: Video codec avc config not supported.",
             type: "not-supported",
-          }
+          },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post an error if audio codec is not supported", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: false, config: null })
+        Promise.resolve({ supported: false, config: null }),
       );
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
@@ -286,14 +300,15 @@ describe("worker", () => {
           errorDetail: {
             message: "Worker: Audio codec aac config not supported.",
             type: "not-supported",
-          }
+          },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post an error if video encoder configuration fails", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const configureError = new Error("Video configure failed");
       // @ts-ignore
@@ -306,28 +321,33 @@ describe("worker", () => {
       }));
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } })
+        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
       );
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Failed to initialize VideoEncoder: Video configure failed",
+            message:
+              "Worker: Failed to initialize VideoEncoder: Video configure failed",
             type: "initialization-failed",
             stack: expect.any(String),
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post an error if audio encoder configuration fails", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const configureError = new Error("Audio configure failed");
       // @ts-ignore
@@ -340,30 +360,38 @@ describe("worker", () => {
       }));
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } })
+        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
       );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Failed to initialize AudioEncoder: Audio configure failed",
+            message:
+              "Worker: Failed to initialize AudioEncoder: Audio configure failed",
             type: "initialization-failed",
             stack: expect.any(String),
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post an error if config is missing", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       // @ts-ignore
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: null };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: null as any,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
@@ -373,14 +401,18 @@ describe("worker", () => {
             type: "initialization-failed",
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post an error if webm container is specified", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const webmConfig = { ...config, container: "webm" as const };
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: webmConfig };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: webmConfig,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
@@ -390,42 +422,60 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should fallback to avc if preferred video codec (vp9) is not supported but avc is", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const vp9Config = { ...config, codec: { ...config.codec, video: "vp9" as const } };
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+      const vp9Config = {
+        ...config,
+        codec: { ...config.codec, video: "vp9" as const },
+      };
 
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
-        if (_cfg.codec.startsWith("vp09")) return { supported: false, config: null };
-        if (_cfg.codec.startsWith("avc1")) return { supported: true, config: { ..._cfg, codec: "avc1.42001f.test" } };
+        if (_cfg.codec.startsWith("vp09"))
+          return { supported: false, config: null };
+        if (_cfg.codec.startsWith("avc1"))
+          return {
+            supported: true,
+            config: { ..._cfg, codec: "avc1.42001f.test" },
+          };
         return { supported: false, config: null };
       });
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: vp9Config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: vp9Config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Worker: Video codec vp9 not supported or config invalid. Falling back to AVC."
+        "Worker: Video codec vp9 not supported or config invalid. Falling back to AVC.",
       );
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "initialized",
-          actualVideoCodec: "avc1.42001f.test", 
+          actualVideoCodec: "avc1.42001f.test",
         }),
-        undefined
+        undefined,
       );
       consoleWarnSpy.mockRestore();
     });
 
     it("should post error if fallback video codec (avc) is also not supported", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      const vp9Config = { ...config, codec: { ...config.codec, video: "vp9" as const } };
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const vp9Config = {
+        ...config,
+        codec: { ...config.codec, video: "vp9" as const },
+      };
 
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
@@ -433,60 +483,83 @@ describe("worker", () => {
       });
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: vp9Config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: vp9Config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
           type: "error",
           errorDetail: {
-            message: "Worker: AVC (H.264) video codec is not supported after fallback.",
+            message:
+              "Worker: AVC (H.264) video codec is not supported after fallback.",
             type: "not-supported",
           },
         },
-        undefined
+        undefined,
       );
     });
-    
+
     it("should fallback to aac if preferred audio codec (opus) is not supported but aac is", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const opusConfig = { ...config, codec: { ...config.codec, audio: "opus" as const } };
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
+      const opusConfig = {
+        ...config,
+        codec: { ...config.codec, audio: "opus" as const },
+      };
 
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         if (_cfg.codec === "opus") return { supported: false, config: null };
-        if (_cfg.codec === "mp4a.40.2") return { supported: true, config: { ..._cfg, codec: "mp4a.40.2.test" } };
+        if (_cfg.codec === "mp4a.40.2")
+          return {
+            supported: true,
+            config: { ..._cfg, codec: "mp4a.40.2.test" },
+          };
         return { supported: false, config: null };
       });
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
-
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: opusConfig };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: opusConfig,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Worker: Audio codec opus not supported or config invalid. Falling back to AAC."
+        "Worker: Audio codec opus not supported or config invalid. Falling back to AAC.",
       );
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "initialized",
           actualAudioCodec: "mp4a.40.2.test",
         }),
-        undefined
+        undefined,
       );
       consoleWarnSpy.mockRestore();
     });
 
     it("should post error if fallback audio codec (aac) is also not supported", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      const opusConfig = { ...config, codec: { ...config.codec, audio: "opus" as const } };
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const opusConfig = {
+        ...config,
+        codec: { ...config.codec, audio: "opus" as const },
+      };
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         return { supported: false, config: null }; // All codecs unsupported
       });
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: opusConfig };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: opusConfig,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
@@ -497,17 +570,21 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should post error if VideoEncoder API is not available", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const originalVideoEncoder = globalThis.VideoEncoder;
       delete (globalThis as any).VideoEncoder;
       delete (mockSelf as any).VideoEncoder; // Also remove from mockSelf
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
@@ -517,22 +594,34 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined
+        undefined,
       );
       globalThis.VideoEncoder = originalVideoEncoder; // Restore
-       // @ts-ignore
-      mockSelf.VideoEncoder = vi.fn(() => ({ configure: vi.fn(), encode: vi.fn(), flush: vi.fn(), close: vi.fn(), state: "unconfigured" }));
       // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: "avc1.42001f"} }) );
+      mockSelf.VideoEncoder = vi.fn(() => ({
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn(),
+        close: vi.fn(),
+        state: "unconfigured",
+      }));
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
+        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
+      );
     });
 
     it("should post error if AudioEncoder API is not available", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const originalAudioEncoder = globalThis.AudioEncoder;
       delete (globalThis as any).AudioEncoder;
       delete (mockSelf as any).AudioEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
@@ -542,24 +631,36 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined
+        undefined,
       );
       globalThis.AudioEncoder = originalAudioEncoder; // Restore
       // @ts-ignore
-      mockSelf.AudioEncoder = vi.fn(() => ({ configure: vi.fn(), encode: vi.fn(), flush: vi.fn(), close: vi.fn(), state: "unconfigured" }));
+      mockSelf.AudioEncoder = vi.fn(() => ({
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn(),
+        close: vi.fn(),
+        state: "unconfigured",
+      }));
       // @ts-ignore
-      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: "mp4a.40.2"} }) );
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
+        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+      );
     });
-    
+
     it("should post error if VideoEncoder constructor throws", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const originalVideoEncoderCtor = mockSelf.VideoEncoder;
       const constructorError = new Error("Video Constructor failed");
 
       const mockVideoEncoderConstructor = vi.fn();
       // @ts-ignore
       mockVideoEncoderConstructor.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "avc1.42001f.test" } })
+        Promise.resolve({
+          supported: true,
+          config: { codec: "avc1.42001f.test" },
+        }),
       );
       mockVideoEncoderConstructor.mockImplementation(() => {
         throw constructorError;
@@ -570,14 +671,25 @@ describe("worker", () => {
 
       const originalAudioEncoderCtor = mockSelf.AudioEncoder;
       // @ts-ignore
-      const MockAudioEncoderInstance = { configure: vi.fn(), encode: vi.fn(), flush: vi.fn(), close: vi.fn(), state: 'unconfigured' };
+      const MockAudioEncoderInstance = {
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn(),
+        close: vi.fn(),
+        state: "unconfigured",
+      };
       // @ts-ignore
       mockSelf.AudioEncoder = vi.fn(() => MockAudioEncoderInstance);
       // @ts-ignore
-      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }));
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
+        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+      );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
@@ -589,64 +701,94 @@ describe("worker", () => {
             stack: expect.any(String),
           }),
         }),
-        undefined
+        undefined,
       );
 
       mockSelf.VideoEncoder = originalVideoEncoderCtor;
-      globalThis.VideoEncoder = mockSelf.VideoEncoder; 
+      globalThis.VideoEncoder = mockSelf.VideoEncoder;
       mockSelf.AudioEncoder = originalAudioEncoderCtor;
-      globalThis.AudioEncoder = mockSelf.AudioEncoder; 
+      globalThis.AudioEncoder = mockSelf.AudioEncoder;
     });
-    
+
     it("should post error if AudioEncoder constructor throws", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       // === リセットフェーズ ===
       const originalVideoEncoderCtorForThisTest = mockSelf.VideoEncoder;
       const originalAudioEncoderCtorForThisTest = mockSelf.AudioEncoder;
 
-      const MockVideoInstance = { configure: vi.fn(), encode: vi.fn(), flush: vi.fn(), close: vi.fn(), state: 'unconfigured' };
-      const MockAudioInstance = { configure: vi.fn(), encode: vi.fn(), flush: vi.fn(), close: vi.fn(), state: 'unconfigured' };
+      const MockVideoInstance = {
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn(),
+        close: vi.fn(),
+        state: "unconfigured",
+      };
+      const MockAudioInstance = {
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn(),
+        close: vi.fn(),
+        state: "unconfigured",
+      };
 
       // @ts-ignore
       mockSelf.VideoEncoder = vi.fn(() => MockVideoInstance);
       // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: "avc1.42001f.default" } }));
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
+        Promise.resolve({
+          supported: true,
+          config: { codec: "avc1.42001f.default" },
+        }),
+      );
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
       // @ts-ignore
       mockSelf.AudioEncoder = vi.fn(() => MockAudioInstance);
       // @ts-ignore
-      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: true, config: { codec: "mp4a.40.2.default" } }));
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
+        Promise.resolve({
+          supported: true,
+          config: { codec: "mp4a.40.2.default" },
+        }),
+      );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
       // === リセットフェーズここまで ===
 
       // === VideoEncoder をこのテスト用に正常動作させる設定 ===
-      // @ts-ignore 
+      // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "avc1.42001f.test" } })
+        Promise.resolve({
+          supported: true,
+          config: { codec: "avc1.42001f.test" },
+        }),
       );
-      // @ts-ignore 
-      mockSelf.VideoEncoder.mockImplementation(() => MockVideoInstance); 
+      // @ts-ignore
+      mockSelf.VideoEncoder.mockImplementation(() => MockVideoInstance);
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
-
 
       // === AudioEncoder がエラーを投げるように設定 ===
       const constructorError = new Error("Audio Constructor failed for test");
-      const mockAudioEncoderConstructorThatThrows = vi.fn(); 
+      const mockAudioEncoderConstructorThatThrows = vi.fn();
       // @ts-ignore
-      mockAudioEncoderConstructorThatThrows.isConfigSupported = vi.fn(() => 
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2.test" } })
+      mockAudioEncoderConstructorThatThrows.isConfigSupported = vi.fn(() =>
+        Promise.resolve({
+          supported: true,
+          config: { codec: "mp4a.40.2.test" },
+        }),
       );
-      mockAudioEncoderConstructorThatThrows.mockImplementation(() => { 
+      mockAudioEncoderConstructorThatThrows.mockImplementation(() => {
         throw constructorError;
       });
 
-      mockSelf.AudioEncoder = mockAudioEncoderConstructorThatThrows; 
+      mockSelf.AudioEncoder = mockAudioEncoderConstructorThatThrows;
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
-
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
@@ -658,7 +800,7 @@ describe("worker", () => {
             stack: expect.any(String),
           }),
         }),
-        undefined
+        undefined,
       );
 
       // リストア
@@ -689,7 +831,7 @@ describe("worker", () => {
       });
       // @ts-ignore (isConfigSupported は既存のままで良いはず)
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } })
+        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
       );
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
@@ -698,12 +840,15 @@ describe("worker", () => {
         await global.self.onmessage({ data: initMessage } as MessageEvent);
         mockSelf.postMessage.mockClear();
       } else {
-        throw new Error("Worker onmessage handler not set up for handleAddVideoFrame tests");
+        throw new Error(
+          "Worker onmessage handler not set up for handleAddVideoFrame tests",
+        );
       }
     });
 
     it("should return early if cancelled", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       // キャンセル状態にする
       const cancelMessage: CancelWorkerMessage = { type: "cancel" };
       await global.self.onmessage({ data: cancelMessage } as MessageEvent);
@@ -717,9 +862,13 @@ describe("worker", () => {
           codedWidth: config.width,
           codedHeight: config.height,
           format: "RGBA",
-        }
+        },
       );
-      const addFrameMessage = { type: "addVideoFrame", frame: videoFrame, timestamp: 0 };
+      const addFrameMessage = {
+        type: "addVideoFrame",
+        frame: videoFrame,
+        timestamp: 0,
+      };
       await global.self.onmessage({ data: addFrameMessage } as MessageEvent);
 
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
@@ -727,7 +876,8 @@ describe("worker", () => {
     });
 
     it("should post an error if videoEncoder.encode triggers error callback", async () => {
-      if (!global.self.onmessage || !videoEncoderErrorCallback) throw new Error("Worker or VideoEncoder error callback not set up");
+      if (!global.self.onmessage || !videoEncoderErrorCallback)
+        throw new Error("Worker or VideoEncoder error callback not set up");
 
       const encodeError = new Error("Video encode failed by callback");
 
@@ -739,15 +889,19 @@ describe("worker", () => {
           codedWidth: config.width,
           codedHeight: config.height,
           format: "RGBA",
-        }
+        },
       );
-      const addFrameMessage = { type: "addVideoFrame", frame: videoFrame, timestamp: 0 };
-      
+      const addFrameMessage = {
+        type: "addVideoFrame",
+        frame: videoFrame,
+        timestamp: 0,
+      };
+
       // addVideoFrame を呼び出す前に、encode がエラーを発生させる準備をする
       // (実際には addVideoFrame の中で encode が呼ばれ、その結果 error コールバックが呼ばれる)
       // ここでは、addVideoFrame を呼び出した後に、error コールバックを直接呼び出してシミュレートする
       global.self.onmessage({ data: addFrameMessage } as MessageEvent); // まずフレームを追加
-      
+
       // error コールバックが呼ばれたと仮定して、それを実行
       if (videoEncoderErrorCallback) {
         videoEncoderErrorCallback(encodeError);
@@ -762,16 +916,21 @@ describe("worker", () => {
             stack: expect.any(String),
           },
         },
-        undefined
+        undefined,
       );
       // videoFrame.close(); // エラーなのでフレームがcloseされるかは不定。workerの実装による
     });
 
     it("should post progress if totalFramesToProcess is set and latencyMode is quality", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       // totalFramesToProcess を設定して再初期化
       const newConfig = { ...config, latencyMode: "quality" as const };
-      const newInitMessage: InitializeWorkerMessage = { type: "initialize", config: newConfig, totalFrames: 10 };
+      const newInitMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: newConfig,
+        totalFrames: 10,
+      };
       await global.self.onmessage({ data: newInitMessage } as MessageEvent);
       mockSelf.postMessage.mockClear();
 
@@ -783,18 +942,22 @@ describe("worker", () => {
           codedWidth: config.width,
           codedHeight: config.height,
           format: "RGBA",
-        }
+        },
       );
-      const addFrameMessage = { type: "addVideoFrame", frame: videoFrame, timestamp: 0 };
+      const addFrameMessage = {
+        type: "addVideoFrame",
+        frame: videoFrame,
+        timestamp: 0,
+      };
       await global.self.onmessage({ data: addFrameMessage } as MessageEvent); // 1フレーム送信
 
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
-        { 
-          type: "progress", 
+        {
+          type: "progress",
           processedFrames: 1,
           totalFrames: 10,
         },
-        undefined
+        undefined,
       );
       videoFrame.close();
     });
@@ -830,7 +993,7 @@ describe("worker", () => {
       });
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } })
+        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
       );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
@@ -844,35 +1007,42 @@ describe("worker", () => {
         await global.self.onmessage({ data: initMessage } as MessageEvent);
         mockSelf.postMessage.mockClear();
       } else {
-        throw new Error("Worker onmessage handler not set up for handleAddAudioData tests");
+        throw new Error(
+          "Worker onmessage handler not set up for handleAddAudioData tests",
+        );
       }
     });
 
     it("should return early if cancelled", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const cancelMessage: CancelWorkerMessage = { type: "cancel" };
       await global.self.onmessage({ data: cancelMessage } as MessageEvent);
       mockSelf.postMessage.mockClear();
 
       const addAudioMessage: AddAudioDataMessage = {
-        type: "addAudioData", 
+        type: "addAudioData",
         audioData: [new Float32Array(10)],
         format: "f32-planar",
         sampleRate: 48000,
         numberOfFrames: 10,
         numberOfChannels: 1,
-        timestamp: 0
+        timestamp: 0,
       };
       await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
     });
 
     it("should return early if audioBitrate is 0", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       config.audioBitrate = 0; // Disable audio
 
       // Initialize with audio disabled
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       mockSelf.postMessage.mockClear(); // Clear init message
 
@@ -896,12 +1066,16 @@ describe("worker", () => {
     });
 
     it("should post error if AudioData API is not available", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const AudioDataOriginal = (globalThis as any).AudioData;
       delete (globalThis as any).AudioData; // Simulate AudioData API not available
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent); // Initialize
       mockSelf.postMessage.mockClear(); // Clear init message
 
@@ -936,7 +1110,8 @@ describe("worker", () => {
     });
 
     it("should post error if AudioData constructor throws", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const AudioDataOriginal = (globalThis as any).AudioData;
       const constructionErrorMessage = "AudioData construction failed";
@@ -944,7 +1119,10 @@ describe("worker", () => {
         throw new Error(constructionErrorMessage);
       });
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent); // Initialize
       mockSelf.postMessage.mockClear(); // Clear init message
 
@@ -981,20 +1159,21 @@ describe("worker", () => {
     });
 
     it("should post error if audioEncoder.encode triggers error callback", async () => {
-      if (!global.self.onmessage || !audioEncoderErrorCallback) throw new Error("Worker or AudioEncoder error cb not set up");
+      if (!global.self.onmessage || !audioEncoderErrorCallback)
+        throw new Error("Worker or AudioEncoder error cb not set up");
       const encodeError = new Error("Audio encode failed by callback");
-      
+
       const addAudioMessage: AddAudioDataMessage = {
-        type: "addAudioData", 
+        type: "addAudioData",
         audioData: [new Float32Array(10)],
         format: "f32-planar",
         sampleRate: 48000,
         numberOfFrames: 10,
         numberOfChannels: 1,
-        timestamp: 0
+        timestamp: 0,
       };
       global.self.onmessage({ data: addAudioMessage } as MessageEvent);
-      
+
       if (audioEncoderErrorCallback) {
         audioEncoderErrorCallback(encodeError);
       }
@@ -1008,12 +1187,13 @@ describe("worker", () => {
             stack: expect.any(String),
           },
         },
-        undefined
+        undefined,
       );
     });
 
     it("should handle empty planarArrays in interleaveFloat32Arrays within handleAddAudioData", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const addAudioMessage: AddAudioDataMessage = {
         type: "addAudioData",
@@ -1032,12 +1212,13 @@ describe("worker", () => {
       // We expect no error to be posted.
       await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
       expect(mockSelf.postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ type: "error" })
+        expect.objectContaining({ type: "error" }),
       );
     });
 
     it("should post error if audio data channel count does not match configured channels", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
 
       const addAudioMessage: AddAudioDataMessage = {
         type: "addAudioData",
@@ -1058,7 +1239,7 @@ describe("worker", () => {
             type: "configuration-error",
           },
         },
-        undefined
+        undefined,
       );
     });
   });
@@ -1103,38 +1284,54 @@ describe("worker", () => {
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const mp4muxerModule = await import("../src/mp4muxer");
-      const currentMp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
-      currentMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
+      const currentMp4MuxerWrapperMock = vi.mocked(
+        mp4muxerModule.Mp4MuxerWrapper,
+      );
+      currentMp4MuxerWrapperMock.mockImplementation(
+        () => mockMuxerInstanceForWorker as any,
+      );
 
       mockMuxerInstanceForWorker.addVideoChunk.mockClear();
       mockMuxerInstanceForWorker.addAudioChunk.mockClear();
-      mockMuxerInstanceForWorker.finalize = vi.fn<() => Uint8Array | null>(() => defaultMuxerOutput);
-      
+      mockMuxerInstanceForWorker.finalize = vi.fn<() => Uint8Array | null>(
+        () => defaultMuxerOutput,
+      );
+
       // Default config for finalize tests, can be overridden in specific tests
       const currentTestConfig = { ...config, latencyMode: "quality" as const };
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config: currentTestConfig };
-      
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: currentTestConfig,
+      };
+
       if (global.self.onmessage) {
-        mockSelf.postMessage.mockClear(); 
+        mockSelf.postMessage.mockClear();
         await global.self.onmessage({ data: initMessage } as MessageEvent);
 
         const initErrorPost = mockSelf.postMessage.mock.calls.find(
-          (callArgs: [MainThreadMessage, Transferable[] | undefined]) => callArgs[0].type === "error"
+          (callArgs: [MainThreadMessage, Transferable[] | undefined]) =>
+            callArgs[0].type === "error",
         );
-        expect(initErrorPost, "Worker initialization in handleFinalize beforeEach should not post an error").toBeUndefined();
+        expect(
+          initErrorPost,
+          "Worker initialization in handleFinalize beforeEach should not post an error",
+        ).toBeUndefined();
 
         expect(mockSelf.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ type: "initialized" }),
-          undefined
+          undefined,
         );
-        mockSelf.postMessage.mockClear(); 
+        mockSelf.postMessage.mockClear();
       } else {
-        throw new Error("Worker onmessage handler not set up for handleFinalize tests");
+        throw new Error(
+          "Worker onmessage handler not set up for handleFinalize tests",
+        );
       }
     });
 
     it("should call flush on encoders and finalize muxer, then post finalized message", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
       await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
 
@@ -1144,26 +1341,32 @@ describe("worker", () => {
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
           type: "finalized",
-          output: defaultMuxerOutput, 
+          output: defaultMuxerOutput,
         },
-        [defaultMuxerOutput.buffer] 
+        [defaultMuxerOutput.buffer],
       );
     });
 
     it("should post error if muxer construction fails during initialization", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+
       const muxerConstructionError = new Error("Muxer init failed for test");
-      const specificTestMp4MuxerWrapperMock = vi.mocked((await import("../src/mp4muxer")).Mp4MuxerWrapper);
-      specificTestMp4MuxerWrapperMock.mockImplementationOnce(() => { 
+      const specificTestMp4MuxerWrapperMock = vi.mocked(
+        (await import("../src/mp4muxer")).Mp4MuxerWrapper,
+      );
+      specificTestMp4MuxerWrapperMock.mockImplementationOnce(() => {
         throw muxerConstructionError;
       });
 
-      mockSelf.postMessage.mockClear(); 
+      mockSelf.postMessage.mockClear();
       const faultyConfig = { ...config, width: 1 }; // Create a new config to ensure it's different
-      const faultyInitMessage: InitializeWorkerMessage = { type: "initialize", config: faultyConfig }; 
-      await global.self.onmessage({ data: faultyInitMessage } as MessageEvent); 
-      
+      const faultyInitMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: faultyConfig,
+      };
+      await global.self.onmessage({ data: faultyInitMessage } as MessageEvent);
+
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "error",
@@ -1172,9 +1375,9 @@ describe("worker", () => {
             type: "initialization-failed",
           }),
         }),
-        undefined
+        undefined,
       );
-      mockSelf.postMessage.mockClear(); 
+      mockSelf.postMessage.mockClear();
 
       const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
       await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
@@ -1182,19 +1385,22 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Muxer not initialized during finalize.", 
+            message: "Muxer not initialized during finalize.",
             type: "muxing-failed",
           },
         },
-        undefined
+        undefined,
       );
-      specificTestMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
+      specificTestMp4MuxerWrapperMock.mockImplementation(
+        () => mockMuxerInstanceForWorker as any,
+      );
     });
 
     it("should post error if muxer.finalize returns null in non-realtime mode", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       // Ensure latencyMode is 'quality' (non-realtime) - should be set by beforeEach default
-      
+
       mockMuxerInstanceForWorker.finalize.mockReturnValueOnce(null);
 
       const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
@@ -1208,51 +1414,71 @@ describe("worker", () => {
             type: "muxing-failed",
           },
         },
-        undefined
+        undefined,
       );
     });
-    
+
     it("should post finalized with null output if muxer.finalize returns null in realtime mode", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+
       const realtimeConfig = { ...config, latencyMode: "realtime" as const };
-      const initRealtimeMessage: InitializeWorkerMessage = { type: "initialize", config: realtimeConfig };
-      
+      const initRealtimeMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: realtimeConfig,
+      };
+
       // Reset Mp4MuxerWrapper mock to ensure the new config re-initializes the muxer correctly
       // This is important because the beforeEach's init might have set up a muxer.
       // For a new config, a new muxer instance should be created.
       const mp4muxerModule = await import("../src/mp4muxer");
-      const currentMp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
-      currentMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
+      const currentMp4MuxerWrapperMock = vi.mocked(
+        mp4muxerModule.Mp4MuxerWrapper,
+      );
+      currentMp4MuxerWrapperMock.mockImplementation(
+        () => mockMuxerInstanceForWorker as any,
+      );
       // Ensure the mockMuxerInstanceForWorker's finalize is also fresh for this test's logic
-      mockMuxerInstanceForWorker.finalize = vi.fn<() => Uint8Array | null>(() => null);
+      mockMuxerInstanceForWorker.finalize = vi.fn<() => Uint8Array | null>(
+        () => null,
+      );
 
       mockSelf.postMessage.mockClear();
-      await global.self.onmessage({ data: initRealtimeMessage } as MessageEvent); 
-      
+      await global.self.onmessage({
+        data: initRealtimeMessage,
+      } as MessageEvent);
+
       const initErrorPost = mockSelf.postMessage.mock.calls.find(
-        (call: [MainThreadMessage, Transferable[] | undefined]) => call[0].type === 'error'
+        (call: [MainThreadMessage, Transferable[] | undefined]) =>
+          call[0].type === "error",
       );
-      expect(initErrorPost, 'Error during realtime re-initialization').toBeUndefined();
-      expect(mockSelf.postMessage).toHaveBeenCalledWith(expect.objectContaining({type: "initialized"}), undefined);
+      expect(
+        initErrorPost,
+        "Error during realtime re-initialization",
+      ).toBeUndefined();
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "initialized" }),
+        undefined,
+      );
       mockSelf.postMessage.mockClear();
 
       const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
       await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
-        { type: "finalized", output: null }, 
-        undefined 
+        { type: "finalized", output: null },
+        undefined,
       );
     });
 
     it("should handle general error during finalization (e.g. videoEncoder.flush throws)", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       const flushError = new Error("Flush failed for test");
       mockVideoEncoderInstance.flush.mockRejectedValueOnce(flushError);
 
       const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
       await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
-      
+
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         {
           type: "error",
@@ -1262,93 +1488,135 @@ describe("worker", () => {
             stack: expect.any(String),
           },
         },
-        undefined
+        undefined,
       );
     });
   });
 
   describe("worker self.onmessage error handling and cancellation edge cases", () => {
     it("should ignore addVideoFrame if worker is cancelled", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      await global.self.onmessage({
+        data: { type: "initialize", config },
+      } as MessageEvent);
       await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent); // Cancel
       mockSelf.postMessage.mockClear();
 
-      const videoFrame = new globalThis.VideoFrame(new Uint8Array(10), { timestamp: 0, codedWidth:10, codedHeight:10, format: "RGBA" });
-      const addFrameMessage = { type: "addVideoFrame", frame: videoFrame, timestamp: 0 };
+      const videoFrame = new globalThis.VideoFrame(new Uint8Array(10), {
+        timestamp: 0,
+        codedWidth: 10,
+        codedHeight: 10,
+        format: "RGBA",
+      });
+      const addFrameMessage = {
+        type: "addVideoFrame",
+        frame: videoFrame,
+        timestamp: 0,
+      };
       await global.self.onmessage({ data: addFrameMessage } as MessageEvent);
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
       videoFrame.close();
     });
 
     it("should ignore addAudioData if worker is cancelled (already tested, but good for this describe block too)", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      await global.self.onmessage({
+        data: { type: "initialize", config },
+      } as MessageEvent);
       await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent); // Cancel
       mockSelf.postMessage.mockClear();
 
       const addAudioMessage: AddAudioDataMessage = {
-        type: "addAudioData", audioData: [new Float32Array(10)], timestamp: 0, format: "f32-planar", sampleRate: 48000, numberOfFrames: 10, numberOfChannels: 1
+        type: "addAudioData",
+        audioData: [new Float32Array(10)],
+        timestamp: 0,
+        format: "f32-planar",
+        sampleRate: 48000,
+        numberOfFrames: 10,
+        numberOfChannels: 1,
       };
       await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
     });
-    
+
     it("should still process initialize even if isCancelled was somehow true before it", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
       // @ts-ignore Manually set isCancelled to true internally in the worker module via a test hook if possible,
       // or rely on the fact that initialize should reset it.
       // For this test, we'll assume initialize resets it.
       // First, cancel to set isCancelled=true
-      await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent); // Initial init
+      await global.self.onmessage({
+        data: { type: "initialize", config },
+      } as MessageEvent); // Initial init
       mockSelf.postMessage.mockClear(); // Clear "initialized" message
 
       await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent); // Sets isCancelled = true
       mockSelf.postMessage.mockClear(); // Clear cancel message
 
       // Then, send initialize again
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ type: "initialized" }),
-        undefined
+        undefined,
       );
     });
-    
+
     it("should still process cancel even if isCancelled was already true", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      await global.self.onmessage({
+        data: { type: "initialize", config },
+      } as MessageEvent);
       mockSelf.postMessage.mockClear(); // Clear "initialized" message
 
       await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent); // First cancel
       // The first cancel should have posted a "cancelled" message and called cleanup.
       // mockSelf.postMessage should have been called with { type: "cancelled" }.
-      expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: "cancelled" }, undefined);
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        { type: "cancelled" },
+        undefined,
+      );
       mockSelf.postMessage.mockClear(); // Clear first cancel's 'cancelled' message
 
       // Call cancel again
-      await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent); 
+      await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent);
       // Worker's handleCancel has an early return: if (isCancelled) return;
       // So, postMessage should not be called again with "cancelled".
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
     });
 
     it("should handle errors within self.onmessage itself (e.g., if a handler throws unexpectedly)", async () => {
-      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-      
-      const onmessageInternalError = new Error("Simulated internal error during init");
-      
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+
+      const onmessageInternalError = new Error(
+        "Simulated internal error during init",
+      );
+
       // Ensure VideoEncoder.isConfigSupported is mocked to reject for this test
       // @ts-ignore
-      const originalVideoEncoderIsSupported = mockSelf.VideoEncoder.isConfigSupported;
+      const originalVideoEncoderIsSupported =
+        mockSelf.VideoEncoder.isConfigSupported;
       // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.reject(onmessageInternalError));
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
+        Promise.reject(onmessageInternalError),
+      );
       // Update globalThis as well if worker might use it
       globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
-      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config,
+      };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
-      
+
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "error",
@@ -1358,7 +1626,7 @@ describe("worker", () => {
             stack: expect.any(String),
           }),
         }),
-        undefined
+        undefined,
       );
 
       // Restore the original isConfigSupported mock for other tests
