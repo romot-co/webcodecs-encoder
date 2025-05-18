@@ -26,6 +26,8 @@ export class Mp4Encoder {
   private worker: Worker | null = null;
   private totalFrames: number | undefined;
   private processedFramesInternal: number = 0;
+  private actualVideoCodec: string | null = null;
+  private actualAudioCodec: string | null = null;
 
   // Callbacks for asynchronous operations
   private onInitialized: ((value: void | PromiseLike<void>) => void) | null = null;
@@ -142,6 +144,8 @@ export class Mp4Encoder {
 
     switch (message.type) {
       case 'initialized':
+        this.actualVideoCodec = (message as any).actualVideoCodec ?? null;
+        this.actualAudioCodec = (message as any).actualAudioCodec ?? null;
         this.onInitialized?.();
         this.onInitialized = null;
         this.onInitializeError = null;
@@ -381,5 +385,13 @@ export class Mp4Encoder {
         console.log('Mp4Encoder: Worker references cleaned up after worker error.');
     }
     this.isCancelled = true;
+  }
+
+  public getActualVideoCodec(): string | null {
+    return this.actualVideoCodec;
+  }
+
+  public getActualAudioCodec(): string | null {
+    return this.actualAudioCodec;
   }
 }

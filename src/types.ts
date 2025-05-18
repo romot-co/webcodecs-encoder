@@ -83,6 +83,8 @@ export type WorkerMessage =
 // Messages FROM the Worker
 export interface WorkerInitializedMessage {
   type: 'initialized';
+  actualVideoCodec?: string;
+  actualAudioCodec?: string;
 }
 
 export interface VideoChunkMessage { // Primarily for internal use or advanced scenarios
