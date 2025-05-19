@@ -1,5 +1,6 @@
 import { EncoderErrorType, Mp4EncoderError } from "./types";
 import type { EncoderConfig, MainThreadMessage, WorkerMessage } from "./types";
+import logger from "./logger";
 
 // Define the onData callback type for real-time streaming
 export type RealtimeDataCallback = (
@@ -236,7 +237,7 @@ export class Mp4Encoder {
         this.cleanupWorkerOnError(); // Cleanup on error from worker
         break;
       case "cancelled":
-        console.log("Mp4Encoder: Cancelled by worker.");
+        logger.log("Mp4Encoder: Cancelled by worker.");
         const cancelErrWorker = new Mp4EncoderError(
           EncoderErrorType.Cancelled,
           "Operation cancelled by worker.",
@@ -403,11 +404,11 @@ export class Mp4Encoder {
 
   public cancel(): void {
     if (this.isCancelled || !this.worker) {
-      console.log("Mp4Encoder: Already cancelled or not initialized.");
+      logger.log("Mp4Encoder: Already cancelled or not initialized.");
       return;
     }
     this.isCancelled = true;
-    console.log("Mp4Encoder: Sending cancel signal to worker.");
+    logger.log("Mp4Encoder: Sending cancel signal to worker.");
 
     const message: WorkerMessage = { type: "cancel" };
     this.worker.postMessage(message);
@@ -433,7 +434,7 @@ export class Mp4Encoder {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
-      console.log("Mp4Encoder: Worker terminated and cleaned up.");
+      logger.log("Mp4Encoder: Worker terminated and cleaned up.");
     }
     this.isCancelled = true; // Ensure isCancelled is true after cleanup
   }
@@ -446,7 +447,7 @@ export class Mp4Encoder {
       this.worker.onmessage = null; // Stop listening to messages
       this.worker.onerror = null; // Stop listening to errors
       this.worker = null;
-      console.log(
+      logger.log(
         "Mp4Encoder: Worker references cleaned up after worker error.",
       );
     }

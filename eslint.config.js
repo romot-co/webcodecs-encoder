@@ -34,6 +34,7 @@ export default [
       'no-case-declarations': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/ban-ts-comment': 'off',
+      'no-console': ['error', { allow: ['warn', 'error'] }],
     },
   }),
 ];
