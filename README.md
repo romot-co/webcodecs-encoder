@@ -334,6 +334,12 @@ This library supports encoding to MP4 container format with the following codecs
 - Lint: `npm run lint`
 - Format: `npm run format`
 
+## Contributing
+
+Please read our [Code of Conduct](CODE_OF_CONDUCT.md) and
+[Contributing Guidelines](CONTRIBUTING.md) before submitting issues or pull
+requests.
+
 ## License
 
 MIT
