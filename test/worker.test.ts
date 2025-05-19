@@ -174,7 +174,6 @@ describe("worker", () => {
     const finalizedCall = mockSelf.postMessage.mock.calls[0];
     const msg = finalizedCall[0];
 
-
     expect(msg.type).toBe("finalized");
     expect(msg.output).toBeInstanceOf(Uint8Array);
     expect(msg.output).toEqual(expectedOutputArray); // Compare Uint8Array content
