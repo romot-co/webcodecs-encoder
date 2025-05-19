@@ -21,6 +21,7 @@ npm install webcodecs-muxer
 # or
 yarn add webcodecs-muxer
 ```
+Running `npm install` will automatically run the `postinstall` script, applying a patch to `@types/dom-webcodecs` via `patch-package`. This patch restores the `AudioSampleFormat` type that is commented out in the published definitions.
 
 ## Basic Usage (File Output)
 
@@ -329,6 +330,7 @@ This library supports encoding to MP4 container format with the following codecs
 
 - Clone the repository.
 - Install dependencies: `npm install`
+- The `postinstall` script automatically runs `patch-package` to apply our patch for `@types/dom-webcodecs`, restoring the missing `AudioSampleFormat` definition.
 - Build: `npm run build`
 - Test: `npm test` (this will also generate a coverage report in `./coverage`)
 - Lint: `npm run lint`
