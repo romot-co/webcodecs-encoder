@@ -10,6 +10,7 @@ import type {
   MainThreadMessage,
 } from "./types";
 import { EncoderErrorType } from "./types";
+import logger from "./logger";
 
 let videoEncoder: VideoEncoder | null = null;
 let audioEncoder: AudioEncoder | null = null;
@@ -497,7 +498,7 @@ async function handleFinalize(_message: FinalizeWorkerMessage): Promise<void> {
 function handleCancel(_message: CancelWorkerMessage): void {
   if (isCancelled) return;
   isCancelled = true;
-  console.log("Worker: Received cancel signal.");
+  logger.log("Worker: Received cancel signal.");
   videoEncoder?.close();
   audioEncoder?.close();
   cleanup(false);
@@ -505,7 +506,7 @@ function handleCancel(_message: CancelWorkerMessage): void {
 }
 
 function cleanup(resetCancelled: boolean = true): void {
-  console.log("Worker: Cleaning up resources.");
+  logger.log("Worker: Cleaning up resources.");
   if (videoEncoder && videoEncoder.state !== "closed") videoEncoder.close();
   if (audioEncoder && audioEncoder.state !== "closed") audioEncoder.close();
   videoEncoder = null;
@@ -572,4 +573,4 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   }
 };
 
-console.log("Worker script loaded.");
+logger.log("Worker script loaded.");
