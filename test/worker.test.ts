@@ -174,18 +174,6 @@ describe("worker", () => {
     const finalizedCall = mockSelf.postMessage.mock.calls[0];
     const msg = finalizedCall[0];
 
-    // DEBUG LINES (can be removed after confirming)
-    // console.log("DEBUG: msg in initializes and finalizes:", JSON.stringify(msg, null, 2));
-    // if (msg && msg.output) {
-    //   console.log("DEBUG: msg.output in initializes and finalizes:", msg.output);
-    //   console.log("DEBUG: typeof msg.output:", typeof msg.output);
-    //   console.log("DEBUG: msg.output.constructor.name:", msg.output.constructor?.name);
-    //   console.log("DEBUG: Object.prototype.toString.call(msg.output):", Object.prototype.toString.call(msg.output));
-    // } else if (msg) {
-    //   console.log("DEBUG: msg.output is null or undefined. msg:", JSON.stringify(msg, null, 2));
-    // } else {
-    //   console.log("DEBUG: msg itself is null or undefined.");
-    // }
 
     expect(msg.type).toBe("finalized");
     expect(msg.output).toBeInstanceOf(Uint8Array);
