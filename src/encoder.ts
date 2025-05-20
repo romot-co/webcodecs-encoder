@@ -667,4 +667,8 @@ export class Mp4Encoder {
   public getActualAudioCodec(): string | null {
     return this.actualAudioCodec;
   }
+
+  public getAudioWorkletNode(): AudioWorkletNode | null {
+    return this.audioWorkletNode;
+  }
 }
