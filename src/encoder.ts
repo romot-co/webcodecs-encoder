@@ -47,6 +47,7 @@ export class Mp4Encoder {
   private nextAudioTimestamp: number = 0;
   private audioContext: AudioContext | null = null;
   private audioWorkletNode: AudioWorkletNode | null = null;
+  private cancelTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: EncoderConfig) {
     this.config = {
@@ -220,6 +221,7 @@ export class Mp4Encoder {
         }
         break;
       case "finalized":
+        this.clearCancelTimeout();
         if (this.config.latencyMode === "realtime") {
           // Realtime mode: finalize() resolves with null if worker sends null,
           // or with an empty Uint8Array if worker sends empty (e.g. for header-only)
@@ -245,6 +247,7 @@ export class Mp4Encoder {
         this.cleanupWorker();
         break;
       case "error":
+        this.clearCancelTimeout();
         const err = new Mp4EncoderError(
           message.errorDetail.type,
           message.errorDetail.message,
@@ -256,6 +259,7 @@ export class Mp4Encoder {
         this.cleanupWorkerOnError(); // Cleanup on error from worker
         break;
       case "cancelled":
+        this.clearCancelTimeout();
         logger.log("Mp4Encoder: Cancelled by worker.");
         const cancelErrWorker = new Mp4EncoderError(
           EncoderErrorType.Cancelled,
@@ -532,12 +536,26 @@ export class Mp4Encoder {
     this.onInitialized = null;
     this.onFinalizedPromise = null;
 
-    // Worker will send a 'cancelled' message, upon which cleanupWorker is called.
-    // However, if the worker is stuck or fails to respond, a timeout might be needed here.
-    // For now, rely on worker's confirmation or error.
+    // Worker should send a 'cancelled' message. If it doesn't arrive within
+    // a reasonable time, force cleanup.
+    this.clearCancelTimeout();
+    this.cancelTimeoutId = setTimeout(() => {
+      logger.warn(
+        "Mp4Encoder: No 'cancelled' message received, terminating worker.",
+      );
+      this.cleanupWorker();
+    }, 5000);
+  }
+
+  private clearCancelTimeout(): void {
+    if (this.cancelTimeoutId !== null) {
+      clearTimeout(this.cancelTimeoutId);
+      this.cancelTimeoutId = null;
+    }
   }
 
   private cleanupWorker(): void {
+    this.clearCancelTimeout();
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
@@ -557,6 +575,7 @@ export class Mp4Encoder {
 
   // Specific cleanup for errors to avoid double-terminating if worker itself errored.
   private cleanupWorkerOnError(): void {
+    this.clearCancelTimeout();
     if (this.worker) {
       // Don't terminate if it was a worker self-error, it might have already terminated or is in an unstable state.
       // Let the browser handle the errored worker instance.
