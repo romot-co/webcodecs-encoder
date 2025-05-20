@@ -1,8 +1,27 @@
+diff --git a/node_modules/@types/dom-webcodecs/mediastream-processor.d.ts b/node_modules/@types/dom-webcodecs/mediastream-processor.d.ts
+new file mode 100644
+index 0000000..caa332d
+--- /dev/null
++++ b/node_modules/@types/dom-webcodecs/mediastream-processor.d.ts
+@@ -0,0 +1,12 @@
++interface MediaStreamTrackProcessorInit {
++  track: MediaStreamTrack;
++}
++
++declare class MediaStreamTrackProcessor {
++  constructor(init: MediaStreamTrackProcessorInit);
++  readonly readable: ReadableStream;
++}
++
++interface Window {
++  MediaStreamTrackProcessor: typeof MediaStreamTrackProcessor;
++} 
+\ No newline at end of file
 diff --git a/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts b/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
-index b614234..be46842 100644
+index b614234..2622d23 100644
 --- a/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
 +++ b/node_modules/@types/dom-webcodecs/webcodecs.generated.d.ts
-@@ -462,7 +462,7 @@ interface WebCodecsErrorCallback {
+@@ -462,10 +462,24 @@ interface WebCodecsErrorCallback {
  // type BitrateMode = "constant" | "variable";
  // type ImageBufferSource = ArrayBuffer | ArrayBufferView | ReadableStream;
  // type AlphaOption = "discard" | "keep";
@@ -11,3 +30,20 @@ index b614234..be46842 100644
  // type AvcBitstreamFormat = "annexb" | "avc";
  // type CodecState = "closed" | "configured" | "unconfigured";
  // type EncodedAudioChunkType = "delta" | "key";
++
++interface MediaStreamTrackProcessorInit {
++  track: MediaStreamTrack;
++}
++
++declare class MediaStreamTrackProcessor {
++  constructor(init: MediaStreamTrackProcessorInit);
++  readonly readable: ReadableStream;
++}
++
++interface Window {
++  MediaStreamTrackProcessor: typeof MediaStreamTrackProcessor;
++}
++
+ // type EncodedVideoChunkType = "delta" | "key";
+ type HardwarePreference = "no-preference" | "prefer-hardware" | "prefer-software";
+ // type LatencyMode = "quality" | "realtime";

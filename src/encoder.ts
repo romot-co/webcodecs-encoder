@@ -584,9 +584,26 @@ export class Mp4Encoder {
     this.audioContext = new AudioContextCtor({
       sampleRate: this.config.sampleRate,
     });
-    await this.audioContext!.audioWorklet.addModule(
-      new URL("./audio-worklet-processor.js", import.meta.url),
-    );
+
+    // CommonJSとESMの両方で動作するようにURLを解決する
+    let audioWorkletUrl: string;
+    try {
+      // ESMの場合
+      if (typeof import.meta !== "undefined" && import.meta.url) {
+        audioWorkletUrl = new URL(
+          "./audio-worklet-processor.js",
+          import.meta.url,
+        ).href;
+      } else {
+        // CommonJSの場合またはフォールバック
+        audioWorkletUrl = "./audio-worklet-processor.js";
+      }
+    } catch (e) {
+      // エラーが発生した場合のフォールバック
+      audioWorkletUrl = "./audio-worklet-processor.js";
+    }
+
+    await this.audioContext!.audioWorklet.addModule(audioWorkletUrl);
     this.audioWorkletNode = new AudioWorkletNode(
       this.audioContext!,
       "encoder-audio-worklet",
