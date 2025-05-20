@@ -45,6 +45,7 @@ async function encodeVideoToFile() {
     audioBitrate: 128_000,   // 128 kbps
     sampleRate: 48000,       // Recommended: 48000 for Opus
     channels: 2,
+    hardwareAcceleration: 'prefer-hardware', // Optional
   };
 
   const encoder = new Mp4Encoder(config);
@@ -134,6 +135,7 @@ async function encodeVideoRealtime() {
     audioBitrate: 128_000,
     sampleRate: 48000,
     channels: 2,
+    hardwareAcceleration: 'prefer-hardware',
   };
 
   let mediaSource;
@@ -284,6 +286,7 @@ const result = await recorder.stopRecording();
   `EncoderConfig`:
     - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
+    - `hardwareAcceleration?: 'prefer-hardware' | 'prefer-software' | 'no-preference'`: (Optional) Hint to use hardware or software encoders when available.
     - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
     - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
     - `width: number`: Video width.

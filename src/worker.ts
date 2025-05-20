@@ -141,6 +141,9 @@ async function initializeEncoders(
     ...(currentConfig.latencyMode && {
       latencyMode: currentConfig.latencyMode,
     }),
+    ...(currentConfig.hardwareAcceleration && {
+      hardwareAcceleration: currentConfig.hardwareAcceleration,
+    }),
     ...(videoCodec === "vp9" && {
       scalabilityMode: "L1T2",
     }),
@@ -278,6 +281,9 @@ async function initializeEncoders(
       codec: resolvedAudioCodecString,
       ...(currentConfig.latencyMode && {
         latencyMode: currentConfig.latencyMode,
+      }),
+      ...(currentConfig.hardwareAcceleration && {
+        hardwareAcceleration: currentConfig.hardwareAcceleration,
       }),
       ...(currentConfig.audioEncoderConfig ?? {}),
     };
