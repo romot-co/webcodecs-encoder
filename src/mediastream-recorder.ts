@@ -61,7 +61,6 @@ export class MediaStreamRecorder {
       const { value, done } = await this.videoReader.read();
       if (done || !value) break;
       await this.encoder.addVideoFrame(value);
-      if (typeof value.close === "function") value.close();
     }
   }
 
@@ -71,7 +70,6 @@ export class MediaStreamRecorder {
       const { value, done } = await this.audioReader.read();
       if (done || !value) break;
       await this.encoder.addAudioData(value);
-      if (typeof value.close === "function") value.close();
     }
   }
 
