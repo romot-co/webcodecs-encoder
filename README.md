@@ -12,7 +12,7 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 - Uses Web Workers to offload encoding tasks from the main thread.
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
-- Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
+- Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) and AVC profile fallback (High → Main → Baseline) if the preferred options are unsupported.
 - Queue management with `dropFrames` and `maxQueueDepth` to control encoder backlog.
 - **WebM Container Support**: Set `container: 'webm'` to output a WebM file using the `webm-muxer` library.
 
@@ -502,7 +502,7 @@ const config = {
 ```
 
 **Important Notes:**
--   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
+  -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back (including trying alternate AVC profiles and VP9) if the preferred option is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
 -   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 -   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
 -   See [MDN](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use](https://caniuse.com/webcodecs) for up-to-date browser compatibility information.
