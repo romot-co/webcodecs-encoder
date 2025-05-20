@@ -320,9 +320,9 @@ const result = await recorder.stopRecording();
   Like `addAudioBuffer`, the `AudioData` must have the same number of channels
   as configured for the encoder.
 
-- **`encoder.finalize(): Promise<Uint8Array>`**
+- **`encoder.finalize(): Promise<Uint8Array | null>`**
   Finalizes the encoding process and returns the MP4 file as a `Uint8Array`.
-  If `latencyMode` is `'realtime'`, this resolves with an empty `Uint8Array` as data has already been delivered via `onData`.
+  If `latencyMode` is `'realtime'`, the promise resolves with the final `Uint8Array` when the worker provides output, or with `null` when no additional data is sent because everything has already been delivered via `onData`.
 
 - **`encoder.cancel(): void`**
   Cancels the encoding process and terminates the worker.
