@@ -355,14 +355,26 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
 }
 
 async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
-  if (
-    isCancelled ||
-    !audioEncoder ||
-    !currentConfig ||
-    !data.audioData ||
-    data.audioData.length === 0
-  )
+  if (isCancelled || !audioEncoder || !currentConfig) return;
+
+  if (data.audio) {
+    try {
+      audioEncoder.encode(data.audio);
+    } catch (error: any) {
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: `Error encoding audio data: ${error.message}`,
+          type: EncoderErrorType.AudioEncodingError,
+          stack: error.stack,
+        },
+      } as MainThreadMessage);
+      cleanup();
+    }
     return;
+  }
+
+  if (!data.audioData || data.audioData.length === 0) return;
 
   if (data.audioData.length !== currentConfig.channels) {
     postMessageToMainThread({
