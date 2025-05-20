@@ -8,6 +8,7 @@ export class MediaStreamRecorder {
   private videoTrack?: MediaStreamTrack;
   private audioTrack?: MediaStreamTrack;
   private recording = false;
+  private onErrorCallback?: (error: any) => void;
 
   constructor(private config: EncoderConfig) {
     this.encoder = new Mp4Encoder(config);
@@ -28,6 +29,7 @@ export class MediaStreamRecorder {
       throw new Error("MediaStreamRecorder: already recording.");
     }
 
+    this.onErrorCallback = options?.onError;
     await this.encoder.initialize(options ?? {});
     this.recording = true;
 
@@ -57,19 +59,47 @@ export class MediaStreamRecorder {
 
   private async processVideo(): Promise<void> {
     if (!this.videoReader) return;
-    while (this.recording) {
-      const { value, done } = await this.videoReader.read();
-      if (done || !value) break;
-      await this.encoder.addVideoFrame(value);
+    try {
+      while (this.recording) {
+        const { value, done } = await this.videoReader.read();
+        if (done || !value) {
+          if (this.recording) {
+            await this.stopRecording();
+          }
+          break;
+        }
+        await this.encoder.addVideoFrame(value);
+      }
+    } catch (err) {
+      this.cancel();
+      if (this.onErrorCallback) {
+        this.onErrorCallback(err);
+      } else {
+        throw err;
+      }
     }
   }
 
   private async processAudio(): Promise<void> {
     if (!this.audioReader) return;
-    while (this.recording) {
-      const { value, done } = await this.audioReader.read();
-      if (done || !value) break;
-      await this.encoder.addAudioData(value);
+    try {
+      while (this.recording) {
+        const { value, done } = await this.audioReader.read();
+        if (done || !value) {
+          if (this.recording) {
+            await this.stopRecording();
+          }
+          break;
+        }
+        await this.encoder.addAudioData(value);
+      }
+    } catch (err) {
+      this.cancel();
+      if (this.onErrorCallback) {
+        this.onErrorCallback(err);
+      } else {
+        throw err;
+      }
     }
   }
 

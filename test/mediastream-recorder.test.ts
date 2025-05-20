@@ -171,7 +171,6 @@ describe("MediaStreamRecorder", () => {
     const recorder = new MediaStreamRecorder(config);
     await recorder.startRecording(mediaStream);
     await Promise.resolve();
-    await Promise.resolve();
     expect(Mp4Encoder).toHaveBeenCalledWith(config);
     expect(encoderInstance.initialize).toHaveBeenCalled();
     expect(encoderInstance.addVideoFrame).toHaveBeenCalled();
@@ -236,5 +235,38 @@ describe("MediaStreamRecorder", () => {
     const recorder = new MediaStreamRecorder(config);
     expect(recorder.getActualAudioCodec()).toBe("mock-audio-codec");
     expect(encoderInstance.getActualAudioCodec).toHaveBeenCalled();
+  });
+
+  it("automatically stops when tracks end", async () => {
+    const recorder = new MediaStreamRecorder(config);
+    await recorder.startRecording(mediaStream);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(encoderInstance.finalize).toHaveBeenCalled();
+    expect(videoTrack.stop).toHaveBeenCalled();
+    expect(audioTrack.stop).toHaveBeenCalled();
+    // @ts-ignore - check private property
+    expect(recorder.recording).toBe(false);
+  });
+
+  it("propagates errors via onError and cancels", async () => {
+    const error = new Error("encode fail");
+    const onError = vi.fn();
+
+    const recorder = new MediaStreamRecorder(config);
+    encoderInstance.addVideoFrame.mockRejectedValueOnce(error);
+    await recorder.startRecording(mediaStream, { onError });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onError).toHaveBeenCalledWith(error);
+    expect(encoderInstance.cancel).toHaveBeenCalled();
+    // @ts-ignore - check private property
+    expect(recorder.recording).toBe(false);
   });
 });
