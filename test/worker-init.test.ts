@@ -170,6 +170,54 @@ describe("worker", () => {
     );
   });
 
+  it("uses codec string override when provided", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const cfg = {
+      ...config,
+      codecString: { video: "avc1.deadbeef" },
+    };
+
+    const spy = vi.fn(async (c: any) => {
+      expect(c.codec).toBe("avc1.deadbeef");
+      return { supported: true, config: { codec: c.codec } };
+    });
+    mockSelf.VideoEncoder.isConfigSupported = spy;
+    globalThis.VideoEncoder = mockSelf.VideoEncoder;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: cfg };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ codec: "avc1.deadbeef" }));
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: "initialized", actualVideoCodec: "avc1.deadbeef", actualAudioCodec: "mp4a.40.2" },
+      undefined,
+    );
+  });
+
+  it("computes default avc profile/level when codec string is not supplied", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const hdConfig = { ...config, width: 1920, height: 1080 };
+    const spy = vi.fn(async (c: any) => {
+      expect(c.codec).toBe("avc1.640028");
+      return { supported: true, config: { codec: c.codec } };
+    });
+    mockSelf.VideoEncoder.isConfigSupported = spy;
+    globalThis.VideoEncoder = mockSelf.VideoEncoder;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(spy).toHaveBeenCalled();
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: "initialized", actualVideoCodec: "avc1.640028", actualAudioCodec: "mp4a.40.2" },
+      undefined,
+    );
+  });
+
   // Add more tests for addVideoData, addAudioData, error handling, etc.
   describe("worker error handling during initialization", () => {
     it("should post an error if video codec is not supported", async () => {
