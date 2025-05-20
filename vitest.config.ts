@@ -4,6 +4,11 @@ export default defineConfig({
   test: {
     globals: true, // To use describe, it, etc. without importing them in every file
     environment: 'jsdom', // Use JSDOM environment to provide DOM APIs like document
+    include: [
+      // デフォルトではintegrationテストを含めない
+      'test/**/*.test.ts',
+      '!test/integration/**/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'], // Common reporters
