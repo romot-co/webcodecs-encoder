@@ -375,10 +375,16 @@ export class Mp4Encoder {
     }
 
     try {
-      const numChannels = Math.min(
-        audioBuffer.numberOfChannels,
-        this.config.channels,
-      );
+      if (audioBuffer.numberOfChannels !== this.config.channels) {
+        const err = new Mp4EncoderError(
+          EncoderErrorType.ConfigurationError,
+          `AudioBuffer channel count (${audioBuffer.numberOfChannels}) does not match configured channels (${this.config.channels}).`,
+        );
+        this.handleError(err);
+        return Promise.reject(err);
+      }
+
+      const numChannels = audioBuffer.numberOfChannels;
       const planarData: Float32Array[] = [];
       const transferableBuffers: ArrayBuffer[] = [];
 
@@ -441,10 +447,16 @@ export class Mp4Encoder {
     }
 
     try {
-      const numChannels = Math.min(
-        audioData.numberOfChannels,
-        this.config.channels,
-      );
+      if (audioData.numberOfChannels !== this.config.channels) {
+        const err = new Mp4EncoderError(
+          EncoderErrorType.ConfigurationError,
+          `AudioData channel count (${audioData.numberOfChannels}) does not match configured channels (${this.config.channels}).`,
+        );
+        this.handleError(err);
+        return Promise.reject(err);
+      }
+
+      const numChannels = audioData.numberOfChannels;
       const planarData: Float32Array[] = [];
       const transferableBuffers: ArrayBuffer[] = [];
 

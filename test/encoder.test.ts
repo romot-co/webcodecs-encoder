@@ -716,22 +716,20 @@ describe("Mp4Encoder", () => {
       await initPromise; // initialize が完了するのを待つ
       mockWorkerInstance.postMessage.mockClear(); // initialize 時の呼び出しをクリア
 
-      const audioBuffer = createMockAudioBuffer(1, 48000, 10); // 1ch, 48kHz, 10 samples
-      await expect(
-        encoder.addAudioBuffer(audioBuffer),
-      ).resolves.toBeUndefined();
+      const audioBuffer = createMockAudioBuffer(2, 48000, 10); // 2ch, 48kHz, 10 samples
+      await expect(encoder.addAudioBuffer(audioBuffer)).resolves.toBeUndefined();
       const expectedTimestamp = 0;
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         {
           type: "addAudioData",
-          audioData: [expect.any(Float32Array)], // Float32Array の配列であること
+          audioData: [expect.any(Float32Array), expect.any(Float32Array)],
           timestamp: expectedTimestamp,
           format: "f32-planar",
           sampleRate: 48000,
           numberOfFrames: 10,
-          numberOfChannels: 1, // baseAudioConfig の channels に合わせる
+          numberOfChannels: 2,
         },
-        [expect.any(ArrayBuffer)], // Transferable list
+        [expect.any(ArrayBuffer), expect.any(ArrayBuffer)],
       );
     });
 
@@ -795,6 +793,20 @@ describe("Mp4Encoder", () => {
         }),
       );
     });
+
+    it("should reject when channel count does not match config", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      const audioBuffer = createMockAudioBuffer(1, 48000, 10);
+      await expect(encoder.addAudioBuffer(audioBuffer)).rejects.toThrow(
+        `AudioBuffer channel count (1) does not match configured channels (${baseAudioConfig.channels}).`,
+      );
+    });
   });
 
   describe("addAudioData", () => {
@@ -821,7 +833,7 @@ describe("Mp4Encoder", () => {
         format: "f32",
         sampleRate: 48000,
         numberOfFrames: 10,
-        numberOfChannels: 1,
+        numberOfChannels: 2,
         timestamp: 0,
         // Mocking AudioData with copyTo for this test. `copyTo` is part of the WebCodecs API.
         copyTo: vi.fn(async (destination: Float32Array, _options: any) => {
@@ -842,7 +854,7 @@ describe("Mp4Encoder", () => {
           format: "f32-planar",
           sampleRate: 48000,
           numberOfFrames: 10,
-          numberOfChannels: 1,
+          numberOfChannels: 2,
           // audioData field itself is an array of Float32Arrays in the message
           audioData: expect.arrayContaining([expect.any(Float32Array)]),
         }),
@@ -863,7 +875,7 @@ describe("Mp4Encoder", () => {
         format: "f32",
         sampleRate: 48000,
         numberOfFrames: 1024,
-        numberOfChannels: 1,
+        numberOfChannels: 2,
         timestamp: null, // timestamp is null
         copyTo: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
@@ -897,7 +909,7 @@ describe("Mp4Encoder", () => {
         format: "f32",
         sampleRate: 48000,
         numberOfFrames: 512,
-        numberOfChannels: 1,
+        numberOfChannels: 2,
         timestamp: null, // timestamp is null
         copyTo: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
@@ -937,7 +949,7 @@ describe("Mp4Encoder", () => {
         format: "f32",
         sampleRate: 48000,
         numberOfFrames: 10,
-        numberOfChannels: 1,
+        numberOfChannels: 2,
         timestamp: 0,
         copyTo: vi.fn().mockRejectedValue(copyToError), // copyTo will throw an error
         close: vi.fn(),
@@ -952,6 +964,29 @@ describe("Mp4Encoder", () => {
           message: `Failed to add audio data: ${copyToError.message}`,
           cause: copyToError,
         }),
+      );
+    });
+
+    it("should reject when AudioData channels do not match config", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      const audio = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 10,
+        numberOfChannels: 1,
+        timestamp: 0,
+        copyTo: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      await expect(encoder.addAudioData(audio)).rejects.toThrow(
+        `AudioData channel count (1) does not match configured channels (${baseAudioConfig.channels}).`,
       );
     });
 
