@@ -457,6 +457,53 @@ describe("Mp4Encoder", () => {
       expect(onProgress).toHaveBeenNthCalledWith(1, 10, 100);
       expect(onProgress).toHaveBeenNthCalledWith(2, 20, undefined);
     });
+
+    it("allows injecting a custom Worker instance", async () => {
+      const customWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        onmessage: null,
+        onerror: null,
+      } as any;
+      const encoder = new Mp4Encoder(baseConfig);
+      const p = encoder.initialize({ worker: customWorker as any });
+      expect(globalThis.Worker).not.toHaveBeenCalled();
+      if (customWorker.onmessage) {
+        customWorker.onmessage({ data: { type: "initialized" } });
+      }
+      await p;
+      expect(customWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "initialize" }),
+      );
+    });
+
+    it("uses a custom worker script URL if provided", async () => {
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({ workerScriptUrl: "custom.js" });
+      expect(globalThis.Worker).toHaveBeenCalledWith("custom.js", {
+        type: "module",
+      });
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+    });
+
+    it("sets up an AudioWorklet when useAudioWorklet is true", async () => {
+      const AudioContextMock = vi.fn(() => ({
+        audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+        close: vi.fn(),
+      }));
+      globalThis.AudioContext = AudioContextMock as any;
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({ useAudioWorklet: true });
+      expect(AudioContextMock).toHaveBeenCalled();
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      delete (globalThis as any).AudioContext;
+    });
   });
 
   describe("addVideoFrame", () => {

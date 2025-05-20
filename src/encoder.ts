@@ -15,6 +15,9 @@ export interface Mp4EncoderInitializeOptions {
   totalFrames?: number;
   onError?: (error: Mp4EncoderError) => void;
   onData?: RealtimeDataCallback;
+  worker?: Worker;
+  workerScriptUrl?: string | URL;
+  useAudioWorklet?: boolean;
 }
 
 export class Mp4Encoder {
@@ -42,6 +45,8 @@ export class Mp4Encoder {
   private isCancelled: boolean = false;
   private nextVideoTimestamp: number = 0;
   private nextAudioTimestamp: number = 0;
+  private audioContext: AudioContext | null = null;
+  private audioWorkletNode: AudioWorkletNode | null = null;
 
   constructor(config: EncoderConfig) {
     this.config = {
@@ -122,44 +127,55 @@ export class Mp4Encoder {
     return new Promise<void>((resolve, reject) => {
       this.onInitialized = resolve;
       this.onInitializeError = reject;
+      const start = async () => {
+        try {
+          if (options?.worker) {
+            this.worker = options.worker;
+          } else {
+            const script =
+              options?.workerScriptUrl ??
+              new URL("./worker.js", import.meta.url);
+            this.worker = new Worker(script as any, { type: "module" });
+          }
 
-      try {
-        this.worker = new Worker(new URL("./worker.js", import.meta.url), {
-          type: "module",
-        });
+          this.worker.onmessage = (event: MessageEvent<MainThreadMessage>) => {
+            this.handleWorkerMessage(event.data);
+          };
 
-        this.worker.onmessage = (event: MessageEvent<MainThreadMessage>) => {
-          this.handleWorkerMessage(event.data);
-        };
+          this.worker.onerror = (event: ErrorEvent) => {
+            const err = new Mp4EncoderError(
+              EncoderErrorType.WorkerError,
+              `Worker error: ${event.message || "Unknown worker error"}`,
+              event,
+            );
+            this.handleError(err);
+            this.onInitializeError?.(err);
+            this.onFinalizedPromise?.reject(err);
+            this.cleanupWorkerOnError();
+          };
 
-        this.worker.onerror = (event: ErrorEvent) => {
+          if (options?.useAudioWorklet) {
+            await this.setupAudioWorklet();
+          }
+
+          const initMessage: WorkerMessage = {
+            type: "initialize",
+            config: this.config, // Pass updated config
+            totalFrames: this.totalFrames,
+          };
+          this.worker.postMessage(initMessage);
+        } catch (e: any) {
           const err = new Mp4EncoderError(
-            EncoderErrorType.WorkerError,
-            `Worker error: ${event.message || "Unknown worker error"}`,
-            event,
+            EncoderErrorType.InitializationFailed,
+            `Failed to initialize worker: ${e.message}`,
+            e,
           );
           this.handleError(err);
           this.onInitializeError?.(err);
-          this.onFinalizedPromise?.reject(err);
           this.cleanupWorkerOnError();
-        };
-
-        const initMessage: WorkerMessage = {
-          type: "initialize",
-          config: this.config, // Pass updated config
-          totalFrames: this.totalFrames,
-        };
-        this.worker.postMessage(initMessage);
-      } catch (e: any) {
-        const err = new Mp4EncoderError(
-          EncoderErrorType.InitializationFailed,
-          `Failed to initialize worker: ${e.message}`,
-          e,
-        );
-        this.handleError(err);
-        this.onInitializeError?.(err);
-        this.cleanupWorkerOnError();
-      }
+        }
+      };
+      void start();
     });
   }
 
@@ -524,6 +540,15 @@ export class Mp4Encoder {
       this.worker = null;
       logger.log("Mp4Encoder: Worker terminated and cleaned up.");
     }
+    if (this.audioWorkletNode) {
+      this.audioWorkletNode.port.postMessage({ close: true });
+      this.audioWorkletNode.disconnect();
+      this.audioWorkletNode = null;
+    }
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
     this.isCancelled = true; // Ensure isCancelled is true after cleanup
   }
 
@@ -540,6 +565,41 @@ export class Mp4Encoder {
       );
     }
     this.isCancelled = true;
+  }
+
+  private async setupAudioWorklet(): Promise<void> {
+    const AudioContextCtor: any = (globalThis as any).AudioContext;
+    if (!AudioContextCtor) {
+      const err = new Mp4EncoderError(
+        EncoderErrorType.NotSupported,
+        "AudioContext not available for AudioWorklet.",
+      );
+      this.handleError(err);
+      throw err;
+    }
+
+    this.audioContext = new AudioContextCtor({
+      sampleRate: this.config.sampleRate,
+    });
+    await this.audioContext!.audioWorklet.addModule(
+      new URL("./audio-worklet-processor.js", import.meta.url),
+    );
+    this.audioWorkletNode = new AudioWorkletNode(
+      this.audioContext!,
+      "encoder-audio-worklet",
+      { numberOfInputs: 1, numberOfOutputs: 0 },
+    );
+
+    const { port1, port2 } = new MessageChannel();
+    const connectMessage: WorkerMessage = {
+      type: "connectAudioPort",
+      port: port1,
+    } as any;
+    this.worker!.postMessage(connectMessage, [port1]);
+    this.audioWorkletNode.port.postMessage(
+      { port: port2, sampleRate: this.config.sampleRate },
+      [port2],
+    );
   }
 
   public getActualVideoCodec(): string | null {
