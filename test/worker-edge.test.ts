@@ -85,6 +85,33 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
     expect(mockSelf.postMessage).not.toHaveBeenCalled();
   });
 
+  it("should handle unknown message type with a warning", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
+    mockSelf.postMessage.mockClear();
+    
+    // モックconsole.warnを作成してスパイする
+    const originalConsoleWarn = console.warn;
+    console.warn = vi.fn();
+    
+    try {
+      // 存在しないメッセージタイプを送信
+      await global.self.onmessage({ data: { type: "unknownMessageType" } } as any);
+      
+      // 警告が出力されたか確認
+      expect(console.warn).toHaveBeenCalledWith(
+        "Worker received unknown message type:",
+        "unknownMessageType"
+      );
+      
+      // postMessageは呼ばれないことを確認
+      expect(mockSelf.postMessage).not.toHaveBeenCalled();
+    } finally {
+      // モックをクリーンアップ
+      console.warn = originalConsoleWarn;
+    }
+  });
+
   it("should still process initialize even if isCancelled was somehow true before it", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
     await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
@@ -136,5 +163,28 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
 
     mockSelf.VideoEncoder.isConfigSupported = originalVideoEncoderIsSupported;
     globalThis.VideoEncoder = mockSelf.VideoEncoder;
+  });
+
+  it("should handle unknown message type", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    
+    // コンソール警告をモック
+    const originalConsoleWarn = console.warn;
+    console.warn = vi.fn();
+    
+    try {
+      // 不明なタイプのメッセージを送信
+      const unknownMessage = { type: "unknownType" } as any;
+      await global.self.onmessage({ data: unknownMessage } as MessageEvent);
+      
+      // 不明なメッセージタイプに対する警告が出力されることを確認
+      expect(console.warn).toHaveBeenCalledWith(
+        "Worker received unknown message type:",
+        "unknownType"
+      );
+    } finally {
+      // コンソール警告を元に戻す
+      console.warn = originalConsoleWarn;
+    }
   });
 });

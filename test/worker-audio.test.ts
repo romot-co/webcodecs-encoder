@@ -4,6 +4,7 @@ import {
   InitializeWorkerMessage,
   CancelWorkerMessage,
   AddAudioDataMessage,
+  ConnectAudioPortMessage,
 } from "../src/types";
 import {
   setupGlobals,
@@ -358,6 +359,97 @@ describe("handleAddAudioData", () => {
           message: `Audio data channel count (1) does not match configured channels (${config.channels}).`,
           type: "configuration-error",
         },
+      },
+      undefined,
+    );
+  });
+});
+
+describe("handleConnectAudioPort", () => {
+  let initMessage: InitializeWorkerMessage;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    setupGlobals();
+    resetMocks();
+    const mp4muxerModule = await import("../src/mp4muxer");
+    Mp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
+    Mp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
+    await importWorker();
+    config = {
+      width: 640,
+      height: 480,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+      codec: { video: "avc", audio: "aac" },
+      container: "mp4",
+      latencyMode: "quality",
+    };
+
+    initMessage = { type: "initialize", config };
+    if (global.self.onmessage) {
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+      mockSelf.postMessage.mockClear();
+    } else {
+      throw new Error(
+        "Worker onmessage handler not set up for handleConnectAudioPort tests",
+      );
+    }
+  });
+
+  it("should set up audioWorkletPort and handle messages", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    
+    // モックポートの作成
+    let savedMessageHandler: ((ev: MessageEvent) => any) | null = null;
+    const mockPort = {
+      set onmessage(handler: ((ev: MessageEvent) => any) | null) {
+        savedMessageHandler = handler;
+      },
+      get onmessage() {
+        return savedMessageHandler;
+      },
+      postMessage: vi.fn(),
+      close: vi.fn(),
+    };
+    
+    // AudioWorkletPortメッセージの送信
+    const connectPortMessage: ConnectAudioPortMessage = {
+      type: "connectAudioPort",
+      port: mockPort as any,
+    };
+    
+    await global.self.onmessage({ data: connectPortMessage } as MessageEvent);
+    
+    // ポートが設定され、onmessageハンドラが追加されたことを確認
+    expect(savedMessageHandler).not.toBeNull();
+    
+    // オーディオメッセージをシミュレート
+    const audioData = new Float32Array(512);
+    const audioData2 = new Float32Array(512);
+    if (savedMessageHandler) {
+      await (savedMessageHandler as (ev: MessageEvent) => Promise<void>)({
+        data: {
+          type: "addAudioData",
+          audioData: [audioData, audioData2],
+          timestamp: 1000,
+          format: "f32-planar",
+          sampleRate: 48000,
+          numberOfFrames: 512,
+          numberOfChannels: 2,
+        }
+      } as MessageEvent);
+    }
+    
+    // AudioDataが処理されたことを確認
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "queueSize",
+        videoQueueSize: 0,
+        audioQueueSize: 0,
       },
       undefined,
     );

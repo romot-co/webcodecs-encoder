@@ -231,4 +231,28 @@ describe("handleFinalize", () => {
       undefined,
     );
   });
+
+  it("should post error if muxer does not exist when attempting to finalize", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    
+    // ワーカーをリセットして、muxerを初期化せずに finalize を呼び出す
+    vi.resetModules();
+    setupGlobals();
+    resetMocks();
+    await importWorker();
+    
+    const finalizeMessage: FinalizeWorkerMessage = { type: "finalize" };
+    await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
+    
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "error",
+        errorDetail: {
+          message: "Muxer not initialized during finalize.",
+          type: "muxing-failed",
+        },
+      },
+      undefined,
+    );
+  });
 });

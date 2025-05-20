@@ -909,6 +909,102 @@ describe("worker", () => {
       mockSelf.AudioEncoder = originalAudioEncoderCtorForThisTest;
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
     });
+
+    // isConfigSupportedWithHwFallback関数のブランチカバレッジを向上させるテスト
+    it("should handle hardware acceleration preference fallbacks correctly", async () => {
+      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      
+      // prefer-hardwareが使えないがprefer-softwareが使えるケース
+      const prefHwConfig = { ...config };
+      prefHwConfig.hardwareAcceleration = "prefer-hardware";
+      
+      // まず最初の設定（prefer-hardware）は非対応
+      const hwSupportResult = { supported: false };
+      
+      // 次の設定（prefer-software）は対応
+      const swSupportResult = { supported: true, config: { codec: "avc1.42001e" } };
+      
+      // hardwareAccelerationの設定なしも対応
+      const noHwSupportResult = { supported: true, config: { codec: "avc1.42001e" } };
+      
+      // モックの動作を変更して、各ケースをシミュレート
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn()
+        .mockImplementationOnce(() => Promise.resolve(hwSupportResult))
+        .mockImplementationOnce(() => Promise.resolve(swSupportResult))
+        .mockImplementation(() => Promise.resolve(noHwSupportResult));
+      
+      // コンソール警告をキャプチャ
+      const originalConsoleWarn = console.warn;
+      const mockWarn = vi.fn();
+      console.warn = mockWarn;
+      
+      try {
+        // ワーカーを初期化
+        await global.self.onmessage({ 
+          data: { type: "initialize", config: prefHwConfig } 
+        } as MessageEvent);
+        
+        // VideoEncoder.isConfigSupportedが複数回呼ばれることを確認
+        expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalledTimes(2);
+        
+        // 警告メッセージが出力されることを確認
+        expect(mockWarn).toHaveBeenCalledWith(
+          expect.stringContaining("hardwareAcceleration preference 'prefer-hardware' not supported. Using 'prefer-software'")
+        );
+        
+        // 初期化が成功することを確認
+        expect(mockSelf.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "initialized" }),
+          undefined
+        );
+      } finally {
+        console.warn = originalConsoleWarn;
+      }
+    });
+    
+    it("should try no hardware acceleration preference when both prefer-hardware and prefer-software are not supported", async () => {
+      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      
+      const prefHwConfig = { ...config };
+      prefHwConfig.hardwareAcceleration = "prefer-hardware";
+      
+      // prefer-hardwareもprefer-softwareも対応していないが、設定なしは対応
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn()
+        .mockImplementationOnce(() => Promise.resolve({ supported: false }))
+        .mockImplementationOnce(() => Promise.resolve({ supported: false }))
+        .mockImplementationOnce(() => Promise.resolve({ 
+          supported: true, 
+          config: { codec: "avc1.42001e" } 
+        }));
+      
+      // コンソール警告をキャプチャ
+      const originalConsoleWarn = console.warn;
+      const mockWarn = vi.fn();
+      console.warn = mockWarn;
+      
+      try {
+        // ワーカーを初期化
+        await global.self.onmessage({ 
+          data: { type: "initialize", config: prefHwConfig } 
+        } as MessageEvent);
+        
+        // VideoEncoder.isConfigSupportedが3回呼ばれることを確認
+        expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalledTimes(3);
+        
+        // 警告メッセージが出力されることを確認
+        expect(mockWarn).toHaveBeenCalledWith(
+          expect.stringContaining("hardwareAcceleration preference 'prefer-hardware' not supported. Using no preference")
+        );
+        
+        // 初期化が成功することを確認
+        expect(mockSelf.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: "initialized" }),
+          undefined
+        );
+      } finally {
+        console.warn = originalConsoleWarn;
+      }
+    });
   });
 
 });
