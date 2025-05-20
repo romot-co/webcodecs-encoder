@@ -7,7 +7,7 @@ export type RealtimeDataCallback = (
   chunk: Uint8Array,
   offset?: number,
   isHeader?: boolean,
-  // container?: 'mp4' | 'webm' // Provided via worker messages when streaming
+  container?: "mp4" | "webm",
 ) => void;
 
 export interface Mp4EncoderInitializeOptions {
@@ -68,13 +68,6 @@ export class Mp4Encoder {
       },
     };
 
-    if (this.config.container === "webm") {
-      // Early warning for unsupported container
-      logger.warn(
-        "Mp4Encoder: WebM container output is not yet supported and will cause an error during initialization.",
-      );
-    }
-
     // Initialize worker later, only if supported and initialize() is called.
     // This avoids creating a worker if the class is just instantiated.
   }
@@ -104,15 +97,6 @@ export class Mp4Encoder {
       // and this.onErrorCallback will be called by the caller if they wish.
       // this.handleError(err);
       throw err; // Throw immediately
-    }
-
-    if (this.config.container === "webm") {
-      const err = new Mp4EncoderError(
-        EncoderErrorType.NotSupported,
-        "WebM container output is not yet supported.",
-      );
-      this.handleError(err);
-      throw err;
     }
 
     if (!Mp4Encoder.isSupported()) {
@@ -227,9 +211,8 @@ export class Mp4Encoder {
         break;
       case "dataChunk": // Handle real-time data chunks
         if (this.config.latencyMode === "realtime" && this.onDataCallback) {
-          const { chunk, isHeader } = message;
-          // Pass only chunk and isHeader as offset is not reliably used/provided yet
-          this.onDataCallback(chunk, undefined, isHeader);
+          const { chunk, isHeader, container } = message;
+          this.onDataCallback(chunk, undefined, isHeader, container);
         } else if (
           this.onDataCallback &&
           this.config.latencyMode !== "realtime"

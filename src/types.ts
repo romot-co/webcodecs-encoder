@@ -12,9 +12,9 @@ export interface EncoderConfig {
   audioBitrateMode?: "constant" | "variable";
   sampleRate: number; // Hz
   channels: number; // e.g., 1 for mono, 2 for stereo
-  container?: "mp4" | "webm"; // Default: 'mp4' or auto-selected based on codec
+  container?: "mp4" | "webm"; // Default: 'mp4'. Set 'webm' for WebM output.
   codec?: {
-    video?: "avc" | "hevc" | "vp9" | "av1"; // Default: 'avc' (H.264)
+    video?: "avc" | "hevc" | "vp9" | "vp8" | "av1"; // Default: 'avc' (H.264)
     audio?: "aac" | "opus"; // Default: 'aac'
   };
   /**

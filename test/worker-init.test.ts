@@ -392,23 +392,26 @@ describe("worker", () => {
       );
     });
 
-    it("should post an error if webm container is specified", async () => {
+    it("should initialize WebM container and use WebMMuxerWrapper", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
       const webmConfig = { ...config, container: "webm" as const };
+      // Adjust codec support mocks for VP9/Opus
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => ({
+        supported: true,
+        config: { codec: "vp09.00.50.08" },
+      }));
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(async () => ({
+        supported: true,
+        config: { codec: "opus" },
+      }));
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
         config: webmConfig,
       };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
-        {
-          type: "error",
-          errorDetail: {
-            message: "Worker: WebM container is not supported in this version.",
-            type: "not-supported",
-          },
-        },
+        { type: "initialized", actualVideoCodec: "vp09.00.50.08", actualAudioCodec: "opus" },
         undefined,
       );
     });

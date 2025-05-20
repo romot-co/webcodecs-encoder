@@ -1,6 +1,6 @@
 # WebCodecs MP4/WebM Encoder (MP4 Muxer Currently)
 
-A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) using the WebCodecs API and mux them into an MP4 container. **WebM output is not yet supported.**
+A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers.
 
 ## Features
 
@@ -14,7 +14,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
 - Queue management with `dropFrames` and `maxQueueDepth` to control encoder backlog.
-- **WebM Container Support**: WebM output is **not yet implemented.** Setting `container: 'webm'` will throw an error during initialization.
+- **WebM Container Support**: Set `container: 'webm'` to output a WebM file using the `webm-muxer` library.
 
 ## Installation
 
@@ -219,7 +219,7 @@ async function encodeVideoRealtime() {
       console.log("MediaSource opened");
 
       await encoder.initialize({
-        onData: (chunk, isHeader) => {
+        onData: (chunk, isHeader, container) => {
           if (
             sourceBuffer &&
             !sourceBuffer.updating &&
@@ -377,7 +377,7 @@ const result = await recorder.stopRecording();
 - **`new Mp4Encoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
-    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
+    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Use `'webm'` for WebM output.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
     - `dropFrames?: boolean`: (Optional) Drop new video frames when the worker-reported video queue size exceeds `maxQueueDepth`.
     - `maxQueueDepth?: number`: (Optional) Maximum video queue size before dropping occurs. The queue size uses WebCodecs `encodeQueueSize`. Defaults to unlimited.
@@ -407,7 +407,7 @@ const result = await recorder.stopRecording();
   - `onProgress?: (processedFrames: number, totalFrames?: number) => void`: Callback for encoding progress. `totalFrames` might be undefined in real-time or if not provided.
   - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
   - `onError?: (error: Mp4EncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `Mp4EncoderError` object.
-  - `onData?: (chunk: Uint8Array, isHeader?: boolean) => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial MP4 header chunk.
+  - `onData?: (chunk: Uint8Array, isHeader?: boolean, container?: 'mp4' | 'webm') => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial container header.
   - `worker?: Worker`: Provide a pre-created `Worker` instance instead of letting `Mp4Encoder` create one.
   - `workerScriptUrl?: string | URL`: Specify a custom worker script to load when creating the worker.
   - `useAudioWorklet?: boolean`: Use an `AudioWorklet` to pipe audio data directly to the worker for lower latency.

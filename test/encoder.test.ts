@@ -1285,7 +1285,12 @@ describe("Mp4Encoder", () => {
           },
         });
       }
-      expect(onDataCallback).toHaveBeenCalledWith(headerChunk, undefined, true);
+      expect(onDataCallback).toHaveBeenCalledWith(
+        headerChunk,
+        undefined,
+        true,
+        "mp4",
+      );
 
       // Simulate worker sending a media data chunk
       const mediaChunk = new Uint8Array([5, 6, 7, 8]);
@@ -1299,7 +1304,12 @@ describe("Mp4Encoder", () => {
           },
         });
       }
-      expect(onDataCallback).toHaveBeenCalledWith(mediaChunk, undefined, false);
+      expect(onDataCallback).toHaveBeenCalledWith(
+        mediaChunk,
+        undefined,
+        false,
+        "mp4",
+      );
       expect(onDataCallback).toHaveBeenCalledTimes(2);
     });
 

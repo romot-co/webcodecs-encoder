@@ -9,6 +9,9 @@ export const mockMuxerInstanceForWorker = {
 vi.mock("../../src/mp4muxer", () => ({
   Mp4MuxerWrapper: vi.fn(() => mockMuxerInstanceForWorker),
 }));
+vi.mock("../../src/webmmuxer", () => ({
+  WebMMuxerWrapper: vi.fn(() => mockMuxerInstanceForWorker),
+}));
 
 export const mockSelf = {
   postMessage: vi.fn(),

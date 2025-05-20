@@ -1,4 +1,5 @@
 import { Mp4MuxerWrapper } from "./mp4muxer";
+import { WebMMuxerWrapper } from "./webmmuxer";
 import type {
   EncoderConfig,
   WorkerMessage,
@@ -14,7 +15,7 @@ import logger from "./logger";
 
 let videoEncoder: VideoEncoder | null = null;
 let audioEncoder: AudioEncoder | null = null;
-let muxer: Mp4MuxerWrapper | null = null;
+let muxer: Mp4MuxerWrapper | WebMMuxerWrapper | null = null;
 let currentConfig: EncoderConfig | null = null;
 let totalFramesToProcess: number | undefined;
 let processedFrames: number = 0;
@@ -127,31 +128,22 @@ async function initializeEncoders(
     return;
   }
 
-  if (currentConfig.container === "webm") {
-    postMessageToMainThread({
-      type: "error",
-      errorDetail: {
-        message: "Worker: WebM container is not supported in this version.",
-        type: EncoderErrorType.NotSupported,
-      },
-    });
-    return;
-  }
-
   const audioDisabled =
     currentConfig.audioBitrate <= 0 ||
     currentConfig.channels <= 0 ||
     currentConfig.sampleRate <= 0;
 
   try {
-    muxer = new Mp4MuxerWrapper(currentConfig, postMessageToMainThread, {
+    const MuxerCtor =
+      currentConfig.container === "webm" ? WebMMuxerWrapper : Mp4MuxerWrapper;
+    muxer = new MuxerCtor(currentConfig, postMessageToMainThread, {
       disableAudio: audioDisabled,
     });
   } catch (e: any) {
     postMessageToMainThread({
       type: "error",
       errorDetail: {
-        message: `Worker: Failed to initialize MP4 Muxer: ${e.message}`,
+        message: `Worker: Failed to initialize Muxer: ${e.message}`,
         type: EncoderErrorType.InitializationFailed,
         stack: e.stack,
       },
@@ -160,7 +152,18 @@ async function initializeEncoders(
     return;
   }
 
-  let videoCodec = currentConfig.codec?.video ?? "avc";
+  let videoCodec =
+    currentConfig.codec?.video ??
+    (currentConfig.container === "webm" ? "vp9" : "avc");
+  if (
+    currentConfig.container === "webm" &&
+    (videoCodec === "avc" || videoCodec === "hevc")
+  ) {
+    console.warn(
+      `Worker: Video codec ${videoCodec} not compatible with WebM. Switching to VP9.`,
+    );
+    videoCodec = "vp9";
+  }
   let finalVideoEncoderConfig: VideoEncoderConfig | null = null;
 
   const resolvedVideoCodecString =
@@ -173,11 +176,13 @@ async function initializeEncoders(
         )
       : videoCodec === "vp9"
         ? "vp09.00.50.08"
-        : videoCodec === "hevc"
-          ? "hvc1"
-          : videoCodec === "av1"
-            ? "av01.0.04M.08"
-            : "");
+        : videoCodec === "vp8"
+          ? "vp8"
+          : videoCodec === "hevc"
+            ? "hvc1"
+            : videoCodec === "av1"
+              ? "av01.0.04M.08"
+              : "");
 
   const baseVideoConfig = {
     width: currentConfig.width,
@@ -241,6 +246,17 @@ async function initializeEncoders(
       avc: { format: "avcc" },
     };
     delete (fallbackVideoConfig as any).scalabilityMode;
+    if (currentConfig.container === "webm") {
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: VP9/VP8/AV1 not supported for WebM container.",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
+      cleanup();
+      return;
+    }
     videoSupportConfig = await isConfigSupportedWithHwFallback(
       VideoEncoderCtor,
       fallbackVideoConfig,
@@ -318,7 +334,15 @@ async function initializeEncoders(
   }
 
   let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
-  let audioCodec = currentConfig.codec?.audio ?? "aac";
+  let audioCodec =
+    currentConfig.codec?.audio ??
+    (currentConfig.container === "webm" ? "opus" : "aac");
+  if (currentConfig.container === "webm" && audioCodec === "aac") {
+    console.warn(
+      "Worker: AAC audio codec is not compatible with WebM. Switching to Opus.",
+    );
+    audioCodec = "opus";
+  }
 
   if (!audioDisabled) {
     const resolvedAudioCodecString =
@@ -366,6 +390,18 @@ async function initializeEncoders(
       console.warn(
         `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
       );
+      if (currentConfig.container === "webm") {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message:
+              "Worker: Opus audio codec not supported for WebM container.",
+            type: EncoderErrorType.NotSupported,
+          },
+        });
+        cleanup();
+        return;
+      }
       audioCodec = "aac";
       const fallbackAudioConfig = {
         ...baseAudioConfig,
