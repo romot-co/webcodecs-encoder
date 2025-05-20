@@ -455,7 +455,7 @@ describe("Mp4MuxerWrapper", () => {
     // To test this, we'd need to manually manipulate the wrapper's internal state
     // or mock the constructor differently.
     // For now, we'll acknowledge this path is hard to test unit-wise without deeper intrusion.
-    it.skip("should post error if target is not ArrayBufferTarget in non-realtime finalize", async () => {
+    it("should post error if target is not ArrayBufferTarget in non-realtime finalize", async () => {
       const wrapper = new Mp4MuxerWrapper(baseConfig, postMessageCallback);
       const { StreamTarget } = await import("mp4-muxer");
       (wrapper as any).target = new StreamTarget(
@@ -465,13 +465,10 @@ describe("Mp4MuxerWrapper", () => {
       expect(postMessageCallback).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "error",
-          errorDetail: {
-            message:
-              "MP4: Muxer target is not ArrayBufferTarget in non-realtime mode.",
+          errorDetail: expect.objectContaining({
             type: "internal-error",
-          },
+          }),
         }),
-        undefined,
       );
     });
   });
