@@ -1279,6 +1279,46 @@ describe("Mp4Encoder", () => {
       );
     });
 
+    it("finalize() should resolve with null if worker sends null in realtime mode", async () => {
+      const onDataCallback = vi.fn();
+      const realtimeEncoder = new Mp4Encoder(baseRealtimeConfig);
+      const initPromise = realtimeEncoder.initialize({
+        onData: onDataCallback,
+      });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "initialized",
+            actualVideoCodec: "avc1",
+            actualAudioCodec: "mp4a",
+          },
+        });
+      }
+      await initPromise;
+
+      mockWorkerInstance.postMessage.mockClear();
+
+      const finalizePromise = realtimeEncoder.finalize();
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: { type: "finalized", output: null },
+        });
+      }
+
+      const result = await finalizePromise;
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "finalize",
+      });
+      expect(result).toBeNull();
+      expect(onDataCallback).not.toHaveBeenCalledWith(
+        result,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
     it("should not call onData if latencyMode is quality, even if onData is provided", async () => {
       const onDataCallback = vi.fn();
       const qualityConfig: EncoderConfig = {
