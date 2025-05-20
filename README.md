@@ -1,6 +1,6 @@
 # WebCodecs MP4/WebM Encoder (MP4 Muxer Currently)
 
-A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) using the WebCodecs API and mux them into an MP4 container. WebM container support is planned for future versions.
+A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) using the WebCodecs API and mux them into an MP4 container. **WebM output is not yet supported.**
 
 ## Features
 
@@ -13,7 +13,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
-- **WebM Container Support (β)**: Basic WebM muxing is available via `container: 'webm'` option. However, in the current version, specifying `'webm'` may result in a warning, and the content might still be processed as MP4 or an error may occur in the worker if it's not fully supported. Full WebM support with appropriate EBML structure and codec combinations (typically VP9/Opus) is a goal for future versions. MP4 remains the default and most stable option.
+ - **WebM Container Support**: WebM output is not yet implemented. Setting `container: 'webm'` will throw an error during initialization.
 
 ## Installation
 
@@ -278,7 +278,7 @@ const result = await recorder.stopRecording();
 - **`new Mp4Encoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
-    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. See "WebM Container Support" section for details on 'webm'.
+    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
     - `width: number`: Video width.
     - `height: number`: Video height.
@@ -310,6 +310,9 @@ const result = await recorder.stopRecording();
   The channel count of the `AudioBuffer` must exactly match the `channels` value
   specified in the encoder configuration or the call will reject with a
   `configuration-error`.
+  For long audio segments, consider splitting the buffer into smaller chunks or
+  using `addAudioData` to stream data incrementally so that very large buffers
+  don't need to be transferred to the worker all at once.
 
 - **`encoder.addAudioData(audioData: AudioData): Promise<void>`**
   Adds an `AudioData` object for encoding. Suitable for streaming audio samples.

@@ -156,6 +156,28 @@ describe("handleAddAudioData", () => {
     expect((globalThis as any).AudioData).not.toHaveBeenCalled();
   });
 
+  it("should close AudioData after encoding when created internally", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+
+    const dummyAudioSamples = new Float32Array(512);
+    const audioDataArray: Float32Array[] = [];
+    for (let i = 0; i < config.channels; i++) {
+      audioDataArray.push(dummyAudioSamples.slice());
+    }
+
+    const addAudioMessage: AddAudioDataMessage = {
+      type: "addAudioData",
+      audioData: audioDataArray,
+      timestamp: 0,
+      format: "f32-planar",
+      sampleRate: config.sampleRate,
+      numberOfFrames: 512,
+      numberOfChannels: config.channels,
+    };
+    await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
+    expect(mockAudioDataInstance.close).toHaveBeenCalled();
+  });
+
   it("should post error if AudioData API is not available", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
     const AudioDataOriginal = (globalThis as any).AudioData;

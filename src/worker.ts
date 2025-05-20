@@ -437,7 +437,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
 
     const interleavedData = interleaveFloat32Arrays(data.audioData);
 
-    const audioData = new AudioDataCtor({
+    const audioData: AudioData = new AudioDataCtor({
       format: "f32", // インターリーブしたので 'f32'
       sampleRate: data.sampleRate,
       numberOfFrames: data.numberOfFrames,
@@ -445,8 +445,11 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
       timestamp: data.timestamp,
       data: interleavedData.buffer, // インターリーブされたデータの ArrayBuffer を渡す
     });
-
-    audioEncoder.encode(audioData);
+    try {
+      audioEncoder.encode(audioData);
+    } finally {
+      audioData.close();
+    }
   } catch (error: any) {
     postMessageToMainThread({
       type: "error",
