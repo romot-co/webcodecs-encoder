@@ -307,9 +307,14 @@ const result = await recorder.stopRecording();
 
 - **`encoder.addAudioBuffer(audioBuffer: AudioBuffer): Promise<void>`**
   Adds an entire `AudioBuffer` for encoding. Useful for adding complete audio tracks.
+  The channel count of the `AudioBuffer` must exactly match the `channels` value
+  specified in the encoder configuration or the call will reject with a
+  `configuration-error`.
 
 - **`encoder.addAudioData(audioData: AudioData): Promise<void>`**
   Adds an `AudioData` object for encoding. Suitable for streaming audio samples.
+  Like `addAudioBuffer`, the `AudioData` must have the same number of channels
+  as configured for the encoder.
 
 - **`encoder.finalize(): Promise<Uint8Array>`**
   Finalizes the encoding process and returns the MP4 file as a `Uint8Array`.
