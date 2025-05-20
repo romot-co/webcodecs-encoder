@@ -8,6 +8,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into a standard MP4 file.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
+- Optional AudioWorklet path for piping audio directly to the worker to reduce main-thread latency.
 - Uses Web Workers to offload encoding tasks from the main thread.
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
@@ -287,6 +288,9 @@ async function encodeVideoRealtime() {
     - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
     - `onError?: (error: Mp4EncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `Mp4EncoderError` object.
     - `onData?: (chunk: Uint8Array, isHeader?: boolean) => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial MP4 header chunk.
+    - `worker?: Worker`: Provide a pre-created `Worker` instance instead of letting `Mp4Encoder` create one.
+    - `workerScriptUrl?: string | URL`: Specify a custom worker script to load when creating the worker.
+    - `useAudioWorklet?: boolean`: Use an `AudioWorklet` to pipe audio data directly to the worker for lower latency.
 
 - **`encoder.addVideoFrame(frame: VideoFrame): Promise<void>`**
   Adds a `VideoFrame` object for encoding. Ensure the source is converted to a `VideoFrame` before calling this method.

@@ -19,6 +19,7 @@ let currentConfig: EncoderConfig | null = null;
 let totalFramesToProcess: number | undefined;
 let processedFrames: number = 0;
 let isCancelled: boolean = false;
+let audioWorkletPort: MessagePort | null = null;
 
 // --- 追加: グローバル API を安全に取るヘルパ ---
 const getVideoEncoder = () =>
@@ -515,6 +516,11 @@ function cleanup(resetCancelled: boolean = true): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
+  if (audioWorkletPort) {
+    audioWorkletPort.onmessage = null;
+    audioWorkletPort.close();
+    audioWorkletPort = null;
+  }
   if (resetCancelled) {
     isCancelled = false;
   }
@@ -538,6 +544,15 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         isCancelled = false;
         cleanup();
         await initializeEncoders(event.data);
+        break;
+      case "connectAudioPort":
+        audioWorkletPort = event.data.port;
+        audioWorkletPort.onmessage = async (
+          e: MessageEvent<AddAudioDataMessage>,
+        ) => {
+          if (isCancelled) return;
+          await handleAddAudioData(e.data);
+        };
         break;
       case "addVideoFrame":
         if (isCancelled) break;
