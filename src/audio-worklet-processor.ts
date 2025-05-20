@@ -18,6 +18,7 @@ declare class AudioWorkletProcessor {
 class EncoderAudioWorkletProcessor extends AudioWorkletProcessor {
   private workerPort: MessagePort | null = null;
   private sampleRateVal = sampleRate;
+  private processedFrames = 0;
   constructor() {
     super();
     this.port.onmessage = (event) => {
@@ -45,6 +46,8 @@ class EncoderAudioWorkletProcessor extends AudioWorkletProcessor {
       const copy = new Float32Array(input[c]);
       buffers.push(copy);
     }
+    const timestamp = (this.processedFrames / this.sampleRateVal) * 1_000_000;
+    this.processedFrames += numFrames;
     this.workerPort.postMessage(
       {
         type: "addAudioData",
@@ -52,7 +55,7 @@ class EncoderAudioWorkletProcessor extends AudioWorkletProcessor {
         numberOfFrames: numFrames,
         numberOfChannels: numChannels,
         sampleRate: this.sampleRateVal,
-        timestamp: 0,
+        timestamp,
         format: "f32-planar",
       },
       buffers.map((b) => b.buffer),

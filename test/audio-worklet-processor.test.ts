@@ -191,5 +191,23 @@ describe("EncoderAudioWorkletProcessor", () => {
       expect(actualAudioData[1]).toEqual(expectedBuffers[1]);
       expect(actualAudioData[0]).not.toBe(inputData[0]);
     });
+
+    it("should increment timestamp based on processed frames", () => {
+      const input1 = [new Float32Array([0.1, 0.2])];
+      const input2 = [new Float32Array([0.3, 0.4, 0.5])];
+      processor.sampleRateVal = 48000;
+
+      processor.process([input1], [], {});
+      const timestampFirst =
+        mockWorkerSidePort.postMessage.mock.calls[0][0].timestamp;
+      expect(timestampFirst).toBe(0);
+      mockWorkerSidePort.postMessage.mockClear();
+
+      processor.process([input2], [], {});
+      const expectedTimestampSecond = (input1[0].length / 48000) * 1_000_000;
+      const timestampSecond =
+        mockWorkerSidePort.postMessage.mock.calls[0][0].timestamp;
+      expect(timestampSecond).toBeCloseTo(expectedTimestampSecond);
+    });
   });
 });
