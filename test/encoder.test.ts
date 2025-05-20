@@ -277,18 +277,17 @@ describe("Mp4Encoder", () => {
 
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
         type: "initialize",
-        config: {
-          ...baseConfig, // Spread the provided base config
-          container: "mp4", // Default added by constructor
-          latencyMode: "quality", // Default added by constructor
+        config: expect.objectContaining({
+          ...baseConfig,
+          container: "mp4",
+          latencyMode: "quality",
           codec: {
-            // Default codecs added by constructor
-            video: "avc", // Adjusted expectation
-            audio: "aac", // Adjusted expectation
+            video: "avc",
+            audio: "aac",
           },
-          // Ensure other defaults from Mp4Encoder constructor are considered if they exist
-          // e.g. video.hardwareAcceleration, audio.bitDepth might be set by constructor
-        },
+          dropFrames: false,
+          maxQueueDepth: Infinity,
+        }),
         totalFrames: undefined,
       });
       mockWorkerInstance.onmessage({
@@ -693,6 +692,37 @@ describe("Mp4Encoder", () => {
         },
         [expect.any(globalThis.VideoFrame)],
       );
+    });
+
+    it("should drop frames when queue is full and dropFrames enabled", async () => {
+      const cfg: EncoderConfig = {
+        ...baseVideoConfig,
+        dropFrames: true,
+        maxQueueDepth: 0,
+      };
+      const onProgress = vi.fn();
+      const encoder = new Mp4Encoder(cfg);
+      const initPromise = encoder.initialize({ onProgress });
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+
+      await encoder.addCanvasFrame(canvas);
+
+      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalled();
+      expect(onProgress).toHaveBeenCalledWith(1, undefined);
+
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "progress", processedFrames: 0 } });
+      }
+
+      expect(onProgress).toHaveBeenLastCalledWith(1, undefined);
     });
   });
 

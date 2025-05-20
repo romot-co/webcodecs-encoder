@@ -284,6 +284,8 @@ const result = await recorder.stopRecording();
   `EncoderConfig`:
     - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
+    - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
+    - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
     - `width: number`: Video width.
     - `height: number`: Video height.
     - `frameRate: number`: Video frame rate.
