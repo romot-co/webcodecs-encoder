@@ -20,6 +20,11 @@ export interface EncoderConfig {
     audio?: string;
   };
   latencyMode?: "quality" | "realtime"; // Default: 'quality'
+  /** Preference for hardware or software encoding. */
+  hardwareAcceleration?:
+    | "prefer-hardware"
+    | "prefer-software"
+    | "no-preference";
   /** Drop new video frames when the number of queued frames exceeds `maxQueueDepth`. */
   dropFrames?: boolean;
   /** Maximum number of queued video frames before dropping. Defaults to `Infinity`. */
