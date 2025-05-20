@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { Mp4Encoder } from "../src/index"; // Assuming index.ts exports Mp4Encoder
 import { EncoderErrorType, Mp4EncoderError } from "../src/types"; // Import EncoderErrorType and Mp4EncoderError for error checking
 import { EncoderConfig } from "../src/types"; // Import EncoderConfig for type checking
+import { logger } from "../src/logger";
 
 // Mock the Worker class
 vi.mock("../src/worker", () => {
@@ -1117,7 +1118,7 @@ describe("Mp4Encoder", () => {
 
       mockWorkerInstance.postMessage.mockClear();
       const consoleWarnSpy = vi
-        .spyOn(console, "warn")
+        .spyOn(logger, "warn")
         .mockImplementation(() => {});
 
       try {
@@ -1144,7 +1145,7 @@ describe("Mp4Encoder", () => {
       mockWorkerInstance.postMessage.mockClear();
 
       const consoleWarnSpy = vi
-        .spyOn(console, "warn")
+        .spyOn(logger, "warn")
         .mockImplementation(() => {});
 
       const finalizePromise1 = encoder.finalize(); // 1回目 (まだ完了しない)
@@ -1442,7 +1443,7 @@ describe("Mp4Encoder", () => {
       await initPromise; // Now await the promise
       expect(mockWorkerInstance.onmessage).toBeTypeOf("function"); // Ensure onmessage is set
 
-      const warnSpy = vi.spyOn(console, "warn");
+      const warnSpy = vi.spyOn(logger, "warn");
       warnSpy.mockImplementation(() => {}); // Keep the mock simple
 
       await new Promise((resolve) => process.nextTick(resolve)); // Use process.nextTick
