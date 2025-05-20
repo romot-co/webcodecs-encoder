@@ -12,7 +12,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Uses Web Workers to offload encoding tasks from the main thread.
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
-- Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
+- Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported. H.264 profiles/levels automatically downgrade and then fall back to VP9 when necessary.
 - Queue management with `dropFrames` and `maxQueueDepth` to control encoder backlog.
 - **WebM Container Support**: WebM output is **not yet implemented.** Setting `container: 'webm'` will throw an error during initialization.
 

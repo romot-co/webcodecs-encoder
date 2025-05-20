@@ -177,8 +177,79 @@ async function initializeEncoders(
   let videoSupport = await VideoEncoderCtor.isConfigSupported(
     baseVideoConfig as any,
   );
+
   if (videoSupport?.supported) {
     finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
+  } else if (videoCodec === "avc") {
+    const avcProfiles = ["64", "4d", "42"]; // High, Main, Baseline
+    const avcLevels = [52, 51, 50, 40, 32, 31];
+    const match = /^avc1\.([0-9a-fA-F]{2})00([0-9a-fA-F]{2})$/.exec(
+      baseVideoConfig.codec,
+    );
+    const startProfile = match ? match[1].toLowerCase() : "64";
+    const startLevel = match ? parseInt(match[2], 16) : 31;
+    let profileIndex = avcProfiles.indexOf(startProfile);
+    if (profileIndex === -1) profileIndex = 0;
+    let levelIndex = avcLevels.indexOf(startLevel);
+    if (levelIndex === -1) levelIndex = 0;
+
+    let supportedConfig: VideoEncoderConfig | null = null;
+    for (
+      let p = profileIndex;
+      p < avcProfiles.length && !supportedConfig;
+      p++
+    ) {
+      for (let l = levelIndex; l < avcLevels.length && !supportedConfig; l++) {
+        const candidateCodec = `avc1.${avcProfiles[p]}00${avcLevels[l]
+          .toString(16)
+          .padStart(2, "0")}`;
+        if (candidateCodec === baseVideoConfig.codec) continue;
+        console.warn(
+          `Worker: H.264 codec ${baseVideoConfig.codec} not supported. Trying ${candidateCodec}.`,
+        );
+        const candidateConfig = {
+          ...baseVideoConfig,
+          codec: candidateCodec,
+          avc: { format: "avcc" },
+        };
+        videoSupport = await VideoEncoderCtor.isConfigSupported(
+          candidateConfig as any,
+        );
+        if (videoSupport?.supported) {
+          supportedConfig = videoSupport.config as VideoEncoderConfig;
+        }
+      }
+      levelIndex = 0;
+    }
+
+    if (supportedConfig) {
+      finalVideoEncoderConfig = supportedConfig;
+    } else {
+      console.warn(
+        "Worker: H.264 not supported after trying lower profiles/levels. Falling back to VP9.",
+      );
+      const vp9Config = {
+        ...baseVideoConfig,
+        codec: "vp09.00.50.08",
+        scalabilityMode: "L1T2",
+      };
+      delete (vp9Config as any).avc;
+      videoCodec = "vp9";
+      videoSupport = await VideoEncoderCtor.isConfigSupported(vp9Config as any);
+      if (videoSupport?.supported) {
+        finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
+      } else {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: "Worker: VP9 video codec is not supported after fallback.",
+            type: EncoderErrorType.NotSupported,
+          },
+        });
+        cleanup();
+        return;
+      }
+    }
   } else if (
     videoCodec === "vp9" ||
     videoCodec === "av1" ||
@@ -206,16 +277,30 @@ async function initializeEncoders(
     if (videoSupport?.supported) {
       finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
     } else {
-      postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message:
-            "Worker: AVC (H.264) video codec is not supported after fallback.",
-          type: EncoderErrorType.NotSupported,
-        },
-      });
-      cleanup();
-      return;
+      console.warn(
+        "Worker: AVC (H.264) video codec is not supported after fallback. Trying VP9.",
+      );
+      const vp9Config = {
+        ...baseVideoConfig,
+        codec: "vp09.00.50.08",
+        scalabilityMode: "L1T2",
+      };
+      delete (vp9Config as any).avc;
+      videoCodec = "vp9";
+      videoSupport = await VideoEncoderCtor.isConfigSupported(vp9Config as any);
+      if (videoSupport?.supported) {
+        finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
+      } else {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: "Worker: VP9 video codec is not supported after fallback.",
+            type: EncoderErrorType.NotSupported,
+          },
+        });
+        cleanup();
+        return;
+      }
     }
   } else {
     postMessageToMainThread({

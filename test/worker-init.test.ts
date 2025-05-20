@@ -258,7 +258,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Video codec avc config not supported.",
+            message: "Worker: VP9 video codec is not supported after fallback.",
             type: "not-supported",
           },
         },
@@ -480,13 +480,68 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message:
-              "Worker: AVC (H.264) video codec is not supported after fallback.",
+            message: "Worker: VP9 video codec is not supported after fallback.",
             type: "not-supported",
           },
         },
         undefined,
       );
+    });
+
+    it("falls back to lower avc profile when default is unsupported", async () => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const hdConfig = { ...config, width: 1920, height: 1080 };
+
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
+        if (_cfg.codec === "avc1.640028")
+          return { supported: false, config: null };
+        if (_cfg.codec === "avc1.4d0028")
+          return { supported: true, config: { ..._cfg, codec: "avc1.4d0028" } };
+        return { supported: false, config: null };
+      });
+      globalThis.VideoEncoder = mockSelf.VideoEncoder;
+
+      const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "Worker: H.264 codec avc1.640028 not supported. Trying avc1.4d0028.",
+      );
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "initialized", actualVideoCodec: "avc1.4d0028" }),
+        undefined,
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("falls back to vp9 when all avc profiles are unsupported", async () => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
+        if (_cfg.codec.startsWith("avc1")) return { supported: false, config: null };
+        if (_cfg.codec.startsWith("vp09"))
+          return { supported: true, config: { ..._cfg, codec: "vp09.00.50.08.test" } };
+        return { supported: false, config: null };
+      });
+      globalThis.VideoEncoder = mockSelf.VideoEncoder;
+
+      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("H.264 not supported after trying lower profiles/levels"),
+      );
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "initialized", actualVideoCodec: "vp09.00.50.08.test" }),
+        undefined,
+      );
+      consoleWarnSpy.mockRestore();
     });
 
     it("should fallback to aac if preferred audio codec (opus) is not supported but aac is", async () => {
