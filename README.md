@@ -13,6 +13,8 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) if the preferred codec is not supported.
+- Configurable hardware acceleration preference via `videoEncoderConfig.hardwareAcceleration` and `audioEncoderConfig.hardwareAcceleration`.
+- Queue management with `dropFrames` and `maxQueueDepth` to control encoder backlog.
  - **WebM Container Support**: WebM output is not yet implemented. Setting `container: 'webm'` will throw an error during initialization.
 
 ## Installation
@@ -294,10 +296,13 @@ const result = await recorder.stopRecording();
     - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
     - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
-    - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
+    - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings passed directly to the encoders.
+      Video strings include profile and level, e.g. "avc1.640028" (High Profile Level 4.0) or "vp09.00.10.08".
+      Audio examples include "mp4a.40.2" (AAC-LC) or "opus".
+      If omitted for H.264, a profile and level is derived from the resolution and frame rate.
     - `keyFrameInterval?: number`: (Optional) Force a key frame every N video frames. When set, the worker sends `{ keyFrame: true }` to `VideoEncoder.encode()` at that interval.
-    - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`.
-    - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`.
+    - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`. Include `hardwareAcceleration` to prefer hardware or software encoding.
+    - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`. This also accepts `hardwareAcceleration`.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
@@ -312,6 +317,7 @@ const result = await recorder.stopRecording();
 
 - **`encoder.addVideoFrame(frame: VideoFrame): Promise<void>`**
   Adds a `VideoFrame` object for encoding. Ensure the source is converted to a `VideoFrame` before calling this method.
+  Remember to call `frame.close()` after encoding to free resources.
 - **`encoder.addCanvasFrame(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void>`**
   Convenience wrapper that creates a `VideoFrame` from a canvas and forwards it to `addVideoFrame`.
 
@@ -326,6 +332,7 @@ const result = await recorder.stopRecording();
 
 - **`encoder.addAudioData(audioData: AudioData): Promise<void>`**
   Adds an `AudioData` object for encoding. Suitable for streaming audio samples.
+  Remember to call `audioData.close()` after encoding to free resources.
   Like `addAudioBuffer`, the `AudioData` must have the same number of channels
   as configured for the encoder.
 
@@ -354,6 +361,23 @@ const result = await recorder.stopRecording();
 - **`recorder.stopRecording(): Promise<Uint8Array>`**
   Stops recording and finalizes the encoder. Returns the encoded file or an empty array in real-time mode.
 
+## Checking Configuration Support
+
+Before initializing the encoder you can verify support for your preferred codecs using `VideoEncoder.isConfigSupported()` and `AudioEncoder.isConfigSupported()`.
+```ts
+const videoCheck = await VideoEncoder.isConfigSupported({
+  codec: 'avc1.640028',
+  width: 1920,
+  height: 1080,
+  bitrate: 5_000_000,
+  framerate: 30,
+});
+if (!videoCheck.supported) {
+  // Fallback to a different profile such as 'avc1.42E01E'
+}
+```
+The same approach works for audio with codec strings like `mp4a.40.2` or `opus`.
+
 ## Codec Compatibility
 
 This library supports encoding to MP4 container format with the following codecs:
@@ -369,6 +393,7 @@ This library supports encoding to MP4 container format with the following codecs
 -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
 -   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 -   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
+-   See [MDN](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use](https://caniuse.com/webcodecs) for up-to-date browser compatibility information.
 
 ## Development
 
