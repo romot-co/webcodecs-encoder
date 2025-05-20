@@ -4,7 +4,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 
 ## Features
 
-- Encodes `VideoFrame` to H.264/AVC or VP9 video. (Note: `CanvasImageSource` must be converted to `VideoFrame` before passing to `addVideoFrame`)
+- Encodes `VideoFrame` to H.264/AVC or VP9 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
 - Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into a standard MP4 file.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
@@ -68,10 +68,7 @@ async function encodeVideoToFile() {
       ctx.font = '50px Arial';
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
       
-      // Convert canvas to VideoFrame
-      const videoFrame = new VideoFrame(canvas, { timestamp: frameCount * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
-      await encoder.addVideoFrame(videoFrame); // Pass VideoFrame
-      // videoFrame will be closed automatically by the encoder after it's processed.
+      await encoder.addCanvasFrame(canvas);
       frameCount++;
     }
 
@@ -217,11 +214,7 @@ async function encodeVideoRealtime() {
         ctx.font = '40px Arial';
         ctx.fillText(`Live Frame ${i + 1}`, 50, 80);
         
-        // Convert canvas to VideoFrame for real-time encoding
-        // Note: In a real application, ensure timestamp is monotonically increasing and accurate.
-        const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
-        await encoder.addVideoFrame(videoFrame);
-        // videoFrame will be closed automatically by the encoder.
+        await encoder.addCanvasFrame(canvas);
         await new Promise(resolve => setTimeout(resolve, 1000 / config.frameRate)); // Simulate real-time frame generation
       }
 
@@ -290,6 +283,8 @@ async function encodeVideoRealtime() {
 
 - **`encoder.addVideoFrame(frame: VideoFrame): Promise<void>`**
   Adds a `VideoFrame` object for encoding. Ensure the source is converted to a `VideoFrame` before calling this method.
+- **`encoder.addCanvasFrame(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void>`**
+  Convenience wrapper that creates a `VideoFrame` from a canvas and forwards it to `addVideoFrame`.
 
 - **`encoder.addAudioBuffer(audioBuffer: AudioBuffer): Promise<void>`**
   Adds an entire `AudioBuffer` for encoding. Useful for adding complete audio tracks.

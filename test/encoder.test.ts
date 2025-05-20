@@ -551,6 +551,65 @@ describe("Mp4Encoder", () => {
     });
   });
 
+  describe("addCanvasFrame", () => {
+    const baseVideoConfig: EncoderConfig = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should create a VideoFrame from an HTMLCanvasElement and post it", async () => {
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+
+      const p = encoder.addCanvasFrame(canvas);
+      await expect(p).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addVideoFrame",
+          frame: expect.any(globalThis.VideoFrame),
+          timestamp: 0,
+        },
+        [expect.any(globalThis.VideoFrame)],
+      );
+    });
+
+    it("should accept OffscreenCanvas", async () => {
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const offscreenCanvas = { width: 320, height: 240 } as OffscreenCanvas;
+      const p = encoder.addCanvasFrame(offscreenCanvas as any);
+      await expect(p).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addVideoFrame",
+          frame: expect.any(globalThis.VideoFrame),
+          timestamp: 0,
+        },
+        [expect.any(globalThis.VideoFrame)],
+      );
+    });
+  });
+
   describe("addAudioBuffer", () => {
     const baseAudioConfig: EncoderConfig = {
       width: 320,

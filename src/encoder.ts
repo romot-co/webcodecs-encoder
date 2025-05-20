@@ -304,6 +304,21 @@ export class Mp4Encoder {
     }
   }
 
+  public async addCanvasFrame(
+    canvas: HTMLCanvasElement | OffscreenCanvas,
+  ): Promise<void> {
+    const timestamp = this.nextVideoTimestamp;
+    const frame = new VideoFrame(canvas, {
+      timestamp,
+      duration: 1_000_000 / this.config.frameRate,
+    });
+    try {
+      await this.addVideoFrame(frame);
+    } finally {
+      frame.close();
+    }
+  }
+
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
     if (!this.worker || this.isCancelled) {
       const err = new Mp4EncoderError(
