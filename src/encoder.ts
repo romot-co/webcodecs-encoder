@@ -426,6 +426,47 @@ export class Mp4Encoder {
       return Promise.resolve();
     }
 
+    try {
+      const numChannels = Math.min(
+        audioData.numberOfChannels,
+        this.config.channels,
+      );
+      const planarData: Float32Array[] = [];
+      const transferableBuffers: ArrayBuffer[] = [];
+
+      for (let i = 0; i < numChannels; i++) {
+        const plane = new Float32Array(audioData.numberOfFrames);
+        await audioData.copyTo(plane, { planeIndex: i });
+        planarData.push(plane);
+        transferableBuffers.push(plane.buffer);
+      }
+
+      const timestamp = audioData.timestamp ?? this.nextAudioTimestamp;
+      if (audioData.timestamp == null) {
+        this.nextAudioTimestamp +=
+          (audioData.numberOfFrames / this.config.sampleRate) * 1_000_000;
+      }
+
+      const message: WorkerMessage = {
+        type: "addAudioData",
+        audioData: planarData,
+        timestamp,
+        format: "f32-planar",
+        sampleRate: audioData.sampleRate,
+        numberOfFrames: audioData.numberOfFrames,
+        numberOfChannels: numChannels,
+      };
+
+      this.worker.postMessage(message, transferableBuffers);
+    } catch (e: any) {
+      const err = new Mp4EncoderError(
+        EncoderErrorType.AudioEncodingError,
+        `Failed to add audio data: ${e.message}`,
+        e,
+      );
+      this.handleError(err);
+      throw err;
+
     const timestamp = this.nextAudioTimestamp;
     this.nextAudioTimestamp +=
       (audio.numberOfFrames / audio.sampleRate) * 1_000_000;
