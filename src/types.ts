@@ -11,6 +11,14 @@ export interface EncoderConfig {
     video?: "avc" | "hevc" | "vp9" | "av1"; // Default: 'avc' (H.264)
     audio?: "aac" | "opus"; // Default: 'aac'
   };
+  /**
+   * Optional codec string overrides passed directly to the encoders.
+   * For example: `{ video: 'avc1.640028', audio: 'mp4a.40.2' }`.
+   */
+  codecString?: {
+    video?: string;
+    audio?: string;
+  };
   latencyMode?: "quality" | "realtime"; // Default: 'quality'
   /** Total frames for progress calculation if known in advance. */
   totalFrames?: number;

@@ -288,6 +288,7 @@ const result = await recorder.stopRecording();
     - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
     - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
+    - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.

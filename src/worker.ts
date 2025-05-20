@@ -21,6 +21,29 @@ let processedFrames: number = 0;
 let isCancelled: boolean = false;
 let audioWorkletPort: MessagePort | null = null;
 
+function defaultAvcCodecString(
+  width: number,
+  height: number,
+  frameRate: number,
+): string {
+  const mbPerSec = Math.ceil(width / 16) * Math.ceil(height / 16) * frameRate;
+  let level: number;
+  if (mbPerSec <= 108000)
+    level = 31; // up to 1080p30
+  else if (mbPerSec <= 216000)
+    level = 32; // up to 1080p60
+  else if (mbPerSec <= 245760)
+    level = 40; // 1080p60
+  else if (mbPerSec <= 589824)
+    level = 50; // 4k30
+  else if (mbPerSec <= 983040)
+    level = 51; // 4k60
+  else level = 52;
+  const profileHex = width >= 1280 || height >= 720 ? "64" : "42";
+  const levelHex = level.toString(16).padStart(2, "0");
+  return `avc1.${profileHex}00${levelHex}`;
+}
+
 // --- 追加: グローバル API を安全に取るヘルパ ---
 const getVideoEncoder = () =>
   (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
@@ -84,20 +107,35 @@ async function initializeEncoders(
   let videoCodec = currentConfig.codec?.video ?? "avc";
   let finalVideoEncoderConfig: VideoEncoderConfig | null = null;
 
+  const resolvedVideoCodecString =
+    currentConfig.codecString?.video ??
+    (videoCodec === "avc"
+      ? defaultAvcCodecString(
+          currentConfig.width,
+          currentConfig.height,
+          currentConfig.frameRate,
+        )
+      : videoCodec === "vp9"
+        ? "vp09.00.50.08"
+        : videoCodec === "hevc"
+          ? "hvc1"
+          : videoCodec === "av1"
+            ? "av01"
+            : "");
+
   const baseVideoConfig = {
     width: currentConfig.width,
     height: currentConfig.height,
     framerate: currentConfig.frameRate,
     bitrate: currentConfig.videoBitrate,
+    codec: resolvedVideoCodecString,
     ...(currentConfig.latencyMode && {
       latencyMode: currentConfig.latencyMode,
     }),
     ...(videoCodec === "vp9" && {
-      codec: "vp09.00.50.08",
       scalabilityMode: "L1T2",
     }),
     ...(videoCodec === "avc" && {
-      codec: "avc1.42001f",
       avc: { format: "avcc" },
     }),
   };
@@ -131,7 +169,13 @@ async function initializeEncoders(
     videoCodec = "avc";
     const fallbackVideoConfig = {
       ...baseVideoConfig,
-      codec: "avc1.42001f",
+      codec:
+        currentConfig.codecString?.video ??
+        defaultAvcCodecString(
+          currentConfig.width,
+          currentConfig.height,
+          currentConfig.frameRate,
+        ),
       avc: { format: "avcc" },
     };
     delete (fallbackVideoConfig as any).scalabilityMode;
@@ -212,15 +256,18 @@ async function initializeEncoders(
   let audioCodec = currentConfig.codec?.audio ?? "aac";
   let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
 
+  const resolvedAudioCodecString =
+    currentConfig.codecString?.audio ??
+    (audioCodec === "opus" ? "opus" : "mp4a.40.2");
+
   const baseAudioConfig = {
     sampleRate: currentConfig.sampleRate,
     numberOfChannels: currentConfig.channels,
     bitrate: currentConfig.audioBitrate,
+    codec: resolvedAudioCodecString,
     ...(currentConfig.latencyMode && {
       latencyMode: currentConfig.latencyMode,
     }),
-    ...(audioCodec === "opus" && { codec: "opus" }),
-    ...(audioCodec === "aac" && { codec: "mp4a.40.2" }),
   };
 
   const AudioEncoderCtor: any = getAudioEncoder();
@@ -246,7 +293,10 @@ async function initializeEncoders(
       `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
     );
     audioCodec = "aac";
-    const fallbackAudioConfig = { ...baseAudioConfig, codec: "mp4a.40.2" };
+    const fallbackAudioConfig = {
+      ...baseAudioConfig,
+      codec: currentConfig.codecString?.audio ?? "mp4a.40.2",
+    };
     audioSupport = await AudioEncoderCtor.isConfigSupported(
       fallbackAudioConfig as any,
     );
