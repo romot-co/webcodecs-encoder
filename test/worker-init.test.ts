@@ -285,7 +285,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Audio codec aac config not supported.",
+            message: "Worker: Opus audio codec is not supported after fallback.",
             type: "not-supported",
           },
         },

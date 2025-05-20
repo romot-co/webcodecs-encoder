@@ -316,6 +316,20 @@ async function initializeEncoders(
       baseAudioConfig as any,
     );
     if (audioSupport?.supported) {
+      if (
+        typeof audioSupport.config?.numberOfChannels === "number" &&
+        audioSupport.config.numberOfChannels !== currentConfig.channels
+      ) {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder returned numberOfChannels ${audioSupport.config.numberOfChannels} that does not match configured channels (${currentConfig.channels}).`,
+            type: EncoderErrorType.ConfigurationError,
+          },
+        });
+        cleanup();
+        return;
+      }
       finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
     } else if (audioCodec === "opus") {
       console.warn(
@@ -330,12 +344,66 @@ async function initializeEncoders(
         fallbackAudioConfig as any,
       );
       if (audioSupport?.supported) {
+        if (
+          typeof audioSupport.config?.numberOfChannels === "number" &&
+          audioSupport.config.numberOfChannels !== currentConfig.channels
+        ) {
+          postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `AudioEncoder returned numberOfChannels ${audioSupport.config.numberOfChannels} that does not match configured channels (${currentConfig.channels}).`,
+              type: EncoderErrorType.ConfigurationError,
+            },
+          });
+          cleanup();
+          return;
+        }
         finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
       } else {
         postMessageToMainThread({
           type: "error",
           errorDetail: {
             message: "Worker: AAC audio codec is not supported after fallback.",
+            type: EncoderErrorType.NotSupported,
+          },
+        });
+        cleanup();
+        return;
+      }
+    } else if (audioCodec === "aac") {
+      console.warn(
+        `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to Opus.`,
+      );
+      audioCodec = "opus";
+      const fallbackAudioConfig = {
+        ...baseAudioConfig,
+        codec: currentConfig.codecString?.audio ?? "opus",
+      };
+      audioSupport = await AudioEncoderCtor.isConfigSupported(
+        fallbackAudioConfig as any,
+      );
+      if (audioSupport?.supported) {
+        if (
+          typeof audioSupport.config?.numberOfChannels === "number" &&
+          audioSupport.config.numberOfChannels !== currentConfig.channels
+        ) {
+          postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `AudioEncoder returned numberOfChannels ${audioSupport.config.numberOfChannels} that does not match configured channels (${currentConfig.channels}).`,
+              type: EncoderErrorType.ConfigurationError,
+            },
+          });
+          cleanup();
+          return;
+        }
+        finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
+      } else {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message:
+              "Worker: Opus audio codec is not supported after fallback.",
             type: EncoderErrorType.NotSupported,
           },
         });

@@ -470,9 +470,10 @@ This library supports encoding to MP4 container format with the following codecs
   - `mp4a` (AAC): Widely supported, good quality.
   - `opus` (Opus): Modern, efficient, and versatile audio codec. Excellent for both speech and music, and good for real-time applications.
 
-**Important Notes:**
+-**Important Notes:**
 -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
--   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
+-   If AAC encoding is not supported but Opus is available, the worker automatically falls back to Opus and logs a warning.
+   -   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 -   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
 -   See [MDN](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use](https://caniuse.com/webcodecs) for up-to-date browser compatibility information.
 

@@ -40,8 +40,64 @@ beforeEach(async () => {
   };
 });
 
+
 afterEach(() => {
   cleanupGlobals();
+});
+
+describe("audio initialization", () => {
+  it("falls back to opus if aac is unsupported", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // @ts-ignore
+    mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (cfg) => {
+      if (cfg.codec === "mp4a.40.2") return { supported: false, config: null };
+      if (cfg.codec === "opus")
+        return {
+          supported: true,
+          config: { ...cfg, codec: "opus.test", numberOfChannels: cfg.numberOfChannels },
+        };
+      return { supported: false, config: null };
+    });
+    globalThis.AudioEncoder = mockSelf.AudioEncoder;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "Worker: Audio codec aac not supported or config invalid. Falling back to Opus.",
+    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: "initialized", actualVideoCodec: "avc1.42001f", actualAudioCodec: "opus.test" },
+      undefined,
+    );
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("posts configuration error when channels differ", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+
+    // @ts-ignore
+    mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
+      Promise.resolve({ supported: true, config: { codec: "mp4a.40.2", numberOfChannels: 1 } }),
+    );
+    globalThis.AudioEncoder = mockSelf.AudioEncoder;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "error",
+        errorDetail: {
+          message: `AudioEncoder returned numberOfChannels 1 that does not match configured channels (${config.channels}).`,
+          type: "configuration-error",
+        },
+      },
+      undefined,
+    );
+  });
 });
 
 describe("handleAddAudioData", () => {
