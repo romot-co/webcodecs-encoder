@@ -190,6 +190,33 @@ describe("worker", () => {
     expect(transferredObject).toBe(expectedOutputArray.buffer);
   });
 
+  it("connects audio port and handles messages", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+    const port: any = { postMessage: vi.fn(), onmessage: null, close: vi.fn() };
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+    const connectMsg = { type: "connectAudioPort", port } as any;
+    await global.self.onmessage({ data: connectMsg } as MessageEvent);
+    expect(port.onmessage).toBeTypeOf("function");
+    mockSelf.AudioEncoder.mock.results[0].value.encode.mockClear();
+
+    const addAudioMsg: AddAudioDataMessage = {
+      type: "addAudioData",
+      audioData: [new Float32Array(1), new Float32Array(1)],
+      timestamp: 0,
+      format: "f32-planar",
+      sampleRate: config.sampleRate,
+      numberOfFrames: 1,
+      numberOfChannels: 2,
+    };
+    if (port.onmessage)
+      await port.onmessage({ data: addAudioMsg } as MessageEvent);
+    expect(
+      mockSelf.AudioEncoder.mock.results[0].value.encode,
+    ).toHaveBeenCalled();
+  });
+
   it("handles cancel message", async () => {
     if (!global.self.onmessage) {
       throw new Error("Worker onmessage handler not set up by script import");
@@ -954,6 +981,7 @@ describe("worker", () => {
     let initMessage: InitializeWorkerMessage;
     let audioEncoderErrorCallback: ((error: any) => void) | null = null;
     let mockAudioDataInstance: any;
+    let mockAudioEncoderInstance: any;
 
     beforeEach(async () => {
       audioEncoderErrorCallback = null;
@@ -968,15 +996,17 @@ describe("worker", () => {
       };
 
       // @ts-ignore
+      mockAudioEncoderInstance = {
+        configure: vi.fn(),
+        encode: vi.fn(),
+        flush: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+        state: "configured",
+      };
+      // @ts-ignore
       mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => {
         audioEncoderErrorCallback = options.error;
-        return {
-          configure: vi.fn(),
-          encode: vi.fn(),
-          flush: vi.fn().mockResolvedValue(undefined),
-          close: vi.fn(),
-          state: "configured",
-        };
+        return mockAudioEncoderInstance;
       });
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
@@ -1050,6 +1080,26 @@ describe("worker", () => {
       };
       await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("should encode provided AudioData when audio field is set", async () => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+
+      const addAudioMessage: AddAudioDataMessage = {
+        type: "addAudioData",
+        audio: mockAudioDataInstance,
+        timestamp: 0,
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 1024,
+        numberOfChannels: 1,
+      };
+      await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
+      expect(mockAudioEncoderInstance.encode).toHaveBeenCalledWith(
+        mockAudioDataInstance,
+      );
+      expect((globalThis as any).AudioData).not.toHaveBeenCalled();
     });
 
     it("should post error if AudioData API is not available", async () => {

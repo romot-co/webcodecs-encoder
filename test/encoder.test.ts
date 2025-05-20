@@ -457,6 +457,53 @@ describe("Mp4Encoder", () => {
       expect(onProgress).toHaveBeenNthCalledWith(1, 10, 100);
       expect(onProgress).toHaveBeenNthCalledWith(2, 20, undefined);
     });
+
+    it("allows injecting a custom Worker instance", async () => {
+      const customWorker = {
+        postMessage: vi.fn(),
+        terminate: vi.fn(),
+        onmessage: null,
+        onerror: null,
+      } as any;
+      const encoder = new Mp4Encoder(baseConfig);
+      const p = encoder.initialize({ worker: customWorker as any });
+      expect(globalThis.Worker).not.toHaveBeenCalled();
+      if (customWorker.onmessage) {
+        customWorker.onmessage({ data: { type: "initialized" } });
+      }
+      await p;
+      expect(customWorker.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "initialize" }),
+      );
+    });
+
+    it("uses a custom worker script URL if provided", async () => {
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({ workerScriptUrl: "custom.js" });
+      expect(globalThis.Worker).toHaveBeenCalledWith("custom.js", {
+        type: "module",
+      });
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+    });
+
+    it("sets up an AudioWorklet when useAudioWorklet is true", async () => {
+      const AudioContextMock = vi.fn(() => ({
+        audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+        close: vi.fn(),
+      }));
+      globalThis.AudioContext = AudioContextMock as any;
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({ useAudioWorklet: true });
+      expect(AudioContextMock).toHaveBeenCalled();
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      delete (globalThis as any).AudioContext;
+    });
   });
 
   describe("addVideoFrame", () => {
@@ -547,6 +594,65 @@ describe("Mp4Encoder", () => {
           message: `Failed to post video frame: ${postError.message}`,
           cause: postError,
         }),
+      );
+    });
+  });
+
+  describe("addCanvasFrame", () => {
+    const baseVideoConfig: EncoderConfig = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should create a VideoFrame from an HTMLCanvasElement and post it", async () => {
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+
+      const p = encoder.addCanvasFrame(canvas);
+      await expect(p).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addVideoFrame",
+          frame: expect.any(globalThis.VideoFrame),
+          timestamp: 0,
+        },
+        [expect.any(globalThis.VideoFrame)],
+      );
+    });
+
+    it("should accept OffscreenCanvas", async () => {
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const offscreenCanvas = { width: 320, height: 240 } as OffscreenCanvas;
+      const p = encoder.addCanvasFrame(offscreenCanvas as any);
+      await expect(p).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addVideoFrame",
+          frame: expect.any(globalThis.VideoFrame),
+          timestamp: 0,
+        },
+        [expect.any(globalThis.VideoFrame)],
       );
     });
   });
@@ -649,6 +755,77 @@ describe("Mp4Encoder", () => {
           type: EncoderErrorType.AudioEncodingError,
           message: "Failed to add audio buffer: bad",
         }),
+      );
+    });
+  });
+
+  describe("addAudioData", () => {
+    const baseAudioConfig: EncoderConfig = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should resolve when AudioData is added", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const audio = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 10,
+        numberOfChannels: 1,
+        timestamp: 0,
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      await expect(encoder.addAudioData(audio)).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addAudioData",
+          audio,
+          timestamp: 0,
+          format: "f32",
+          sampleRate: 48000,
+          numberOfFrames: 10,
+          numberOfChannels: 1,
+        },
+        [audio],
+      );
+    });
+
+    it("should resolve immediately when audio disabled", async () => {
+      const cfg: EncoderConfig = { ...baseAudioConfig, audioBitrate: 0 };
+      const encoder = new Mp4Encoder(cfg);
+
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      await expect(
+        encoder.addAudioData({} as AudioData),
+      ).resolves.toBeUndefined();
+      const calls = mockWorkerInstance.postMessage.mock.calls.filter(
+        (c: any) => c[0].type === "addAudioData",
+      );
+      expect(calls.length).toBe(0);
+    });
+
+    it("should reject if encoder not initialized", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      await expect(encoder.addAudioData({} as AudioData)).rejects.toThrow(
+        "Encoder not initialized or already finalized",
       );
     });
   });

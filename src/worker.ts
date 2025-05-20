@@ -19,6 +19,7 @@ let currentConfig: EncoderConfig | null = null;
 let totalFramesToProcess: number | undefined;
 let processedFrames: number = 0;
 let isCancelled: boolean = false;
+let audioWorkletPort: MessagePort | null = null;
 
 // --- 追加: グローバル API を安全に取るヘルパ ---
 const getVideoEncoder = () =>
@@ -355,14 +356,26 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
 }
 
 async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
-  if (
-    isCancelled ||
-    !audioEncoder ||
-    !currentConfig ||
-    !data.audioData ||
-    data.audioData.length === 0
-  )
+  if (isCancelled || !audioEncoder || !currentConfig) return;
+
+  if (data.audio) {
+    try {
+      audioEncoder.encode(data.audio);
+    } catch (error: any) {
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: `Error encoding audio data: ${error.message}`,
+          type: EncoderErrorType.AudioEncodingError,
+          stack: error.stack,
+        },
+      } as MainThreadMessage);
+      cleanup();
+    }
     return;
+  }
+
+  if (!data.audioData || data.audioData.length === 0) return;
 
   if (data.audioData.length !== currentConfig.channels) {
     postMessageToMainThread({
@@ -515,6 +528,11 @@ function cleanup(resetCancelled: boolean = true): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
+  if (audioWorkletPort) {
+    audioWorkletPort.onmessage = null;
+    audioWorkletPort.close();
+    audioWorkletPort = null;
+  }
   if (resetCancelled) {
     isCancelled = false;
   }
@@ -538,6 +556,15 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         isCancelled = false;
         cleanup();
         await initializeEncoders(event.data);
+        break;
+      case "connectAudioPort":
+        audioWorkletPort = event.data.port;
+        audioWorkletPort.onmessage = async (
+          e: MessageEvent<AddAudioDataMessage>,
+        ) => {
+          if (isCancelled) return;
+          await handleAddAudioData(e.data);
+        };
         break;
       case "addVideoFrame":
         if (isCancelled) break;

@@ -4,10 +4,11 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 
 ## Features
 
-- Encodes `VideoFrame` to H.264/AVC or VP9 video. (Note: `CanvasImageSource` must be converted to `VideoFrame` before passing to `addVideoFrame`)
+- Encodes `VideoFrame` to H.264/AVC or VP9 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
 - Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into a standard MP4 file.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
+- Optional AudioWorklet path for piping audio directly to the worker to reduce main-thread latency.
 - Uses Web Workers to offload encoding tasks from the main thread.
 - Provides progress callbacks and cancellation support.
 - Built with TypeScript, providing type definitions.
@@ -68,10 +69,7 @@ async function encodeVideoToFile() {
       ctx.font = '50px Arial';
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
       
-      // Convert canvas to VideoFrame
-      const videoFrame = new VideoFrame(canvas, { timestamp: frameCount * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
-      await encoder.addVideoFrame(videoFrame); // Pass VideoFrame
-      // videoFrame will be closed automatically by the encoder after it's processed.
+      await encoder.addCanvasFrame(canvas);
       frameCount++;
     }
 
@@ -217,15 +215,12 @@ async function encodeVideoRealtime() {
         ctx.font = '40px Arial';
         ctx.fillText(`Live Frame ${i + 1}`, 50, 80);
         
-        // Convert canvas to VideoFrame for real-time encoding
-        // Note: In a real application, ensure timestamp is monotonically increasing and accurate.
-        const videoFrame = new VideoFrame(canvas, { timestamp: i * (1000000 / config.frameRate), duration: (1000000 / config.frameRate) });
-        await encoder.addVideoFrame(videoFrame);
-        // videoFrame will be closed automatically by the encoder.
+        await encoder.addCanvasFrame(canvas);
         await new Promise(resolve => setTimeout(resolve, 1000 / config.frameRate)); // Simulate real-time frame generation
       }
 
       // For real-time audio, you would continuously call addAudioBuffer
+      // or addAudioData when you already have AudioData chunks
       // For this example, we'll add a silent track matching video duration after frames.
       // In a true real-time scenario, audio and video would be interleaved.
       const audioContext = new AudioContext({ sampleRate: config.sampleRate });
@@ -301,9 +296,14 @@ const result = await recorder.stopRecording();
     - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
     - `onError?: (error: Mp4EncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `Mp4EncoderError` object.
     - `onData?: (chunk: Uint8Array, isHeader?: boolean) => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial MP4 header chunk.
+    - `worker?: Worker`: Provide a pre-created `Worker` instance instead of letting `Mp4Encoder` create one.
+    - `workerScriptUrl?: string | URL`: Specify a custom worker script to load when creating the worker.
+    - `useAudioWorklet?: boolean`: Use an `AudioWorklet` to pipe audio data directly to the worker for lower latency.
 
 - **`encoder.addVideoFrame(frame: VideoFrame): Promise<void>`**
   Adds a `VideoFrame` object for encoding. Ensure the source is converted to a `VideoFrame` before calling this method.
+- **`encoder.addCanvasFrame(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void>`**
+  Convenience wrapper that creates a `VideoFrame` from a canvas and forwards it to `addVideoFrame`.
 
 - **`encoder.addAudioBuffer(audioBuffer: AudioBuffer): Promise<void>`**
   Adds an entire `AudioBuffer` for encoding. Useful for adding complete audio tracks.

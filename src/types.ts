@@ -68,7 +68,9 @@ export interface AddAudioDataMessage {
   type: "addAudioData";
   // Array of Float32Array for each channel (non-interleaved).
   // The ArrayBuffer of each Float32Array should be transferred.
-  audioData: Float32Array[];
+  audioData?: Float32Array[];
+  /** Optional AudioData object to be encoded directly. */
+  audio?: AudioData;
   timestamp: number; // microseconds
   format: AudioSampleFormat; // e.g., "f32-planar" or "s16" etc. (AudioSampleFormat from WebCodecs)
   sampleRate: number;
@@ -84,12 +86,18 @@ export interface CancelWorkerMessage {
   type: "cancel";
 }
 
+export interface ConnectAudioPortMessage {
+  type: "connectAudioPort";
+  port: MessagePort;
+}
+
 export type WorkerMessage =
   | InitializeWorkerMessage
   | AddVideoFrameMessage
   | AddAudioDataMessage
   | FinalizeWorkerMessage
-  | CancelWorkerMessage;
+  | CancelWorkerMessage
+  | ConnectAudioPortMessage;
 
 // Messages FROM the Worker
 export interface WorkerInitializedMessage {
