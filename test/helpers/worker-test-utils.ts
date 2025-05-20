@@ -56,7 +56,10 @@ export function setupGlobals() {
   }));
   // @ts-ignore
   mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-    Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+    Promise.resolve({
+      supported: true,
+      config: { codec: "mp4a.40.2", numberOfChannels: 2 },
+    }),
   );
   globalThis.AudioEncoder = mockSelf.AudioEncoder;
 

@@ -502,7 +502,8 @@ const config = {
 ```
 
 **Important Notes:**
-  -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back (including trying alternate AVC profiles and VP9) if the preferred option is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
+-   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. If AAC is unavailable the worker will log a warning and try Opus instead. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
+-   The worker verifies that the channel count reported by `AudioEncoder.isConfigSupported()` matches your configured `channels`. A mismatch causes initialization to fail with a `configuration-error`.
 -   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 -   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
 -   See [MDN](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use](https://caniuse.com/webcodecs) for up-to-date browser compatibility information.
