@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  afterAll,
+} from "vitest";
 import type { EncoderConfig } from "../src/types";
 import { MediaStreamRecorder } from "../src/mediastream-recorder";
 import { Mp4Encoder } from "../src/encoder";
@@ -13,8 +21,8 @@ vi.mock("../src/encoder", () => {
       addAudioData: vi.fn().mockResolvedValue(undefined),
       finalize: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
       cancel: vi.fn(),
-      getActualVideoCodec: vi.fn().mockReturnValue('mock-video-codec'),
-      getActualAudioCodec: vi.fn().mockReturnValue('mock-audio-codec'),
+      getActualVideoCodec: vi.fn().mockReturnValue("mock-video-codec"),
+      getActualAudioCodec: vi.fn().mockReturnValue("mock-audio-codec"),
     };
     return encoderInstance;
   });
@@ -24,42 +32,58 @@ vi.mock("../src/encoder", () => {
 
 // @ts-ignore - Ignoring VideoFrame/AudioData type complexity for mock values
 class FakeVideoReader {
-  read = vi.fn()
-    .mockResolvedValueOnce({ value: { close: vi.fn() } as unknown as VideoFrame, done: false }) // 1. Valid frame
-    .mockResolvedValueOnce({ value: undefined, done: false }) // 2. Undefined value, not done
-    .mockResolvedValue({ value: undefined, done: true }); // 3. Done
+  read = vi
+    .fn()
+    .mockResolvedValueOnce({
+      value: { close: vi.fn() } as unknown as VideoFrame,
+      done: false as const,
+    }) // 1. Valid frame
+    .mockResolvedValueOnce({
+      value: { close: vi.fn() } as unknown as VideoFrame,
+      done: false as const,
+    })
+    .mockResolvedValue({ value: undefined, done: true as const }); // 3. Done
   cancel = vi.fn().mockResolvedValue(undefined);
   releaseLock = vi.fn();
-  get closed() { return Promise.resolve(); }
+  get closed() {
+    return Promise.resolve();
+  }
 }
 
 // @ts-ignore
 class FakeAudioReader {
-  read = vi.fn()
-    .mockResolvedValueOnce({ value: { close: vi.fn() } as unknown as AudioData, done: false }) // 1. Valid data
-    .mockResolvedValueOnce({ value: undefined, done: false }) // 2. Undefined value, not done
-    .mockResolvedValue({ value: undefined, done: true }); // 3. Done
+  read = vi
+    .fn()
+    .mockResolvedValueOnce({
+      value: { close: vi.fn() } as unknown as AudioData,
+      done: false as const,
+    }) // 1. Valid data
+    .mockResolvedValueOnce({
+      value: { close: vi.fn() } as unknown as AudioData,
+      done: false as const,
+    })
+    .mockResolvedValue({ value: undefined, done: true as const }); // 3. Done
   cancel = vi.fn().mockResolvedValue(undefined);
   releaseLock = vi.fn();
-  get closed() { return Promise.resolve(); }
+  get closed() {
+    return Promise.resolve();
+  }
 }
 
-interface MockReadableStreamDefaultReader {
-  read: () => Promise<{ value?: VideoFrame | AudioData; done: boolean }>;
+interface MockReadableStreamDefaultReader<T> {
+  read: () => Promise<ReadableStreamReadResult<T>>;
   cancel: () => Promise<void>;
   releaseLock: () => void;
   readonly closed: Promise<void>;
 }
 
-class FakeProcessor {
-  readable: { getReader: () => MockReadableStreamDefaultReader };
+class FakeProcessor<T extends VideoFrame | AudioData> {
+  readable: { getReader: () => MockReadableStreamDefaultReader<T> };
   constructor(init: { track: MediaStreamTrack }) {
     if (init.track.kind === "video") {
-      // @ts-ignore - Aligning mock with complex DOM type
-      this.readable = { getReader: () => new FakeVideoReader() };
+      this.readable = { getReader: () => new FakeVideoReader() as unknown as MockReadableStreamDefaultReader<T> };
     } else {
-      // @ts-ignore - Aligning mock with complex DOM type
-      this.readable = { getReader: () => new FakeAudioReader() };
+      this.readable = { getReader: () => new FakeAudioReader() as unknown as MockReadableStreamDefaultReader<T> };
     }
   }
 }
@@ -69,13 +93,13 @@ declare global {
     track: MediaStreamTrack;
     maxBufferSize?: number;
   }
-  // @ts-ignore - Using a simplified mock type for MediaStreamTrackProcessor readable 
-  interface MediaStreamTrackProcessor {
-    readonly readable: { getReader(): MockReadableStreamDefaultReader };
+  // @ts-ignore - Using a simplified mock type for MediaStreamTrackProcessor readable
+  interface MediaStreamTrackProcessor<T extends VideoFrame | AudioData = VideoFrame | AudioData> {
+    readonly readable: { getReader(): MockReadableStreamDefaultReader<T> };
   }
   // @ts-ignore - Using a simplified mock type for MediaStreamTrackProcessor constructor
   let MediaStreamTrackProcessor: {
-    new (init: MediaStreamTrackProcessorInit): MediaStreamTrackProcessor;
+    new <T extends VideoFrame | AudioData>(init: MediaStreamTrackProcessorInit): MediaStreamTrackProcessor<T>;
   };
 }
 
@@ -83,7 +107,13 @@ vi.stubGlobal("MediaStreamTrackProcessor", FakeProcessor as any);
 
 describe("MediaStreamRecorder", () => {
   const config: EncoderConfig = {
-    width: 320, height: 240, frameRate: 30, videoBitrate: 1, audioBitrate: 1, sampleRate: 48000, channels: 2,
+    width: 320,
+    height: 240,
+    frameRate: 30,
+    videoBitrate: 1,
+    audioBitrate: 1,
+    sampleRate: 48000,
+    channels: 2,
   };
   let mediaStream: MediaStream;
   let videoTrack: any;
@@ -93,15 +123,20 @@ describe("MediaStreamRecorder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (Mp4Encoder as any).isSupported.mockReturnValue(true);
-    originalMediaStreamTrackProcessor = (globalThis as any).MediaStreamTrackProcessor;
+    originalMediaStreamTrackProcessor = (globalThis as any)
+      .MediaStreamTrackProcessor;
     (globalThis as any).MediaStreamTrackProcessor = FakeProcessor;
     videoTrack = { kind: "video", stop: vi.fn() } as any;
     audioTrack = { kind: "audio", stop: vi.fn() } as any;
-    mediaStream = { getVideoTracks: () => [videoTrack], getAudioTracks: () => [audioTrack] } as any;
+    mediaStream = {
+      getVideoTracks: () => [videoTrack],
+      getAudioTracks: () => [audioTrack],
+    } as any;
   });
 
   afterEach(() => {
-    (globalThis as any).MediaStreamTrackProcessor = originalMediaStreamTrackProcessor;
+    (globalThis as any).MediaStreamTrackProcessor =
+      originalMediaStreamTrackProcessor;
   });
 
   afterAll(() => {
@@ -138,29 +173,29 @@ describe("MediaStreamRecorder", () => {
     expect(audioTrack.stop).toHaveBeenCalled();
   });
 
-  it('should throw if startRecording is called while already recording', async () => {
+  it("should throw if startRecording is called while already recording", async () => {
     const recorder = new MediaStreamRecorder(config);
     await recorder.startRecording(mediaStream);
     await expect(recorder.startRecording(mediaStream)).rejects.toThrow(
-      "MediaStreamRecorder: already recording."
+      "MediaStreamRecorder: already recording.",
     );
   });
 
-  it('should throw if stopRecording is called when not recording', async () => {
+  it("should throw if stopRecording is called when not recording", async () => {
     const recorder = new MediaStreamRecorder(config);
     await expect(recorder.stopRecording()).rejects.toThrow(
-      "MediaStreamRecorder: not recording."
+      "MediaStreamRecorder: not recording.",
     );
   });
 
-  describe('cancel', () => {
-    it('should do nothing if not recording', () => {
+  describe("cancel", () => {
+    it("should do nothing if not recording", () => {
       const recorder = new MediaStreamRecorder(config);
       recorder.cancel();
       expect(encoderInstance.cancel).not.toHaveBeenCalled();
     });
 
-    it('should cancel recording and encoder if recording', async () => {
+    it("should cancel recording and encoder if recording", async () => {
       const recorder = new MediaStreamRecorder(config);
       await recorder.startRecording(mediaStream);
       const fakeVideoReaderInstance = new FakeVideoReader();
@@ -181,15 +216,15 @@ describe("MediaStreamRecorder", () => {
     });
   });
 
-  it('getActualVideoCodec should return codec from encoder', () => {
+  it("getActualVideoCodec should return codec from encoder", () => {
     const recorder = new MediaStreamRecorder(config);
-    expect(recorder.getActualVideoCodec()).toBe('mock-video-codec');
+    expect(recorder.getActualVideoCodec()).toBe("mock-video-codec");
     expect(encoderInstance.getActualVideoCodec).toHaveBeenCalled();
   });
 
-  it('getActualAudioCodec should return codec from encoder', () => {
+  it("getActualAudioCodec should return codec from encoder", () => {
     const recorder = new MediaStreamRecorder(config);
-    expect(recorder.getActualAudioCodec()).toBe('mock-audio-codec');
+    expect(recorder.getActualAudioCodec()).toBe("mock-audio-codec");
     expect(encoderInstance.getActualAudioCodec).toHaveBeenCalled();
   });
 });

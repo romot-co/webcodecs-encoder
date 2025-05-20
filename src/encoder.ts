@@ -224,7 +224,9 @@ export class Mp4Encoder {
           // Realtime mode: finalize() resolves with null if worker sends null,
           // or with an empty Uint8Array if worker sends empty (e.g. for header-only)
           // The actual data chunks are sent via onData callback.
-          this.onFinalizedPromise?.resolve(message.output === null ? null : new Uint8Array(0));
+          this.onFinalizedPromise?.resolve(
+            message.output === null ? null : new Uint8Array(0),
+          );
         } else {
           // Non-realtime mode
           if (message.output !== null) {
@@ -471,7 +473,8 @@ export class Mp4Encoder {
   }
 
   public finalize(): Promise<Uint8Array | null> {
-    if (this.isCancelled) { // isCancelled を先にチェック
+    if (this.isCancelled) {
+      // isCancelled を先にチェック
       const err = new Mp4EncoderError(
         EncoderErrorType.Cancelled,
         "Encoder cancelled",
@@ -479,7 +482,8 @@ export class Mp4Encoder {
       this.handleError(err);
       return Promise.reject(err);
     }
-    if (!this.worker) { // worker がない場合 (初期化前など)
+    if (!this.worker) {
+      // worker がない場合 (初期化前など)
       const err = new Mp4EncoderError(
         EncoderErrorType.InternalError,
         "Encoder not initialized or already finalized",
@@ -520,6 +524,7 @@ export class Mp4Encoder {
       EncoderErrorType.Cancelled,
       "Operation cancelled by user.",
     );
+    this.handleError(cancelError);
     this.onInitializeError?.(cancelError);
     this.onFinalizedPromise?.reject(cancelError);
 

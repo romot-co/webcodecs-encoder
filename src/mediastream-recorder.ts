@@ -39,7 +39,7 @@ export class MediaStreamRecorder {
       const processor = new MediaStreamTrackProcessor({
         track: vTrack,
       });
-      this.videoReader = processor.readable.getReader();
+      this.videoReader = processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
       this.processVideo();
     }
 
@@ -48,7 +48,7 @@ export class MediaStreamRecorder {
       const processor = new MediaStreamTrackProcessor({
         track: aTrack,
       });
-      this.audioReader = processor.readable.getReader();
+      this.audioReader = processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
       this.processAudio();
     }
   }
@@ -73,7 +73,7 @@ export class MediaStreamRecorder {
     }
   }
 
-  async stopRecording(): Promise<Uint8Array> {
+  async stopRecording(): Promise<Uint8Array | null> {
     if (!this.recording) {
       throw new Error("MediaStreamRecorder: not recording.");
     }

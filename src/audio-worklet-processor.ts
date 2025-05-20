@@ -33,10 +33,10 @@ class EncoderAudioWorkletProcessor extends AudioWorkletProcessor {
     if (!this.workerPort) return true;
     const input = inputs[0];
     if (!input || input.length === 0) return true;
-    
+
     // At least one channel must exist, and it must have some frames.
     // input[0] is the first channel. If it doesn't exist or has no frames, consider it invalid.
-    if (!input[0] || input[0].length === 0) return true; 
+    if (!input[0] || input[0].length === 0) return true;
 
     const numChannels = input.length;
     const numFrames = input[0].length; // This will be > 0 due to the check above

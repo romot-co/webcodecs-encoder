@@ -377,15 +377,39 @@ describe("Mp4Encoder", () => {
     it("should reject if Required browser APIs are not supported", async () => {
       // @ts-ignore
       delete globalThis.Worker; // Example: Worker API is missing
-      const encoder = new Mp4Encoder({ width: 100, height: 100, frameRate: 30, videoBitrate: 1000, audioBitrate: 128, sampleRate: 48000, channels: 1 });
+      const encoder = new Mp4Encoder({
+        width: 100,
+        height: 100,
+        frameRate: 30,
+        videoBitrate: 1000,
+        audioBitrate: 128,
+        sampleRate: 48000,
+        channels: 1,
+      });
       await expect(encoder.initialize()).rejects.toThrow(Mp4EncoderError);
       // @ts-ignore
       delete globalThis.VideoEncoder;
-      const encoder2 = new Mp4Encoder({ width: 100, height: 100, frameRate: 30, videoBitrate: 1000, audioBitrate: 128, sampleRate: 48000, channels: 1 });
+      const encoder2 = new Mp4Encoder({
+        width: 100,
+        height: 100,
+        frameRate: 30,
+        videoBitrate: 1000,
+        audioBitrate: 128,
+        sampleRate: 48000,
+        channels: 1,
+      });
       await expect(encoder2.initialize()).rejects.toThrow(Mp4EncoderError);
-       // @ts-ignore
+      // @ts-ignore
       delete globalThis.AudioEncoder;
-      const encoder3 = new Mp4Encoder({ width: 100, height: 100, frameRate: 30, videoBitrate: 1000, audioBitrate: 128, sampleRate: 48000, channels: 1 });
+      const encoder3 = new Mp4Encoder({
+        width: 100,
+        height: 100,
+        frameRate: 30,
+        videoBitrate: 1000,
+        audioBitrate: 128,
+        sampleRate: 48000,
+        channels: 1,
+      });
       await expect(encoder3.initialize()).rejects.toThrow(Mp4EncoderError);
     });
 
@@ -496,7 +520,15 @@ describe("Mp4Encoder", () => {
       // @ts-ignore
       delete globalThis.AudioContext; // AudioContext を未定義にする
 
-      const encoder = new Mp4Encoder({ width: 640, height: 480, frameRate: 30, videoBitrate: 1000, audioBitrate: 128, sampleRate: 48000, channels: 1 });
+      const encoder = new Mp4Encoder({
+        width: 640,
+        height: 480,
+        frameRate: 30,
+        videoBitrate: 1000,
+        audioBitrate: 128,
+        sampleRate: 48000,
+        channels: 1,
+      });
       try {
         await encoder.initialize({ useAudioWorklet: true });
         throw new Error("Should have rejected"); // テストが失敗することを確認するためのエラー
@@ -505,9 +537,11 @@ describe("Mp4Encoder", () => {
         // initialize内でエラーがラップされるため、エラータイプと根本原因のメッセージを確認
         expect(e.type).toBe(EncoderErrorType.InitializationFailed);
         expect(e.message).toContain("Failed to initialize worker");
-        expect(e.cause).toBeInstanceOf(Mp4EncoderError); 
+        expect(e.cause).toBeInstanceOf(Mp4EncoderError);
         expect(e.cause.type).toBe(EncoderErrorType.NotSupported);
-        expect(e.cause.message).toBe("AudioContext not available for AudioWorklet.");
+        expect(e.cause.message).toBe(
+          "AudioContext not available for AudioWorklet.",
+        );
       } finally {
         globalThis.AudioContext = originalAudioContext; // 元に戻す
       }
@@ -575,10 +609,6 @@ describe("Mp4Encoder", () => {
       const onError = vi.fn();
       const initPromise = encoder.initialize({ onError: onError });
       if (typeof mockWorkerInstance.onmessage === "function") {
-        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
-      } else {
-        // Ensure onmessage is callable
-        mockWorkerInstance.onmessage = vi.fn();
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
       await initPromise;
@@ -816,7 +846,107 @@ describe("Mp4Encoder", () => {
           // audioData field itself is an array of Float32Arrays in the message
           audioData: expect.arrayContaining([expect.any(Float32Array)]),
         }),
-        expect.arrayContaining([expect.any(ArrayBuffer)])
+        expect.arrayContaining([expect.any(ArrayBuffer)]),
+      );
+    });
+
+    it("should update nextAudioTimestamp if audioData.timestamp is null", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const audio1 = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 1024,
+        numberOfChannels: 1,
+        timestamp: null, // timestamp is null
+        copyTo: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      // @ts-ignore - access private member for test
+      const initialNextAudioTimestamp = encoder.nextAudioTimestamp;
+
+      await encoder.addAudioData(audio1);
+
+      const expectedTimestamp1 = initialNextAudioTimestamp;
+      // @ts-ignore - access private member for test
+      const expectedNextAudioTimestampAfter1 = initialNextAudioTimestamp + (1024 / 48000) * 1_000_000;
+
+
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "addAudioData",
+          timestamp: expectedTimestamp1,
+        }),
+        expect.anything(),
+      );
+      // @ts-ignore - access private member for test
+      expect(encoder.nextAudioTimestamp).toBeCloseTo(expectedNextAudioTimestampAfter1);
+
+      // Add another frame to see if timestamp is incremented from the new nextAudioTimestamp
+      mockWorkerInstance.postMessage.mockClear();
+       const audio2 = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 512,
+        numberOfChannels: 1,
+        timestamp: null, // timestamp is null
+        copyTo: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      await encoder.addAudioData(audio2);
+      const expectedTimestamp2 = expectedNextAudioTimestampAfter1;
+      // @ts-ignore - access private member for test
+      const expectedNextAudioTimestampAfter2 = expectedNextAudioTimestampAfter1 + (512 / 48000) * 1_000_000;
+
+       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "addAudioData",
+          timestamp: expectedTimestamp2,
+        }),
+        expect.anything(),
+      );
+      // @ts-ignore - access private member for test
+      expect(encoder.nextAudioTimestamp).toBeCloseTo(expectedNextAudioTimestampAfter2);
+    });
+
+    it("should reject and call onError if copyTo fails", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const onErrorCallback = vi.fn();
+      const initPromise = encoder.initialize({ onError: onErrorCallback });
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const copyToError = new Error("copyTo failed");
+      const audio = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 10,
+        numberOfChannels: 1,
+        timestamp: 0,
+        copyTo: vi.fn().mockRejectedValue(copyToError), // copyTo will throw an error
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      await expect(encoder.addAudioData(audio)).rejects.toThrow(
+        `Failed to add audio data: ${copyToError.message}`,
+      );
+      expect(onErrorCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: EncoderErrorType.AudioEncodingError,
+          message: `Failed to add audio data: ${copyToError.message}`,
+          cause: copyToError,
+        }),
       );
     });
 
@@ -849,14 +979,26 @@ describe("Mp4Encoder", () => {
 
   describe("finalize", () => {
     let encoder: Mp4Encoder;
-    const mockConfig = { width: 640, height: 480, frameRate: 30, videoBitrate: 1000, audioBitrate: 128, sampleRate: 48000, channels: 1 };
+    const mockConfig = {
+      width: 640,
+      height: 480,
+      frameRate: 30,
+      videoBitrate: 1000,
+      audioBitrate: 128,
+      sampleRate: 48000,
+      channels: 1,
+    };
 
     beforeEach(async () => {
       encoder = new Mp4Encoder(mockConfig);
       const initPromise = encoder.initialize();
       if (mockWorkerInstance.onmessage) {
         mockWorkerInstance.onmessage({
-          data: { type: "initialized", actualVideoCodec: "avc1", actualAudioCodec: "mp4a" },
+          data: {
+            type: "initialized",
+            actualVideoCodec: "avc1",
+            actualAudioCodec: "mp4a",
+          },
         });
       }
       await initPromise;
@@ -888,7 +1030,9 @@ describe("Mp4Encoder", () => {
       } catch (e: any) {
         expect(e).toBeInstanceOf(Mp4EncoderError);
         expect(e.type).toBe(EncoderErrorType.InternalError); // Or .Cancelled if it defaults to cancelled
-        expect(e.message).toContain("Encoder not initialized or already finalized");
+        expect(e.message).toContain(
+          "Encoder not initialized or already finalized",
+        );
       }
     });
 
@@ -917,49 +1061,91 @@ describe("Mp4Encoder", () => {
 
       // 1回目の呼び出し
       const finalizePromise1 = encoder.finalize();
-      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "finalize" });
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "finalize",
+      });
 
       // 1回目のfinalizeが完了するようにworkerからのメッセージをシミュレート
       if (mockWorkerInstance.onmessage) {
         mockWorkerInstance.onmessage({
-          data: { type: "finalized", output: new Uint8Array([1,2,3]) }, // ダミーの出力
+          data: { type: "finalized", output: new Uint8Array([1, 2, 3]) }, // ダミーの出力
         });
       }
-      await finalizePromise1; 
+      await finalizePromise1;
       // @ts-ignore access private member for test
       expect(encoder.isCancelled).toBe(true);
 
       mockWorkerInstance.postMessage.mockClear();
-      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
 
       try {
         await encoder.finalize();
         throw new Error("Should have rejected");
       } catch (e: any) {
         expect(e).toBeInstanceOf(Mp4EncoderError);
-        expect(e.type).toBe(EncoderErrorType.Cancelled); 
+        expect(e.type).toBe(EncoderErrorType.Cancelled);
         expect(e.message).toBe("Encoder cancelled");
       }
-      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith({ type: "finalize" });
+      expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith({
+        type: "finalize",
+      });
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should warn and reject if finalize is called multiple times while the first is still pending", async () => {
+      encoder = new Mp4Encoder(mockConfig); // 新しいインスタンスを作成して isCancelled を false に
+      const initPromise = encoder.initialize();
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const finalizePromise1 = encoder.finalize(); // 1回目 (まだ完了しない)
+
+      let finalizeError: any;
+      try {
+        await encoder.finalize(); // 2回目
+      } catch (e) {
+        finalizeError = e;
+      }
+
+      expect(finalizeError).toBeInstanceOf(Mp4EncoderError);
+      expect(finalizeError.type).toBe(EncoderErrorType.InternalError);
+      expect(finalizeError.message).toBe("Finalize called multiple times.");
+      expect(consoleWarnSpy).toHaveBeenCalledWith("Finalize already called.");
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledTimes(1); // 1回目しか呼ばれない
+
+      // 1回目の finalize を解決させてエラーが出ないことを確認
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "finalized", output: new Uint8Array([1]) } });
+      }
+      await expect(finalizePromise1).resolves.toEqual(new Uint8Array([1]));
       consoleWarnSpy.mockRestore();
     });
   });
 
   describe("Real-time Streaming", () => {
-    const baseRealtimeConfig = { // mockConfig のような基本設定を定義
-      width: 640, 
-      height: 480, 
-      frameRate: 30, 
-      videoBitrate: 1000, 
-      audioBitrate: 128, 
-      sampleRate: 48000, 
+    const baseRealtimeConfig = {
+      // mockConfig のような基本設定を定義
+      width: 640,
+      height: 480,
+      frameRate: 30,
+      videoBitrate: 1000,
+      audioBitrate: 128,
+      sampleRate: 48000,
       channels: 1,
-      latencyMode: "realtime" as const
+      latencyMode: "realtime" as const,
     };
 
     it("should initialize with latencyMode: realtime and call onData for dataChunks", async () => {
       const onDataCallback = vi.fn();
-      const encoder = new Mp4Encoder(baseRealtimeConfig); 
+      const encoder = new Mp4Encoder(baseRealtimeConfig);
       const initPromise = encoder.initialize({ onData: onDataCallback });
 
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
@@ -1008,12 +1194,18 @@ describe("Mp4Encoder", () => {
     it("finalize() should resolve with an empty Uint8Array in realtime mode", async () => {
       const onDataCallback = vi.fn();
       const realtimeEncoder = new Mp4Encoder(baseRealtimeConfig);
-      const initPromise = realtimeEncoder.initialize({ onData: onDataCallback }); // Promise を取得
+      const initPromise = realtimeEncoder.initialize({
+        onData: onDataCallback,
+      }); // Promise を取得
 
       // Workerからの initialized メッセージをシミュレート
       if (mockWorkerInstance.onmessage) {
         mockWorkerInstance.onmessage({
-          data: { type: "initialized", actualVideoCodec: "avc1", actualAudioCodec: "mp4a" },
+          data: {
+            type: "initialized",
+            actualVideoCodec: "avc1",
+            actualAudioCodec: "mp4a",
+          },
         });
       }
       await initPromise; // initialize の完了を待つ
@@ -1026,16 +1218,22 @@ describe("Mp4Encoder", () => {
       const emptyOutput = new Uint8Array(0);
       if (mockWorkerInstance.onmessage) {
         mockWorkerInstance.onmessage({
-          data: { type: "finalized", output: emptyOutput }, 
+          data: { type: "finalized", output: emptyOutput },
         });
       }
 
       const result = await finalizePromise;
-      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "finalize" });
-      expect(result).not.toBeNull(); 
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "finalize",
+      });
+      expect(result).not.toBeNull();
       expect(result).toBeInstanceOf(Uint8Array);
-      expect(result!.length).toBe(0); 
-      expect(onDataCallback).not.toHaveBeenCalledWith(result, expect.anything(), expect.anything());
+      expect(result!.length).toBe(0);
+      expect(onDataCallback).not.toHaveBeenCalledWith(
+        result,
+        expect.anything(),
+        expect.anything(),
+      );
     });
 
     it("should not call onData if latencyMode is quality, even if onData is provided", async () => {
@@ -1066,6 +1264,85 @@ describe("Mp4Encoder", () => {
       // In quality mode, onDataCallback should not be called, even if provided.
       // The data chunk messages from worker are effectively ignored by main thread if latencyMode isn't realtime.
       expect(onDataCallback).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("cancel", () => {
+    const config: EncoderConfig = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+      codec: { video: "avc", audio: "aac" },
+    };
+
+    it("should call onInitializeError if cancelled during initialization", async () => {
+      const encoder = new Mp4Encoder(config);
+      const onInitializeErrorSpy = vi.fn();
+      const onErrorSpy = vi.fn();
+
+      const initPromise = encoder.initialize({ onError: onErrorSpy });
+      // @ts-ignore - private member access for test
+      // Ensure onInitializeError is set on the promise before overwriting it locally.
+      // It's better to rely on the public onError callback or the promise rejection for testing.
+      // However, to specifically test if the internal onInitializeError is called:
+      const originalOnInitializeError = encoder['onInitializeError'];
+      encoder['onInitializeError'] = (err) => {
+        onInitializeErrorSpy(err);
+        originalOnInitializeError?.(err);
+      };
+
+      encoder.cancel(); // initialize が完了する前にキャンセル
+
+      await expect(initPromise).rejects.toMatchObject({ type: EncoderErrorType.Cancelled });
+      expect(onInitializeErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
+      expect(onErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "cancel" });
+
+      // Simulate worker acknowledging cancellation
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "cancelled" } });
+      }
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
+    });
+
+    it("should call onFinalizedPromise.reject if cancelled during finalization", async () => {
+      const encoder = new Mp4Encoder(config);
+      const initProcess = encoder.initialize(); // まずは正常に初期化
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initProcess;
+
+      const onFinalizedRejectSpy = vi.fn();
+      const onErrorSpy = vi.fn();
+      // @ts-ignore - private member access for test
+      encoder.onErrorCallback = onErrorSpy;
+
+      const finalizePromise = encoder.finalize();
+      const originalOnFinalizedReject = encoder['onFinalizedPromise']?.reject;
+      if (encoder['onFinalizedPromise']) {
+        encoder['onFinalizedPromise'].reject = (err) => {
+          onFinalizedRejectSpy(err);
+          originalOnFinalizedReject?.(err);
+        };
+      }
+
+      encoder.cancel(); // finalize が完了する前にキャンセル
+
+      await expect(finalizePromise).rejects.toMatchObject({ type: EncoderErrorType.Cancelled });
+      expect(onFinalizedRejectSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
+      expect(onErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "cancel" });
+
+      // Simulate worker acknowledging cancellation
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "cancelled" } });
+      }
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
     });
   });
 
