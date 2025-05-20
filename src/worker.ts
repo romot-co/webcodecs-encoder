@@ -23,10 +23,13 @@ let videoFrameCount: number = 0;
 let isCancelled: boolean = false;
 let audioWorkletPort: MessagePort | null = null;
 
+type AvcProfile = "high" | "main" | "baseline";
+
 function defaultAvcCodecString(
   width: number,
   height: number,
   frameRate: number,
+  profile?: AvcProfile,
 ): string {
   const mbPerSec = Math.ceil(width / 16) * Math.ceil(height / 16) * frameRate;
   let level: number;
@@ -41,9 +44,19 @@ function defaultAvcCodecString(
   else if (mbPerSec <= 983040)
     level = 51; // 4k60
   else level = 52;
-  const profileHex = width >= 1280 || height >= 720 ? "64" : "42";
+  const chosenProfile: AvcProfile | undefined =
+    profile ?? (width >= 1280 || height >= 720 ? "high" : "baseline");
+  const profileHex =
+    chosenProfile === "high" ? "64" : chosenProfile === "main" ? "4d" : "42";
   const levelHex = level.toString(16).padStart(2, "0");
   return `avc1.${profileHex}00${levelHex}`;
+}
+
+function avcProfileFromCodecString(codec: string): AvcProfile | null {
+  if (codec.startsWith("avc1.64")) return "high";
+  if (codec.startsWith("avc1.4d")) return "main";
+  if (codec.startsWith("avc1.42")) return "baseline";
+  return null;
 }
 
 // --- 追加: グローバル API を安全に取るヘルパ ---
@@ -225,6 +238,64 @@ async function initializeEncoders(
   );
   if (videoSupportConfig) {
     finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
+  } else if (videoCodec === "avc") {
+    const currentProfile =
+      avcProfileFromCodecString(baseVideoConfig.codec) ?? "high";
+    const profileFallback: Record<AvcProfile, AvcProfile[]> = {
+      high: ["main", "baseline"],
+      main: ["baseline"],
+      baseline: [],
+    };
+    for (const p of profileFallback[currentProfile]) {
+      const cfg = {
+        ...baseVideoConfig,
+        codec: defaultAvcCodecString(
+          currentConfig.width,
+          currentConfig.height,
+          currentConfig.frameRate,
+          p,
+        ),
+        avc: { format: "avcc" },
+      };
+      videoSupportConfig = await isConfigSupportedWithHwFallback(
+        VideoEncoderCtor,
+        cfg,
+        "VideoEncoder",
+      );
+      if (videoSupportConfig) {
+        finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
+        break;
+      }
+    }
+    if (!videoSupportConfig) {
+      console.warn("Worker: AVC profiles not supported. Falling back to VP9.");
+      const vp9Cfg = {
+        ...baseVideoConfig,
+        codec: "vp09.00.50.08",
+        scalabilityMode: "L1T2",
+      };
+      delete (vp9Cfg as any).avc;
+      videoCodec = "vp9";
+      videoSupportConfig = await isConfigSupportedWithHwFallback(
+        VideoEncoderCtor,
+        vp9Cfg,
+        "VideoEncoder",
+      );
+      if (videoSupportConfig) {
+        finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
+      }
+    }
+    if (!videoSupportConfig) {
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: Video codec avc config not supported.",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
+      cleanup();
+      return;
+    }
   } else if (
     videoCodec === "vp9" ||
     videoCodec === "av1" ||

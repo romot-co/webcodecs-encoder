@@ -217,6 +217,32 @@ describe("worker", () => {
     );
   });
 
+  it("falls back through AVC profiles when unsupported", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const hdConfig = { ...config, width: 1920, height: 1080 };
+    const spy = vi.fn(async (c: any) => {
+      if (c.codec.startsWith("avc1.64")) return { supported: false, config: null };
+      if (c.codec.startsWith("avc1.4d")) return { supported: false, config: null };
+      return { supported: true, config: { codec: c.codec } };
+    });
+    mockSelf.VideoEncoder.isConfigSupported = spy;
+    globalThis.VideoEncoder = mockSelf.VideoEncoder;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy.mock.calls[0][0].codec).toBe("avc1.640028");
+    expect(spy.mock.calls[1][0].codec).toBe("avc1.4d0028");
+    expect(spy.mock.calls[2][0].codec).toBe("avc1.420028");
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: "initialized", actualVideoCodec: "avc1.420028", actualAudioCodec: "mp4a.40.2" },
+      undefined,
+    );
+  });
+
   it("disables audio when audio parameters are invalid", async () => {
     if (!global.self.onmessage)
       throw new Error("Worker onmessage handler not set up");
