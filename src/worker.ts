@@ -447,21 +447,6 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     return;
   }
 
-  const firstChannelData = data.audioData[0];
-  const numberOfFrames = firstChannelData.length;
-
-  const totalSamples = numberOfFrames * currentConfig.channels;
-  const interleavedOrConcatenatedPlanarData = new Float32Array(totalSamples);
-  let offset = 0;
-  if (currentConfig.channels === 1) {
-    interleavedOrConcatenatedPlanarData.set(firstChannelData);
-  } else {
-    for (let i = 0; i < currentConfig.channels; i++) {
-      interleavedOrConcatenatedPlanarData.set(data.audioData[i], offset);
-      offset += data.audioData[i].length;
-    }
-  }
-
   const AudioDataCtor: any = getAudioData();
   if (!AudioDataCtor) {
     postMessageToMainThread({
