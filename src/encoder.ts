@@ -383,7 +383,11 @@ export class Mp4Encoder {
       duration: 1_000_000 / this.config.frameRate,
     });
     try {
+      await this.addVideoFrame(frame);
+    } catch (e) {
+      // If posting the frame fails, manually close to avoid leaks.
       await this.addVideoFrame(frame, timestamp);
+      throw e;
     } finally {
       frame.close();
     }
@@ -634,18 +638,10 @@ export class Mp4Encoder {
 
   // Specific cleanup for errors to avoid double-terminating if worker itself errored.
   private cleanupWorkerOnError(): void {
-    this.clearCancelTimeout();
-    if (this.worker) {
-      // Don't terminate if it was a worker self-error, it might have already terminated or is in an unstable state.
-      // Let the browser handle the errored worker instance.
-      this.worker.onmessage = null; // Stop listening to messages
-      this.worker.onerror = null; // Stop listening to errors
-      this.worker = null;
-      logger.log(
-        "Mp4Encoder: Worker references cleaned up after worker error.",
-      );
-    }
-    this.isCancelled = true;
+    // Reuse the normal cleanup logic to ensure all resources are released.
+    // This will terminate the worker if it is still running and close any
+    // audio-related resources.
+    this.cleanupWorker();
   }
 
   private async setupAudioWorklet(): Promise<void> {
