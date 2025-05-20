@@ -84,6 +84,10 @@ export class MediaStreamRecorder {
     this.audioReader?.cancel();
     this.videoTrack?.stop();
     this.audioTrack?.stop();
+    this.videoReader = undefined;
+    this.audioReader = undefined;
+    this.videoTrack = undefined;
+    this.audioTrack = undefined;
     return await this.encoder.finalize();
   }
 
@@ -94,6 +98,10 @@ export class MediaStreamRecorder {
     this.audioReader?.cancel();
     this.videoTrack?.stop();
     this.audioTrack?.stop();
+    this.videoReader = undefined;
+    this.audioReader = undefined;
+    this.videoTrack = undefined;
+    this.audioTrack = undefined;
     this.encoder.cancel();
   }
 
