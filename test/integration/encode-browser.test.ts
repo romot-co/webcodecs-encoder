@@ -7,7 +7,7 @@ import { writeFileSync, readFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import os from "os";
 import path from "path";
-import http from 'http';
+import http from "http";
 
 /* eslint-disable no-console */
 // Disable console warnings for test debugging purposes
@@ -16,17 +16,17 @@ import http from 'http';
 async function findAvailablePort(startPort: number): Promise<number> {
   const port = startPort;
   const server = http.createServer();
-  
+
   return new Promise((resolve, reject) => {
-    server.on('error', (e: any) => {
-      if (e.code === 'EADDRINUSE') {
+    server.on("error", (e: any) => {
+      if (e.code === "EADDRINUSE") {
         // 既に使用中なので別のポートでリトライ
         resolve(findAvailablePort(startPort + 1));
       } else {
         reject(e);
       }
     });
-    
+
     server.listen(port, () => {
       server.close(() => resolve(port));
     });
@@ -38,54 +38,54 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       // URLからパスを取得
-      let filePath = path.join(rootDir, req.url || '');
-      
+      let filePath = path.join(rootDir, req.url || "");
+
       // ディレクトリの場合はindex.htmlを探す
-      if (filePath.endsWith('/')) {
-        filePath = path.join(filePath, 'index.html');
+      if (filePath.endsWith("/")) {
+        filePath = path.join(filePath, "index.html");
       }
-      
+
       // CORSヘッダーを設定
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-      
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
       // ファイルの存在確認
       if (existsSync(filePath)) {
         // Content-Typeを設定
         const extname = path.extname(filePath);
-        let contentType = 'text/html';
-        
+        let contentType = "text/html";
+
         switch (extname) {
-          case '.js':
-          case '.mjs':
-            contentType = 'text/javascript';
+          case ".js":
+          case ".mjs":
+            contentType = "text/javascript";
             break;
-          case '.css':
-            contentType = 'text/css';
+          case ".css":
+            contentType = "text/css";
             break;
-          case '.json':
-            contentType = 'application/json';
+          case ".json":
+            contentType = "application/json";
             break;
-          case '.png':
-            contentType = 'image/png';
+          case ".png":
+            contentType = "image/png";
             break;
-          case '.jpg':
-            contentType = 'image/jpg';
+          case ".jpg":
+            contentType = "image/jpg";
             break;
         }
-        
+
         // ファイルを読み込んでレスポンス
         const content = readFileSync(filePath);
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(content, 'utf-8');
+        res.writeHead(200, { "Content-Type": contentType });
+        res.end(content, "utf-8");
       } else {
         // ファイルが見つからない場合は404
         res.writeHead(404);
-        res.end('File not found: ' + filePath);
+        res.end("File not found: " + filePath);
       }
     });
-    
+
     server.listen(port, () => {
       console.log(`HTTP server running at http://localhost:${port}/`);
       resolve(server);
@@ -97,13 +97,13 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
 test("browser can create canvas and draw", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
-  
+
   try {
     // テスト用HTMLファイルを作成（非常にシンプルなキャンバステスト）
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
     const tempHtmlPath = path.join(tempDir, `webcodecs-test-${timestamp}.html`);
-    
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -148,40 +148,45 @@ test("browser can create canvas and draw", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created test HTML at: ${tempHtmlPath}`);
-    
+
     // ブラウザを起動
     console.log("Launching browser...");
-    browser = await chromium.launch({ 
-      headless: false
+    browser = await chromium.launch({
+      headless: false,
     });
-    
+
     console.log("Browser launched successfully");
     console.log("Creating new page...");
     page = await browser.newPage();
-    
+
     console.log("Navigating to file...");
     await page.goto(`file://${tempHtmlPath}`);
-    
+
     // テストの実行ボタンをクリック
     console.log("Running canvas test...");
-    await page.click('#runButton');
-    
+    await page.click("#runButton");
+
     // 結果が表示されるまで待機
-    await page.waitForFunction(() => {
-      const resultElement = document.getElementById('result');
-      if (!resultElement || !resultElement.textContent) return false;
-      return resultElement.textContent.includes('成功') || 
-             resultElement.textContent.includes('エラー');
-    }, { timeout: 10000 });
-    
+    await page.waitForFunction(
+      () => {
+        const resultElement = document.getElementById("result");
+        if (!resultElement || !resultElement.textContent) return false;
+        return (
+          resultElement.textContent.includes("成功") ||
+          resultElement.textContent.includes("エラー")
+        );
+      },
+      { timeout: 10000 },
+    );
+
     // 結果を検証
-    const resultText = await page.locator('#result').textContent();
+    const resultText = await page.locator("#result").textContent();
     console.log(`Test result: ${resultText}`);
-    
-    expect(resultText).toContain('成功');
+
+    expect(resultText).toContain("成功");
     console.log("Test passed - canvas created and drawn successfully");
   } catch (error) {
     console.error("Test failed with error:", error);
@@ -197,13 +202,16 @@ test("browser can create canvas and draw", async () => {
 test("browser supports WebCodecs", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
-  
+
   try {
     // テスト用HTMLファイルを作成
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(tempDir, `webcodecs-support-test-${timestamp}.html`);
-    
+    const tempHtmlPath = path.join(
+      tempDir,
+      `webcodecs-support-test-${timestamp}.html`,
+    );
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -259,49 +267,56 @@ test("browser supports WebCodecs", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created WebCodecs support test HTML at: ${tempHtmlPath}`);
-    
+
     // ブラウザを起動
     console.log("Launching browser for WebCodecs support test...");
-    browser = await chromium.launch({ 
-      headless: false
+    browser = await chromium.launch({
+      headless: false,
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for WebCodecs support test...");
     page = await browser.newPage();
-    
+
     // ファイルに移動
     console.log("Navigating to WebCodecs support test...");
     await page.goto(`file://${tempHtmlPath}`);
-    
+
     // サポート確認ボタンをクリック
     console.log("Checking WebCodecs support...");
-    await page.click('#checkButton');
-    
+    await page.click("#checkButton");
+
     // 結果が表示されるまで待機
-    await page.waitForFunction(() => {
-      const resultElement = document.getElementById('result');
-      if (!resultElement || !resultElement.textContent) return false;
-      return resultElement.textContent.includes('成功') || 
-             resultElement.textContent.includes('エラー');
-    }, { timeout: 10000 });
-    
+    await page.waitForFunction(
+      () => {
+        const resultElement = document.getElementById("result");
+        if (!resultElement || !resultElement.textContent) return false;
+        return (
+          resultElement.textContent.includes("成功") ||
+          resultElement.textContent.includes("エラー")
+        );
+      },
+      { timeout: 10000 },
+    );
+
     // 結果を取得
     const supportResults = await page.evaluate(() => {
       return {
         fullSupport: (window as any).webCodecsFullySupported || false,
-        resultText: document.getElementById('result')?.textContent || ''
+        resultText: document.getElementById("result")?.textContent || "",
       };
     });
-    
+
     console.log(`WebCodecs support test results: ${supportResults.resultText}`);
-    console.log(`Full WebCodecs support: ${supportResults.fullSupport ? 'Yes' : 'No'}`);
-    
+    console.log(
+      `Full WebCodecs support: ${supportResults.fullSupport ? "Yes" : "No"}`,
+    );
+
     // WebCodecsがサポートされていることを確認
-    expect(supportResults.resultText).toContain('成功');
+    expect(supportResults.resultText).toContain("成功");
   } catch (error) {
     console.error("WebCodecs support test failed with error:", error);
     throw error;
@@ -316,23 +331,29 @@ test("browser supports WebCodecs", async () => {
 test("can create VideoEncoderConfig and verify format support", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
-  
+
   try {
     // まずライブラリをビルドして、IIFEバンドルを作成
     console.log("Building library for simple encoding test...");
-    execSync("npx tsup src/index.ts --format iife --globalName WebCodecsEncoder", { stdio: "inherit" });
+    execSync(
+      "npx tsup src/index.ts --format iife --globalName WebCodecsEncoder",
+      { stdio: "inherit" },
+    );
     console.log("Library built successfully");
-    
+
     // IIFEバンドルを読み込む
     const distPath = path.join(__dirname, "../../dist");
     const iifeBundlePath = path.join(distPath, "index.global.js");
     const code = readFileSync(iifeBundlePath, "utf8");
-    
+
     // テスト用HTMLファイルを作成
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(tempDir, `webcodecs-encoding-test-${timestamp}.html`);
-    
+    const tempHtmlPath = path.join(
+      tempDir,
+      `webcodecs-encoding-test-${timestamp}.html`,
+    );
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -405,54 +426,67 @@ test("can create VideoEncoderConfig and verify format support", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created encoding support test HTML at: ${tempHtmlPath}`);
-    
+
     // ブラウザを起動
     console.log("Launching browser for encoding test...");
-    browser = await chromium.launch({ 
-      headless: false
+    browser = await chromium.launch({
+      headless: false,
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for encoding test...");
     page = await browser.newPage();
-    
+
     // ファイルに移動
     console.log("Navigating to encoding test...");
     await page.goto(`file://${tempHtmlPath}`);
-    
+
     // エンコードサポート確認ボタンをクリック
     console.log("Checking encoding support...");
-    await page.click('#checkButton');
-    
+    await page.click("#checkButton");
+
     // 結果が表示されるまで待機
-    await page.waitForFunction(() => {
-      const resultElement = document.getElementById('result');
-      if (!resultElement || !resultElement.textContent) return false;
-      return resultElement.textContent.includes('成功') || 
-             resultElement.textContent.includes('エラー');
-    }, { timeout: 10000 });
-    
+    await page.waitForFunction(
+      () => {
+        const resultElement = document.getElementById("result");
+        if (!resultElement || !resultElement.textContent) return false;
+        return (
+          resultElement.textContent.includes("成功") ||
+          resultElement.textContent.includes("エラー")
+        );
+      },
+      { timeout: 10000 },
+    );
+
     // 結果を取得
     const supportResults = await page.evaluate(() => {
       return {
         supported: (window as any).encodingSupported || false,
-        resultText: document.getElementById('result')?.textContent || '',
-        details: (window as any).supportResult || null
+        resultText: document.getElementById("result")?.textContent || "",
+        details: (window as any).supportResult || null,
       };
     });
-    
+
     console.log(`Encoding support test results: ${supportResults.resultText}`);
-    console.log(`Supported encodings: ${supportResults.supported ? 'Yes' : 'No'}`);
+    console.log(
+      `Supported encodings: ${supportResults.supported ? "Yes" : "No"}`,
+    );
     if (supportResults.details) {
-      console.log('Video support details:', JSON.stringify(supportResults.details.video, null, 2));
-      console.log('Audio support details:', JSON.stringify(supportResults.details.audio, null, 2));
+      console.log(
+        "Video support details:",
+        JSON.stringify(supportResults.details.video, null, 2),
+      );
+      console.log(
+        "Audio support details:",
+        JSON.stringify(supportResults.details.audio, null, 2),
+      );
     }
-    
+
     // エンコード設定がサポートされていることを確認
-    expect(supportResults.resultText).toContain('成功');
+    expect(supportResults.resultText).toContain("成功");
   } catch (error) {
     console.error("Encoding test failed with error:", error);
     throw error;
@@ -467,13 +501,16 @@ test("can create VideoEncoderConfig and verify format support", async () => {
 test("can create VideoFrame and encode using WebCodecs directly", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
-  
+
   try {
     // テスト用HTMLファイルを作成
     const tempDir = os.tmpdir();
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(tempDir, `webcodecs-videoframe-test-${timestamp}.html`);
-    
+    const tempHtmlPath = path.join(
+      tempDir,
+      `webcodecs-videoframe-test-${timestamp}.html`,
+    );
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -587,51 +624,59 @@ test("can create VideoFrame and encode using WebCodecs directly", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created VideoFrame test HTML at: ${tempHtmlPath}`);
-    
+
     // ブラウザを起動
     console.log("Launching browser for VideoFrame test...");
-    browser = await chromium.launch({ 
-      headless: false
+    browser = await chromium.launch({
+      headless: false,
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for VideoFrame test...");
     page = await browser.newPage();
-    
+
     // ファイルに移動
     console.log("Navigating to VideoFrame test...");
     await page.goto(`file://${tempHtmlPath}`);
-    
+
     // エンコードテスト実行ボタンをクリック
     console.log("Running VideoFrame encoding test...");
-    await page.click('#encodeButton');
-    
+    await page.click("#encodeButton");
+
     // 結果が表示されるまで待機
-    await page.waitForFunction(() => {
-      const resultElement = document.getElementById('result');
-      if (!resultElement || !resultElement.textContent) return false;
-      return resultElement.textContent.includes('成功') || 
-             resultElement.textContent.includes('エラー');
-    }, { timeout: 20000 });
-    
+    await page.waitForFunction(
+      () => {
+        const resultElement = document.getElementById("result");
+        if (!resultElement || !resultElement.textContent) return false;
+        return (
+          resultElement.textContent.includes("成功") ||
+          resultElement.textContent.includes("エラー")
+        );
+      },
+      { timeout: 20000 },
+    );
+
     // 結果を取得
     const results = await page.evaluate(() => {
       return {
-        resultText: document.getElementById('result')?.textContent || '',
-        encodingResult: (window as any).videoEncodingResult || null
+        resultText: document.getElementById("result")?.textContent || "",
+        encodingResult: (window as any).videoEncodingResult || null,
       };
     });
-    
+
     console.log(`VideoFrame test results: ${results.resultText}`);
     if (results.encodingResult) {
-      console.log('Encoding result details:', JSON.stringify(results.encodingResult, null, 2));
+      console.log(
+        "Encoding result details:",
+        JSON.stringify(results.encodingResult, null, 2),
+      );
     }
-    
+
     // テストが成功したことを確認
-    expect(results.resultText).toContain('成功');
+    expect(results.resultText).toContain("成功");
     expect(results.encodingResult?.success).toBe(true);
     expect(results.encodingResult?.chunkCount).toBeGreaterThan(0);
     expect(results.encodingResult?.totalBytes).toBeGreaterThan(0);
@@ -650,21 +695,21 @@ test("WebCodecsEncoder API via HTTP server", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
-  
+
   try {
     // まずライブラリをビルド
     console.log("Building library...");
     execSync("npm run build", { stdio: "inherit" });
     console.log("Library built successfully");
-    
+
     // 利用可能なポートを見つける
     const port = await findAvailablePort(8765);
     console.log(`Using port: ${port}`);
-    
+
     // distディレクトリにテストHTMLを作成
     const distDir = path.join(__dirname, "../../dist");
     const testHtmlPath = path.join(distDir, "encoder-test.html");
-    
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -783,96 +828,113 @@ test("WebCodecsEncoder API via HTTP server", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(testHtmlPath, testHtml);
     console.log(`Created encoder test HTML at: ${testHtmlPath}`);
-    
+
     // HTTPサーバーを起動
     console.log(`Starting HTTP server at port ${port}...`);
     server = await startHttpServer(port, distDir);
-    
+
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder test...");
-    browser = await chromium.launch({ 
-      headless: false
+    browser = await chromium.launch({
+      headless: false,
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for WebCodecsEncoder test...");
     page = await browser.newPage();
-    
+
     // ブラウザコンソールのログを取得
-    page.on('console', (msg) => {
+    page.on("console", (msg) => {
       console.log(`[Browser Console]: ${msg.text()}`);
     });
-    
+
     // ページエラーを取得
-    page.on('pageerror', (err) => {
+    page.on("pageerror", (err) => {
       console.error(`[Browser Error]: ${err.message}`);
     });
-    
+
     // HTTPサーバー経由でテストページにアクセス
     console.log("Navigating to WebCodecsEncoder test...");
     await page.goto(`http://localhost:${port}/encoder-test.html`);
-    
+
     // テスト実行ボタンをクリック
     console.log("Running WebCodecsEncoder test...");
-    await page.click('#runButton');
-    
+    await page.click("#runButton");
+
     // 結果が表示されるまで待機（タイムアウトを長めに設定）
     try {
-      await page.waitForFunction(() => {
-        const resultElement = document.getElementById('result');
-        if (!resultElement || !resultElement.textContent) return false;
-        return resultElement.textContent.includes('Success') || 
-               resultElement.textContent.includes('Error');
-      }, { timeout: 30000 });
-      
+      await page.waitForFunction(
+        () => {
+          const resultElement = document.getElementById("result");
+          if (!resultElement || !resultElement.textContent) return false;
+          return (
+            resultElement.textContent.includes("Success") ||
+            resultElement.textContent.includes("Error")
+          );
+        },
+        { timeout: 30000 },
+      );
+
       // ログ出力を取得
-      const logs = await page.$$eval('#log div', (divs) => divs.map(div => div.textContent));
-      console.log('Log entries:', logs);
-      
+      const logs = await page.$$eval("#log div", (divs) =>
+        divs.map((div) => div.textContent),
+      );
+      console.log("Log entries:", logs);
+
       // 結果を取得
       const results = await page.evaluate(() => {
         return {
-          resultText: document.getElementById('result')?.textContent || '',
-          testResult: (window as any).encoderTestResult || null
+          resultText: document.getElementById("result")?.textContent || "",
+          testResult: (window as any).encoderTestResult || null,
         };
       });
-      
+
       console.log(`WebCodecsEncoder test results: ${results.resultText}`);
       if (results.testResult) {
-        console.log('Test result details:', JSON.stringify(results.testResult, null, 2));
+        console.log(
+          "Test result details:",
+          JSON.stringify(results.testResult, null, 2),
+        );
       }
-      
+
       // テスト結果を確認
       if (results.testResult?.success) {
-        expect(results.resultText).toContain('Success');
+        expect(results.resultText).toContain("Success");
         console.log("Test passed - WebCodecsEncoder instance can be created!");
       } else {
-        console.log("Test failed, but we'll analyze the error to understand the issue");
+        console.log(
+          "Test failed, but we'll analyze the error to understand the issue",
+        );
         console.log(`Error message: ${results.testResult?.error}`);
         // この段階では失敗を許容し、詳細を分析するためにテストを通す
         expect(true).toBe(true);
       }
     } catch (timeoutError) {
       console.error("Timeout waiting for test result:", timeoutError);
-      
+
       // 現在のページの状態を確認
       const pageContent = await page.content();
-      console.log("Current page HTML structure:", pageContent.substring(0, 500) + "...");
-      
-      const currentText = await page.locator('#result').textContent();
+      console.log(
+        "Current page HTML structure:",
+        pageContent.substring(0, 500) + "...",
+      );
+
+      const currentText = await page.locator("#result").textContent();
       console.log("Current result text:", currentText);
-      
+
       const scriptError = await page.evaluate(() => {
         return {
-          hasRunEncoderTest: typeof (window as any).runEncoderTest === 'function',
-          hasWebCodecsEncoder: typeof (window as any).WebCodecsEncoder !== 'undefined'
+          hasRunEncoderTest:
+            typeof (window as any).runEncoderTest === "function",
+          hasWebCodecsEncoder:
+            typeof (window as any).WebCodecsEncoder !== "undefined",
         };
       });
       console.log("Script evaluation:", scriptError);
-      
+
       // テストを失敗させずに続行
       expect(true).toBe(true);
     }
@@ -886,28 +948,28 @@ test("WebCodecsEncoder API via HTTP server", async () => {
     if (browser) await browser.close();
     if (server) server.close();
   }
-}, 120000);  // 2分のタイムアウト
+}, 120000); // 2分のタイムアウト
 
 // WebCodecsEncoderを使用したMP4エンコードテスト
 test("WebCodecsEncoder can encode canvas to MP4", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
-  
+
   try {
     // まずライブラリをビルド
     console.log("Building library...");
     execSync("npm run build", { stdio: "inherit" });
     console.log("Library built successfully");
-    
+
     // 利用可能なポートを見つける
     const port = await findAvailablePort(8766);
     console.log(`Using port: ${port}`);
-    
+
     // distディレクトリにテストHTMLを作成
     const distDir = path.join(__dirname, "../../dist");
     const testHtmlPath = path.join(distDir, "mp4-encoder-test.html");
-    
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -1141,84 +1203,105 @@ test("WebCodecsEncoder can encode canvas to MP4", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(testHtmlPath, testHtml);
     console.log(`Created MP4 encoder test HTML at: ${testHtmlPath}`);
-    
+
     // HTTPサーバーを起動
     console.log(`Starting HTTP server at port ${port}...`);
     server = await startHttpServer(port, distDir);
-    
+
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder MP4 test...");
-    browser = await chromium.launch({ 
+    browser = await chromium.launch({
       headless: false,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-logging=stderr']
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--enable-logging=stderr",
+      ],
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for WebCodecsEncoder MP4 test...");
     page = await browser.newPage();
-    
+
     // ブラウザコンソールログを取得
-    page.on('console', (msg) => {
+    page.on("console", (msg) => {
       console.log(`[Browser Console]: ${msg.text()}`);
     });
-    
+
     // ページエラーを取得
-    page.on('pageerror', (err) => {
+    page.on("pageerror", (err) => {
       console.error(`[Browser Error]: ${err.message}`);
     });
-    
+
     // HTTPサーバー経由でテストページにアクセス
     console.log("Navigating to WebCodecsEncoder MP4 test...");
     await page.goto(`http://localhost:${port}/mp4-encoder-test.html`);
-    
+
     // テスト実行ボタンをクリック
     console.log("Running WebCodecsEncoder MP4 test...");
-    await page.click('#runButton');
-    
+    await page.click("#runButton");
+
     // 結果が表示されるまで待機
     try {
       console.log("Waiting for encoding to complete...");
-      await page.waitForFunction(() => {
-        const resultElement = document.getElementById('result');
-        if (!resultElement || !resultElement.textContent) return false;
-        return resultElement.textContent.includes('成功') || 
-               resultElement.textContent.includes('エラー');
-      }, { timeout: 60000 }); // 1分のタイムアウト
-      
+      await page.waitForFunction(
+        () => {
+          const resultElement = document.getElementById("result");
+          if (!resultElement || !resultElement.textContent) return false;
+          return (
+            resultElement.textContent.includes("成功") ||
+            resultElement.textContent.includes("エラー")
+          );
+        },
+        { timeout: 60000 },
+      ); // 1分のタイムアウト
+
       // ログ出力を取得
-      const logs = await page.$$eval('#log div', (divs) => divs.map(div => div.textContent));
-      console.log('Log entries:', logs);
-      
+      const logs = await page.$$eval("#log div", (divs) =>
+        divs.map((div) => div.textContent),
+      );
+      console.log("Log entries:", logs);
+
       // 結果とエラー情報を取得
       const results = await page.evaluate(() => {
         return {
-          resultText: document.getElementById('result')?.textContent || '',
+          resultText: document.getElementById("result")?.textContent || "",
           testResult: (window as any).encodingTestResult || null,
-          errors: (window as any).encoderErrors || []
+          errors: (window as any).encoderErrors || [],
         };
       });
-      
+
       console.log(`WebCodecsEncoder MP4 test results: ${results.resultText}`);
-      
+
       if (results.testResult) {
-        console.log('Test result details:', JSON.stringify(results.testResult, null, 2));
+        console.log(
+          "Test result details:",
+          JSON.stringify(results.testResult, null, 2),
+        );
       }
-      
+
       if (results.errors && results.errors.length > 0) {
-        console.log('Errors encountered:', JSON.stringify(results.errors, null, 2));
+        console.log(
+          "Errors encountered:",
+          JSON.stringify(results.errors, null, 2),
+        );
       }
-      
+
       // テスト結果を確認
       if (results.testResult?.success) {
-        expect(results.resultText).toContain('成功');
+        expect(results.resultText).toContain("成功");
         expect(results.testResult.byteLength).toBeGreaterThan(0);
-        console.log(`MP4 encoding test passed - generated ${results.testResult.byteLength} bytes`);
+        console.log(
+          `MP4 encoding test passed - generated ${results.testResult.byteLength} bytes`,
+        );
       } else {
         console.log(`MP4 encoding test failed: ${results.testResult?.error}`);
-        console.log("This could be normal if the browser doesn't support the required codecs");
+        console.log(
+          "This could be normal if the browser doesn't support the required codecs",
+        );
         expect(true).toBe(true); // エラーケースも許容
       }
     } catch (timeoutError) {
@@ -1241,21 +1324,21 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
-  
+
   try {
     // まずライブラリをビルド
     console.log("Building library...");
     execSync("npm run build", { stdio: "inherit" });
     console.log("Library built successfully");
-    
+
     // 利用可能なポートを見つける
     const port = await findAvailablePort(8767);
     console.log(`Using port: ${port}`);
-    
+
     // distディレクトリにテストHTMLを作成
     const distDir = path.join(__dirname, "../../dist");
     const testHtmlPath = path.join(distDir, "webm-encoder-test.html");
-    
+
     const testHtml = `
     <!DOCTYPE html>
     <html>
@@ -1497,87 +1580,110 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
       </body>
     </html>
     `;
-    
+
     writeFileSync(testHtmlPath, testHtml);
     console.log(`Created WebM encoder test HTML at: ${testHtmlPath}`);
-    
+
     // HTTPサーバーを起動
     console.log(`Starting HTTP server at port ${port}...`);
     server = await startHttpServer(port, distDir);
-    
+
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder WebM test...");
-    browser = await chromium.launch({ 
+    browser = await chromium.launch({
       headless: false,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--enable-logging=stderr']
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--enable-logging=stderr",
+      ],
     });
-    
+
     // 新しいページを作成
     console.log("Creating new page for WebCodecsEncoder WebM test...");
     page = await browser.newPage();
-    
+
     // ブラウザコンソールログを取得
-    page.on('console', (msg) => {
+    page.on("console", (msg) => {
       console.log(`[Browser Console]: ${msg.text()}`);
     });
-    
+
     // ページエラーを取得
-    page.on('pageerror', (err) => {
+    page.on("pageerror", (err) => {
       console.error(`[Browser Error]: ${err.message}`);
     });
-    
+
     // HTTPサーバー経由でテストページにアクセス
     console.log("Navigating to WebCodecsEncoder WebM test...");
     await page.goto(`http://localhost:${port}/webm-encoder-test.html`);
-    
+
     // テスト実行ボタンをクリック
     console.log("Running WebCodecsEncoder WebM test...");
-    await page.click('#runButton');
-    
+    await page.click("#runButton");
+
     // 結果が表示されるまで待機
     try {
       console.log("Waiting for encoding to complete...");
-      await page.waitForFunction(() => {
-        const resultElement = document.getElementById('result');
-        if (!resultElement || !resultElement.textContent) return false;
-        return resultElement.textContent.includes('成功') || 
-               resultElement.textContent.includes('エラー');
-      }, { timeout: 60000 }); // 1分のタイムアウト
-      
+      await page.waitForFunction(
+        () => {
+          const resultElement = document.getElementById("result");
+          if (!resultElement || !resultElement.textContent) return false;
+          return (
+            resultElement.textContent.includes("成功") ||
+            resultElement.textContent.includes("エラー")
+          );
+        },
+        { timeout: 60000 },
+      ); // 1分のタイムアウト
+
       // ログ出力を取得
-      const logs = await page.$$eval('#log div', (divs) => divs.map(div => div.textContent));
-      console.log('Log entries:', logs);
-      
+      const logs = await page.$$eval("#log div", (divs) =>
+        divs.map((div) => div.textContent),
+      );
+      console.log("Log entries:", logs);
+
       // 結果とエラー情報を取得
       const results = await page.evaluate(() => {
         return {
-          resultText: document.getElementById('result')?.textContent || '',
+          resultText: document.getElementById("result")?.textContent || "",
           testResult: (window as any).encodingTestResult || null,
-          errors: (window as any).encoderErrors || []
+          errors: (window as any).encoderErrors || [],
         };
       });
-      
+
       console.log(`WebCodecsEncoder WebM test results: ${results.resultText}`);
-      
+
       if (results.testResult) {
-        console.log('Test result details:', JSON.stringify(results.testResult, null, 2));
+        console.log(
+          "Test result details:",
+          JSON.stringify(results.testResult, null, 2),
+        );
       }
-      
+
       if (results.errors && results.errors.length > 0) {
-        console.log('Errors encountered:', JSON.stringify(results.errors, null, 2));
+        console.log(
+          "Errors encountered:",
+          JSON.stringify(results.errors, null, 2),
+        );
       }
-      
+
       // テスト結果を確認
       if (results.testResult?.success) {
-        expect(results.resultText).toContain('成功');
+        expect(results.resultText).toContain("成功");
         expect(results.testResult.byteLength).toBeGreaterThan(0);
-        console.log(`WebM encoding test passed - generated ${results.testResult.byteLength} bytes`);
+        console.log(
+          `WebM encoding test passed - generated ${results.testResult.byteLength} bytes`,
+        );
         if (results.testResult.codec) {
-          console.log(`Used codecs: ${results.testResult.codec.video} (video), ${results.testResult.codec.audio} (audio)`);
+          console.log(
+            `Used codecs: ${results.testResult.codec.video} (video), ${results.testResult.codec.audio} (audio)`,
+          );
         }
       } else {
         console.log(`WebM encoding test failed: ${results.testResult?.error}`);
-        console.log("This could be normal if the browser doesn't support the required codecs");
+        console.log(
+          "This could be normal if the browser doesn't support the required codecs",
+        );
         expect(true).toBe(true); // エラーケースも許容
       }
     } catch (timeoutError) {
