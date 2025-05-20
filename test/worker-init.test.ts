@@ -5,7 +5,6 @@ import {
   FinalizeWorkerMessage,
   CancelWorkerMessage,
   AddAudioDataMessage,
-  MainThreadMessage,
 } from "../src/types";
 import {
   setupGlobals,

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   EncoderConfig,
   InitializeWorkerMessage,
-  CancelWorkerMessage,
   AddAudioDataMessage,
 } from "../src/types";
 import {

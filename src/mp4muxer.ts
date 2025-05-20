@@ -37,7 +37,6 @@ export class Mp4MuxerWrapper {
   private target: ArrayBufferTarget | StreamTarget;
   private videoConfigured: boolean = false;
   private audioConfigured: boolean = false;
-  private writtenPosition: number = 0;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -110,7 +109,6 @@ export class Mp4MuxerWrapper {
             isHeader,
             container: "mp4",
           };
-          this.writtenPosition = position + chunk.byteLength;
           this.postMessageToMain(message, [chunkCopy.buffer]);
         },
       } as any); // Use `as any` to bypass the strict type check for StreamTargetOptions if it's causing issues
