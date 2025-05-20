@@ -1,7 +1,7 @@
-import { Mp4Encoder } from 'webcodecs-muxer';
+import { WebCodecsEncoder } from 'webcodecs-muxer';
 
 async function encodeVideoToFile() {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error('WebCodecs or Workers not supported.');
     return;
   }
@@ -16,7 +16,7 @@ async function encodeVideoToFile() {
     channels: 2,
   };
 
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
 
   try {
     await encoder.initialize({

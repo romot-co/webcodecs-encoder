@@ -1,8 +1,8 @@
-import { Mp4Encoder, Mp4EncoderInitializeOptions } from "./encoder";
+import { WebCodecsEncoder, WebCodecsEncoderInitializeOptions } from "./encoder";
 import type { EncoderConfig } from "./types";
 
 export class MediaStreamRecorder {
-  private encoder: Mp4Encoder;
+  private encoder: WebCodecsEncoder;
   private videoReader?: ReadableStreamDefaultReader<VideoFrame>;
   private audioReader?: ReadableStreamDefaultReader<AudioData>;
   private videoTrack?: MediaStreamTrack;
@@ -12,19 +12,19 @@ export class MediaStreamRecorder {
   private onErrorCallback?: (error: any) => void;
 
   constructor(private config: EncoderConfig) {
-    this.encoder = new Mp4Encoder(config);
+    this.encoder = new WebCodecsEncoder(config);
   }
 
   static isSupported(): boolean {
     return (
       typeof MediaStreamTrackProcessor !== "undefined" &&
-      Mp4Encoder.isSupported()
+      WebCodecsEncoder.isSupported()
     );
   }
 
   async startRecording(
     stream: MediaStream,
-    options?: Mp4EncoderInitializeOptions,
+    options?: WebCodecsEncoderInitializeOptions,
   ): Promise<void> {
     if (this.recording) {
       throw new Error("MediaStreamRecorder: already recording.");

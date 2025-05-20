@@ -9,12 +9,12 @@ import {
 } from "vitest";
 import type { EncoderConfig } from "../src/types";
 import { MediaStreamRecorder } from "../src/mediastream-recorder";
-import { Mp4Encoder } from "../src/encoder";
+import { WebCodecsEncoder } from "../src/encoder";
 
 let encoderInstance: any;
 
 vi.mock("../src/encoder", () => {
-  const MockMp4Encoder = vi.fn(() => {
+  const MockWebCodecsEncoder = vi.fn(() => {
     encoderInstance = {
       initialize: vi.fn().mockResolvedValue(undefined),
       addVideoFrame: vi.fn().mockResolvedValue(undefined),
@@ -27,8 +27,8 @@ vi.mock("../src/encoder", () => {
     };
     return encoderInstance;
   });
-  (MockMp4Encoder as any).isSupported = vi.fn(() => true);
-  return { Mp4Encoder: MockMp4Encoder };
+  (MockWebCodecsEncoder as any).isSupported = vi.fn(() => true);
+  return { WebCodecsEncoder: MockWebCodecsEncoder };
 });
 
 // @ts-ignore - Ignoring VideoFrame/AudioData type complexity for mock values
@@ -133,7 +133,7 @@ describe("MediaStreamRecorder", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (Mp4Encoder as any).isSupported.mockReturnValue(true);
+    (WebCodecsEncoder as any).isSupported.mockReturnValue(true);
     originalMediaStreamTrackProcessor = (globalThis as any)
       .MediaStreamTrackProcessor;
     (globalThis as any).MediaStreamTrackProcessor = FakeProcessor;
@@ -155,15 +155,15 @@ describe("MediaStreamRecorder", () => {
   });
 
   describe("isSupported", () => {
-    it("should return true if MediaStreamTrackProcessor and Mp4Encoder are supported", () => {
+    it("should return true if MediaStreamTrackProcessor and WebCodecsEncoder are supported", () => {
       expect(MediaStreamRecorder.isSupported()).toBe(true);
     });
     it("should return false if MediaStreamTrackProcessor is not defined", () => {
       (globalThis as any).MediaStreamTrackProcessor = undefined;
       expect(MediaStreamRecorder.isSupported()).toBe(false);
     });
-    it("should return false if Mp4Encoder.isSupported() returns false", () => {
-      (Mp4Encoder as any).isSupported.mockReturnValue(false);
+    it("should return false if WebCodecsEncoder.isSupported() returns false", () => {
+      (WebCodecsEncoder as any).isSupported.mockReturnValue(false);
       expect(MediaStreamRecorder.isSupported()).toBe(false);
     });
   });
@@ -172,7 +172,7 @@ describe("MediaStreamRecorder", () => {
     const recorder = new MediaStreamRecorder(config);
     await recorder.startRecording(mediaStream);
     await Promise.resolve();
-    expect(Mp4Encoder).toHaveBeenCalledWith(config);
+    expect(WebCodecsEncoder).toHaveBeenCalledWith(config);
     expect(encoderInstance.initialize).toHaveBeenCalled();
     expect(encoderInstance.addVideoFrame).toHaveBeenCalled();
     expect(encoderInstance.addAudioData).toHaveBeenCalled();
