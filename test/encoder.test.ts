@@ -312,6 +312,7 @@ describe("Mp4Encoder", () => {
         },
       });
       await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
       expect(encoder.getActualVideoCodec()).toBe("avc1.42001f");
       expect(encoder.getActualAudioCodec()).toBe("mp4a.40.2");
     });
@@ -612,6 +613,7 @@ describe("Mp4Encoder", () => {
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
       await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
 
       const postError = new Error("post failed");
       mockWorkerInstance.postMessage.mockImplementationOnce(() => {
@@ -723,6 +725,30 @@ describe("Mp4Encoder", () => {
       }
 
       expect(onProgress).toHaveBeenLastCalledWith(1, undefined);
+    });
+
+    it("should propagate errors from worker postMessage", async () => {
+      const encoder = new Mp4Encoder(baseVideoConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const postError = new Error("post failed");
+      mockWorkerInstance.postMessage.mockImplementationOnce(() => {
+        throw postError;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+
+      await expect(encoder.addCanvasFrame(canvas)).rejects.toThrow(
+        `Failed to post video frame: ${postError.message}`,
+      );
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledTimes(1);
     });
   });
 
