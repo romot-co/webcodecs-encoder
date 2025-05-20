@@ -1511,5 +1511,34 @@ describe("Mp4Encoder", () => {
       }
       expect(mockWorkerInstance.terminate).toHaveBeenCalled();
     });
+
+    it("closes AudioContext and terminates worker on worker error", async () => {
+      const AudioContextMock = vi.fn(() => ({
+        audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+        close: vi.fn(),
+      }));
+      globalThis.AudioContext = AudioContextMock as any;
+
+      const encoder = new Mp4Encoder({ ...config });
+      const initPromise = encoder.initialize({ useAudioWorklet: true });
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "error",
+            errorDetail: { message: "boom", type: EncoderErrorType.WorkerError },
+          },
+        });
+      }
+
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
+      const ctxInstance = AudioContextMock.mock.results[0].value;
+      expect(ctxInstance.close).toHaveBeenCalled();
+      delete (globalThis as any).AudioContext;
+    });
   });
 });
