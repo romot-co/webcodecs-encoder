@@ -385,6 +385,17 @@ async function initializeEncoders(
       "AudioEncoder",
     );
     if (audioSupportConfig) {
+      if (audioSupportConfig.numberOfChannels !== currentConfig.channels) {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${currentConfig.channels}).`,
+            type: EncoderErrorType.ConfigurationError,
+          },
+        });
+        cleanup();
+        return;
+      }
       finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
     } else if (audioCodec === "opus") {
       console.warn(
@@ -413,17 +424,54 @@ async function initializeEncoders(
         "AudioEncoder",
       );
       if (audioSupportConfig) {
+        if (audioSupportConfig.numberOfChannels !== currentConfig.channels) {
+          postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${currentConfig.channels}).`,
+              type: EncoderErrorType.ConfigurationError,
+            },
+          });
+          cleanup();
+          return;
+        }
         finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
       } else {
-        postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message: "Worker: AAC audio codec is not supported after fallback.",
-            type: EncoderErrorType.NotSupported,
-          },
-        });
-        cleanup();
-        return;
+        console.warn(
+          "Worker: AAC audio codec is not supported. Falling back to Opus.",
+        );
+        audioCodec = "opus";
+        const opusFallback = { ...baseAudioConfig, codec: "opus" };
+        audioSupportConfig = await isConfigSupportedWithHwFallback(
+          AudioEncoderCtor,
+          opusFallback,
+          "AudioEncoder",
+        );
+        if (audioSupportConfig) {
+          if (audioSupportConfig.numberOfChannels !== currentConfig.channels) {
+            postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${currentConfig.channels}).`,
+                type: EncoderErrorType.ConfigurationError,
+              },
+            });
+            cleanup();
+            return;
+          }
+          finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
+        } else {
+          postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message:
+                "Worker: Opus audio codec is not supported after fallback.",
+              type: EncoderErrorType.NotSupported,
+            },
+          });
+          cleanup();
+          return;
+        }
       }
     } else {
       postMessageToMainThread({
