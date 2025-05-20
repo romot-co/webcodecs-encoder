@@ -22,6 +22,12 @@ export interface EncoderConfig {
   latencyMode?: "quality" | "realtime"; // Default: 'quality'
   /** Total frames for progress calculation if known in advance. */
   totalFrames?: number;
+  /** Force a key frame every N video frames. */
+  keyFrameInterval?: number;
+  /** Additional VideoEncoder configuration overrides. */
+  videoEncoderConfig?: Partial<VideoEncoderConfig>;
+  /** Additional AudioEncoder configuration overrides. */
+  audioEncoderConfig?: Partial<AudioEncoderConfig>;
 }
 
 export type ProgressCallback = (

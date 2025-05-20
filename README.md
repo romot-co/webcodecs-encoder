@@ -293,6 +293,9 @@ const result = await recorder.stopRecording();
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
     - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
     - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
+    - `keyFrameInterval?: number`: (Optional) Force a key frame every N video frames. When set, the worker sends `{ keyFrame: true }` to `VideoEncoder.encode()` at that interval.
+    - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`.
+    - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
