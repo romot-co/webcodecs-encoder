@@ -89,8 +89,15 @@ async function initializeEncoders(
     return;
   }
 
+  const audioDisabled =
+    currentConfig.audioBitrate <= 0 ||
+    currentConfig.channels <= 0 ||
+    currentConfig.sampleRate <= 0;
+
   try {
-    muxer = new Mp4MuxerWrapper(currentConfig, postMessageToMainThread);
+    muxer = new Mp4MuxerWrapper(currentConfig, postMessageToMainThread, {
+      disableAudio: audioDisabled,
+    });
   } catch (e: any) {
     postMessageToMainThread({
       type: "error",
@@ -253,127 +260,129 @@ async function initializeEncoders(
     return;
   }
 
-  let audioCodec = currentConfig.codec?.audio ?? "aac";
   let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
+  let audioCodec = currentConfig.codec?.audio ?? "aac";
 
-  const resolvedAudioCodecString =
-    currentConfig.codecString?.audio ??
-    (audioCodec === "opus" ? "opus" : "mp4a.40.2");
+  if (!audioDisabled) {
+    const resolvedAudioCodecString =
+      currentConfig.codecString?.audio ??
+      (audioCodec === "opus" ? "opus" : "mp4a.40.2");
 
-  const baseAudioConfig = {
-    sampleRate: currentConfig.sampleRate,
-    numberOfChannels: currentConfig.channels,
-    bitrate: currentConfig.audioBitrate,
-    codec: resolvedAudioCodecString,
-    ...(currentConfig.latencyMode && {
-      latencyMode: currentConfig.latencyMode,
-    }),
-  };
-
-  const AudioEncoderCtor: any = getAudioEncoder();
-  if (!AudioEncoderCtor) {
-    postMessageToMainThread({
-      type: "error",
-      errorDetail: {
-        message: "Worker: AudioEncoder not available",
-        type: EncoderErrorType.NotSupported,
-      },
-    });
-    cleanup();
-    return;
-  }
-
-  let audioSupport = await AudioEncoderCtor.isConfigSupported(
-    baseAudioConfig as any,
-  );
-  if (audioSupport?.supported) {
-    finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
-  } else if (audioCodec === "opus") {
-    console.warn(
-      `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
-    );
-    audioCodec = "aac";
-    const fallbackAudioConfig = {
-      ...baseAudioConfig,
-      codec: currentConfig.codecString?.audio ?? "mp4a.40.2",
+    const baseAudioConfig = {
+      sampleRate: currentConfig.sampleRate,
+      numberOfChannels: currentConfig.channels,
+      bitrate: currentConfig.audioBitrate,
+      codec: resolvedAudioCodecString,
+      ...(currentConfig.latencyMode && {
+        latencyMode: currentConfig.latencyMode,
+      }),
     };
-    audioSupport = await AudioEncoderCtor.isConfigSupported(
-      fallbackAudioConfig as any,
-    );
-    if (audioSupport?.supported) {
-      finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
-    } else {
+
+    const AudioEncoderCtor: any = getAudioEncoder();
+    if (!AudioEncoderCtor) {
       postMessageToMainThread({
         type: "error",
         errorDetail: {
-          message: "Worker: AAC audio codec is not supported after fallback.",
+          message: "Worker: AudioEncoder not available",
           type: EncoderErrorType.NotSupported,
         },
       });
       cleanup();
       return;
     }
-  } else {
-    postMessageToMainThread({
-      type: "error",
-      errorDetail: {
-        message: `Worker: Audio codec ${audioCodec} config not supported.`,
-        type: EncoderErrorType.NotSupported,
-      },
-    });
-    cleanup();
-    return;
-  }
 
-  try {
-    audioEncoder = new AudioEncoderCtor({
-      output: (chunk: any, meta: any) => {
-        if (isCancelled || !muxer) return;
-        muxer.addAudioChunk(chunk, meta);
-      },
-      error: (error: any) => {
-        if (isCancelled) return;
+    let audioSupport = await AudioEncoderCtor.isConfigSupported(
+      baseAudioConfig as any,
+    );
+    if (audioSupport?.supported) {
+      finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
+    } else if (audioCodec === "opus") {
+      console.warn(
+        `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
+      );
+      audioCodec = "aac";
+      const fallbackAudioConfig = {
+        ...baseAudioConfig,
+        codec: currentConfig.codecString?.audio ?? "mp4a.40.2",
+      };
+      audioSupport = await AudioEncoderCtor.isConfigSupported(
+        fallbackAudioConfig as any,
+      );
+      if (audioSupport?.supported) {
+        finalAudioEncoderConfig = audioSupport.config as AudioEncoderConfig;
+      } else {
         postMessageToMainThread({
           type: "error",
           errorDetail: {
-            message: `AudioEncoder error: ${error.message}`,
-            type: EncoderErrorType.AudioEncodingError,
-            stack: error.stack,
+            message: "Worker: AAC audio codec is not supported after fallback.",
+            type: EncoderErrorType.NotSupported,
           },
         });
         cleanup();
-      },
-    });
-    if (audioEncoder) {
-      audioEncoder.configure(finalAudioEncoderConfig as any);
+        return;
+      }
     } else {
       postMessageToMainThread({
         type: "error",
         errorDetail: {
-          message: "Worker: AudioEncoder instance is null after creation.",
-          type: EncoderErrorType.InitializationFailed,
+          message: `Worker: Audio codec ${audioCodec} config not supported.`,
+          type: EncoderErrorType.NotSupported,
         },
       });
       cleanup();
       return;
     }
-  } catch (e: any) {
-    postMessageToMainThread({
-      type: "error",
-      errorDetail: {
-        message: `Worker: Failed to initialize AudioEncoder: ${e.message}`,
-        type: EncoderErrorType.InitializationFailed,
-        stack: e.stack,
-      },
-    });
-    cleanup();
-    return;
+
+    try {
+      audioEncoder = new AudioEncoderCtor({
+        output: (chunk: any, meta: any) => {
+          if (isCancelled || !muxer) return;
+          muxer.addAudioChunk(chunk, meta);
+        },
+        error: (error: any) => {
+          if (isCancelled) return;
+          postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `AudioEncoder error: ${error.message}`,
+              type: EncoderErrorType.AudioEncodingError,
+              stack: error.stack,
+            },
+          });
+          cleanup();
+        },
+      });
+      if (audioEncoder) {
+        audioEncoder.configure(finalAudioEncoderConfig as any);
+      } else {
+        postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: "Worker: AudioEncoder instance is null after creation.",
+            type: EncoderErrorType.InitializationFailed,
+          },
+        });
+        cleanup();
+        return;
+      }
+    } catch (e: any) {
+      postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: `Worker: Failed to initialize AudioEncoder: ${e.message}`,
+          type: EncoderErrorType.InitializationFailed,
+          stack: e.stack,
+        },
+      });
+      cleanup();
+      return;
+    }
   }
 
   postMessageToMainThread({
     type: "initialized",
     actualVideoCodec: finalVideoEncoderConfig?.codec,
-    actualAudioCodec: finalAudioEncoderConfig?.codec,
+    actualAudioCodec: audioDisabled ? null : finalAudioEncoderConfig?.codec,
   } as MainThreadMessage);
 }
 

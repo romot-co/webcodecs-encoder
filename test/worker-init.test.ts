@@ -218,6 +218,26 @@ describe("worker", () => {
     );
   });
 
+  it("disables audio when audio parameters are invalid", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const invalid = { ...config, audioBitrate: 0 };
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: invalid };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(mockSelf.AudioEncoder).not.toHaveBeenCalled();
+    expect(Mp4MuxerWrapperMock).toHaveBeenCalledWith(
+      invalid,
+      expect.any(Function),
+      { disableAudio: true },
+    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      { type: "initialized", actualVideoCodec: "avc1.42001f", actualAudioCodec: null },
+      undefined,
+    );
+  });
+
   // Add more tests for addVideoData, addAudioData, error handling, etc.
   describe("worker error handling during initialization", () => {
     it("should post an error if video codec is not supported", async () => {

@@ -117,8 +117,11 @@ describe("handleAddAudioData", () => {
       type: "initialize",
       config,
     };
+    const beforeCalls = mockSelf.AudioEncoder.mock.calls.length;
     await global.self.onmessage({ data: initMessage } as MessageEvent);
     mockSelf.postMessage.mockClear();
+    mockMuxerInstanceForWorker.addAudioChunk.mockClear();
+    expect(mockSelf.AudioEncoder.mock.calls.length).toBe(beforeCalls);
 
     const dummyAudioSamples = new Float32Array(512);
     const audioDataArray: Float32Array[] = [];
@@ -137,6 +140,7 @@ describe("handleAddAudioData", () => {
     };
     await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
     expect(mockSelf.postMessage).not.toHaveBeenCalled();
+    expect(mockMuxerInstanceForWorker.addAudioChunk).not.toHaveBeenCalled();
   });
 
   it("should encode provided AudioData when audio field is set", async () => {

@@ -19,7 +19,7 @@ interface ExtendedMuxerOptions
   extends Omit<BaseOptions, "target" | "video" | "audio"> {
   target: ArrayBufferTarget | StreamTarget;
   video: NonNullable<BaseOptions["video"]>;
-  audio: NonNullable<BaseOptions["audio"]>;
+  audio?: NonNullable<BaseOptions["audio"]>;
   fastStart?:
     | false
     | "in-memory"
@@ -50,9 +50,11 @@ export class Mp4MuxerWrapper {
       message: MainThreadMessage,
       transfer?: Transferable[],
     ) => void,
+    options?: { disableAudio?: boolean },
   ) {
     this.config = config;
     this.postMessageToMain = postMessageCallback;
+    const disableAudio = options?.disableAudio ?? false;
 
     const videoCodecOption = config.codec?.video ?? "avc";
     // mp4-muxer expects 'avc' for H.264. Other video codecs might need mapping.
@@ -79,19 +81,22 @@ export class Mp4MuxerWrapper {
     // mp4-muxer directly supports 'aac' and 'opus'.
     const muxerAudioCodec = audioCodecOption;
 
-    const commonMuxerOptions = {
+    const commonMuxerOptions: Partial<ExtendedMuxerOptions> = {
       video: {
         codec: muxerVideoCodec,
         width: config.width,
         height: config.height,
         // framerate is not directly a muxer option here, but good to have in config
       },
-      audio: {
+    };
+
+    if (!disableAudio) {
+      (commonMuxerOptions as any).audio = {
         codec: muxerAudioCodec,
         sampleRate: config.sampleRate,
         numberOfChannels: config.channels,
-      },
-    };
+      };
+    }
 
     if (config.latencyMode === "realtime") {
       this.target = new StreamTarget({
@@ -127,7 +132,7 @@ export class Mp4MuxerWrapper {
     }
 
     this.videoConfigured = true;
-    this.audioConfigured = true;
+    this.audioConfigured = !disableAudio;
   }
 
   addVideoChunk(
@@ -163,13 +168,6 @@ export class Mp4MuxerWrapper {
     meta?: EncodedAudioChunkMetadata,
   ): void {
     if (!this.audioConfigured) {
-      this.postMessageToMain({
-        type: "error",
-        errorDetail: {
-          message: "MP4: Audio track not configured.",
-          type: EncoderErrorType.ConfigurationError,
-        },
-      });
       return;
     }
     try {

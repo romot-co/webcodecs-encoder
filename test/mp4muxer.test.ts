@@ -256,6 +256,20 @@ describe("Mp4MuxerWrapper", () => {
     });
   });
 
+  describe("audio disabled", () => {
+    it("should omit audio track when disableAudio is true", () => {
+      const wrapper = new Mp4MuxerWrapper(baseConfig, postMessageCallback, {
+        disableAudio: true,
+      });
+      const callArgs = MuxerMock.mock.calls[0][0] as any;
+      expect(callArgs.audio).toBeUndefined();
+
+      mockMuxerMethods.addAudioChunk.mockClear();
+      wrapper.addAudioChunk({} as any, {} as any);
+      expect(mockMuxerMethods.addAudioChunk).not.toHaveBeenCalled();
+    });
+  });
+
   describe("realtime mode (StreamTarget)", () => {
     it("should use StreamTarget and fragmented fastStart in realtime mode", () => {
       const realtimeConfig: EncoderConfig = {
