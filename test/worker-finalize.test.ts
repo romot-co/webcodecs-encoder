@@ -137,7 +137,7 @@ describe("handleFinalize", () => {
       expect.objectContaining({
         type: "error",
         errorDetail: expect.objectContaining({
-          message: `Worker: Failed to initialize MP4 Muxer: ${muxerConstructionError.message}`,
+          message: `Worker: Failed to initialize Muxer: ${muxerConstructionError.message}`,
           type: "initialization-failed",
         }),
       }),
