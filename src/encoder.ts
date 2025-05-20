@@ -384,10 +384,6 @@ export class Mp4Encoder {
     });
     try {
       await this.addVideoFrame(frame);
-    } catch (e) {
-      // If posting the frame fails, manually close to avoid leaks.
-      await this.addVideoFrame(frame, timestamp);
-      throw e;
     } finally {
       frame.close();
     }
