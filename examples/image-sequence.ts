@@ -1,7 +1,7 @@
-import { Mp4Encoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-muxer";
 
 export async function encodeImageSequence(imageUrls: string[]) {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error("WebCodecs or Workers not supported.");
     return;
   }
@@ -13,7 +13,7 @@ export async function encodeImageSequence(imageUrls: string[]) {
     videoBitrate: 2_000_000,
   };
 
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
   await encoder.initialize({ totalFrames: imageUrls.length });
 
   for (const [index, url] of imageUrls.entries()) {

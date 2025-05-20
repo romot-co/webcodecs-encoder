@@ -65,16 +65,16 @@ export enum EncoderErrorType {
   WorkerError = "worker-error",
 }
 
-export class Mp4EncoderError extends Error {
+export class WebCodecsEncoderError extends Error {
   constructor(
     public type: EncoderErrorType,
     message: string,
     public cause?: unknown,
   ) {
     super(message);
-    this.name = "Mp4EncoderError";
+    this.name = "WebCodecsEncoderError";
     // Ensure the prototype chain is correct for custom errors
-    Object.setPrototypeOf(this, Mp4EncoderError.prototype);
+    Object.setPrototypeOf(this, WebCodecsEncoderError.prototype);
   }
 }
 

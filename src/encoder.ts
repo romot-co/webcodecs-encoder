@@ -1,4 +1,4 @@
-import { EncoderErrorType, Mp4EncoderError } from "./types";
+import { EncoderErrorType, WebCodecsEncoderError } from "./types";
 import type { EncoderConfig, MainThreadMessage, WorkerMessage } from "./types";
 import logger from "./logger";
 
@@ -10,17 +10,17 @@ export type RealtimeDataCallback = (
   container?: "mp4" | "webm",
 ) => void;
 
-export interface Mp4EncoderInitializeOptions {
+export interface WebCodecsEncoderInitializeOptions {
   onProgress?: (processedFrames: number, totalFrames?: number) => void;
   totalFrames?: number;
-  onError?: (error: Mp4EncoderError) => void;
+  onError?: (error: WebCodecsEncoderError) => void;
   onData?: RealtimeDataCallback;
   worker?: Worker;
   workerScriptUrl?: string | URL;
   useAudioWorklet?: boolean;
 }
 
-export class Mp4Encoder {
+export class WebCodecsEncoder {
   private config: EncoderConfig;
   private worker: Worker | null = null;
   private totalFrames: number | undefined;
@@ -43,7 +43,8 @@ export class Mp4Encoder {
   private onProgressCallback:
     | ((processedFrames: number, totalFrames?: number) => void)
     | null = null;
-  private onErrorCallback: ((error: Mp4EncoderError) => void) | null = null;
+  private onErrorCallback: ((error: WebCodecsEncoderError) => void) | null =
+    null;
   private onDataCallback: RealtimeDataCallback | null = null; // For real-time data
 
   private isCancelled: boolean = false;
@@ -81,7 +82,7 @@ export class Mp4Encoder {
   }
 
   public async initialize(
-    options?: Mp4EncoderInitializeOptions,
+    options?: WebCodecsEncoderInitializeOptions,
   ): Promise<void> {
     this.onErrorCallback = options?.onError || null;
     this.onProgressCallback = options?.onProgress || null;
@@ -89,7 +90,7 @@ export class Mp4Encoder {
     this.totalFrames = options?.totalFrames;
 
     if (this.config.latencyMode === "realtime" && !this.onDataCallback) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.ConfigurationError,
         "onData callback must be provided when latencyMode is 'realtime'.",
       );
@@ -99,8 +100,8 @@ export class Mp4Encoder {
       throw err; // Throw immediately
     }
 
-    if (!Mp4Encoder.isSupported()) {
-      const err = new Mp4EncoderError(
+    if (!WebCodecsEncoder.isSupported()) {
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.NotSupported,
         "Required browser APIs (WebCodecs, Worker, etc.) are not supported.",
       );
@@ -110,7 +111,7 @@ export class Mp4Encoder {
 
     if (this.worker) {
       logger.warn(
-        "Mp4Encoder already initialized or in progress. Call cancel() before re-initializing.",
+        "WebCodecsEncoder already initialized or in progress. Call cancel() before re-initializing.",
       );
       // Allow re-initialization if already cancelled and cleaned up.
       if (!this.isCancelled) {
@@ -145,7 +146,7 @@ export class Mp4Encoder {
           };
 
           this.worker.onerror = (event: ErrorEvent) => {
-            const err = new Mp4EncoderError(
+            const err = new WebCodecsEncoderError(
               EncoderErrorType.WorkerError,
               `Worker error: ${event.message || "Unknown worker error"}`,
               event,
@@ -167,7 +168,7 @@ export class Mp4Encoder {
           };
           this.worker.postMessage(initMessage);
         } catch (e: any) {
-          const err = new Mp4EncoderError(
+          const err = new WebCodecsEncoderError(
             EncoderErrorType.InitializationFailed,
             `Failed to initialize worker: ${e.message}`,
             e,
@@ -217,14 +218,14 @@ export class Mp4Encoder {
           this.onDataCallback &&
           this.config.latencyMode !== "realtime"
         ) {
-          // console.warn('Mp4Encoder: Received dataChunk, but not in real-time mode or no onData callback was provided.');
+          // console.warn('WebCodecsEncoder: Received dataChunk, but not in real-time mode or no onData callback was provided.');
           // Do not call onDataCallback if not in real-time mode
         } else if (
           !this.onDataCallback &&
           this.config.latencyMode === "realtime"
         ) {
           logger.warn(
-            "Mp4Encoder: Received dataChunk in real-time mode, but no onData callback was provided.",
+            "WebCodecsEncoder: Received dataChunk in real-time mode, but no onData callback was provided.",
           );
         }
         break;
@@ -243,7 +244,7 @@ export class Mp4Encoder {
             this.onFinalizedPromise?.resolve(message.output);
           } else {
             // This case should ideally not happen: null output in non-realtime mode.
-            const err = new Mp4EncoderError(
+            const err = new WebCodecsEncoderError(
               EncoderErrorType.MuxingFailed,
               "Finalized with null output in non-realtime mode.",
             );
@@ -256,7 +257,7 @@ export class Mp4Encoder {
         break;
       case "error":
         this.clearCancelTimeout();
-        const err = new Mp4EncoderError(
+        const err = new WebCodecsEncoderError(
           message.errorDetail.type,
           message.errorDetail.message,
           message.errorDetail.stack,
@@ -268,8 +269,8 @@ export class Mp4Encoder {
         break;
       case "cancelled":
         this.clearCancelTimeout();
-        logger.log("Mp4Encoder: Cancelled by worker.");
-        const cancelErrWorker = new Mp4EncoderError(
+        logger.log("WebCodecsEncoder: Cancelled by worker.");
+        const cancelErrWorker = new WebCodecsEncoderError(
           EncoderErrorType.Cancelled,
           "Operation cancelled by worker.",
         );
@@ -281,15 +282,15 @@ export class Mp4Encoder {
         // Exhaustive check for MainThreadMessage types
         const _exhaustiveCheck: never = message;
         logger.warn(
-          "Mp4Encoder: Unknown message from worker:",
+          "WebCodecsEncoder: Unknown message from worker:",
           _exhaustiveCheck,
         );
     }
   }
 
-  private handleError(error: Mp4EncoderError): void {
+  private handleError(error: WebCodecsEncoderError): void {
     console.error(
-      `Mp4Encoder Error (${error.type}):`,
+      `WebCodecsEncoder Error (${error.type}):`,
       error.message,
       error.cause || "",
     );
@@ -301,7 +302,7 @@ export class Mp4Encoder {
     timestampOverride?: number,
   ): Promise<void> {
     if (!this.worker || this.isCancelled) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         this.isCancelled
           ? EncoderErrorType.Cancelled
           : EncoderErrorType.InternalError,
@@ -342,7 +343,7 @@ export class Mp4Encoder {
       this.worker.postMessage(message, [frameSource]);
       // frameSource is not closed here, it will be closed in the worker.
     } catch (e: any) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.VideoEncodingError,
         `Failed to post video frame: ${e.message}`,
         e,
@@ -380,7 +381,7 @@ export class Mp4Encoder {
 
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
     if (!this.worker || this.isCancelled) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         this.isCancelled
           ? EncoderErrorType.Cancelled
           : EncoderErrorType.InternalError,
@@ -405,7 +406,7 @@ export class Mp4Encoder {
 
     try {
       if (audioBuffer.numberOfChannels !== this.config.channels) {
-        const err = new Mp4EncoderError(
+        const err = new WebCodecsEncoderError(
           EncoderErrorType.ConfigurationError,
           `AudioBuffer channel count (${audioBuffer.numberOfChannels}) does not match configured channels (${this.config.channels}).`,
         );
@@ -440,7 +441,7 @@ export class Mp4Encoder {
       };
       this.worker.postMessage(message, transferableBuffers);
     } catch (e: any) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.AudioEncodingError,
         `Failed to add audio buffer: ${e.message}`,
         e,
@@ -452,7 +453,7 @@ export class Mp4Encoder {
 
   public async addAudioData(audioData: AudioData): Promise<void> {
     if (!this.worker || this.isCancelled) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         this.isCancelled
           ? EncoderErrorType.Cancelled
           : EncoderErrorType.InternalError,
@@ -477,7 +478,7 @@ export class Mp4Encoder {
 
     try {
       if (audioData.numberOfChannels !== this.config.channels) {
-        const err = new Mp4EncoderError(
+        const err = new WebCodecsEncoderError(
           EncoderErrorType.ConfigurationError,
           `AudioData channel count (${audioData.numberOfChannels}) does not match configured channels (${this.config.channels}).`,
         );
@@ -514,7 +515,7 @@ export class Mp4Encoder {
 
       this.worker.postMessage(message, transferableBuffers);
     } catch (e: any) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.AudioEncodingError,
         `Failed to add audio data: ${e.message}`,
         e,
@@ -527,7 +528,7 @@ export class Mp4Encoder {
   public finalize(): Promise<Uint8Array | null> {
     if (this.isCancelled) {
       // isCancelled を先にチェック
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.Cancelled,
         "Encoder cancelled",
       );
@@ -536,7 +537,7 @@ export class Mp4Encoder {
     }
     if (!this.worker) {
       // worker がない場合 (初期化前など)
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.InternalError,
         "Encoder not initialized or already finalized",
       );
@@ -545,7 +546,7 @@ export class Mp4Encoder {
     }
     if (this.onFinalizedPromise) {
       logger.warn("Finalize already called.");
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.InternalError,
         "Finalize called multiple times.",
       );
@@ -562,17 +563,17 @@ export class Mp4Encoder {
 
   public cancel(): void {
     if (this.isCancelled || !this.worker) {
-      logger.log("Mp4Encoder: Already cancelled or not initialized.");
+      logger.log("WebCodecsEncoder: Already cancelled or not initialized.");
       return;
     }
     this.isCancelled = true;
-    logger.log("Mp4Encoder: Sending cancel signal to worker.");
+    logger.log("WebCodecsEncoder: Sending cancel signal to worker.");
 
     const message: WorkerMessage = { type: "cancel" };
     this.worker.postMessage(message);
 
     // Reject pending promises
-    const cancelError = new Mp4EncoderError(
+    const cancelError = new WebCodecsEncoderError(
       EncoderErrorType.Cancelled,
       "Operation cancelled by user.",
     );
@@ -589,7 +590,7 @@ export class Mp4Encoder {
     this.clearCancelTimeout();
     this.cancelTimeoutId = setTimeout(() => {
       logger.warn(
-        "Mp4Encoder: No 'cancelled' message received, terminating worker.",
+        "WebCodecsEncoder: No 'cancelled' message received, terminating worker.",
       );
       this.cleanupWorker();
     }, 5000);
@@ -607,7 +608,7 @@ export class Mp4Encoder {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
-      logger.log("Mp4Encoder: Worker terminated and cleaned up.");
+      logger.log("WebCodecsEncoder: Worker terminated and cleaned up.");
     }
     if (this.audioWorkletNode) {
       this.audioWorkletNode.port.postMessage({ close: true });
@@ -634,7 +635,7 @@ export class Mp4Encoder {
   private async setupAudioWorklet(): Promise<void> {
     const AudioContextCtor: any = (globalThis as any).AudioContext;
     if (!AudioContextCtor) {
-      const err = new Mp4EncoderError(
+      const err = new WebCodecsEncoderError(
         EncoderErrorType.NotSupported,
         "AudioContext not available for AudioWorklet.",
       );

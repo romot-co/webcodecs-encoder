@@ -31,10 +31,10 @@ Running `npm install` will automatically run the `postinstall` script, applying 
 You can find this example in [`examples/encode-to-file.ts`](examples/encode-to-file.ts) for a quick way to try it out.
 
 ```typescript
-import { Mp4Encoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-muxer";
 
 async function encodeVideoToFile() {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error("WebCodecs or Workers not supported.");
     return;
   }
@@ -50,7 +50,7 @@ async function encodeVideoToFile() {
     hardwareAcceleration: 'prefer-hardware', // Optional
   };
 
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
 
   try {
     await encoder.initialize({
@@ -131,21 +131,21 @@ const config = {
 ## Generating Video from Images
 
 Decode a sequence of images with `ImageDecoder`, wrap each into a `VideoFrame`,
-and feed them to `Mp4Encoder`. See
+and feed them to `WebCodecsEncoder`. See
 [`examples/image-sequence.ts`](examples/image-sequence.ts) for a runnable
 example.
 
 ```typescript
-import { Mp4Encoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-muxer";
 
 async function encodeImageSequence(imageUrls: string[]) {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error("WebCodecs or Workers not supported.");
     return;
   }
 
   const config = { width: 1280, height: 720, frameRate: 30 };
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
   await encoder.initialize({ totalFrames: imageUrls.length });
 
   for (const [index, url] of imageUrls.entries()) {
@@ -175,10 +175,10 @@ For applications like live streaming, you can configure the encoder to output da
 See [`examples/encode-realtime.ts`](examples/encode-realtime.ts) for the full runnable snippet.
 
 ```typescript
-import { Mp4Encoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-muxer";
 
 async function encodeVideoRealtime() {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error("WebCodecs or Workers not supported.");
     return;
   }
@@ -285,7 +285,7 @@ async function encodeVideoRealtime() {
     return;
   }
 
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
 
   async function startEncoding() {
     console.log("Starting encoding process...");
@@ -358,7 +358,7 @@ async function encodeVideoRealtime() {
 
 `MediaStreamRecorder` simplifies capturing from a `MediaStream`. It internally
 uses `MediaStreamTrackProcessor` to feed `VideoFrame` and `AudioData` to
-`Mp4Encoder`.
+`WebCodecsEncoder`.
 The snippet below is available in [`examples/record-mediastream.ts`](examples/record-mediastream.ts).
 
 ```typescript
@@ -371,10 +371,10 @@ const result = await recorder.stopRecording();
 
 ## API
 
-- **`Mp4Encoder.isSupported(): boolean`**
+- **`WebCodecsEncoder.isSupported(): boolean`**
   Checks if `VideoEncoder`, `AudioEncoder`, and `Worker` are available in the current environment.
 
-- **`new Mp4Encoder(config: EncoderConfig)`**
+- **`new WebCodecsEncoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
     - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Use `'webm'` for WebM output.
@@ -400,15 +400,15 @@ const result = await recorder.stopRecording();
     - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`. Include `hardwareAcceleration` to prefer hardware or software encoding.
     - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`. This also accepts `hardwareAcceleration`.
 
-- **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
+- **`encoder.initialize(options?: WebCodecsEncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
-  `Mp4EncoderInitializeOptions`:
+  `WebCodecsEncoderInitializeOptions`:
 
   - `onProgress?: (processedFrames: number, totalFrames?: number) => void`: Callback for encoding progress. `totalFrames` might be undefined in real-time or if not provided.
   - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
-  - `onError?: (error: Mp4EncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `Mp4EncoderError` object.
+  - `onError?: (error: WebCodecsEncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `WebCodecsEncoderError` object.
   - `onData?: (chunk: Uint8Array, isHeader?: boolean, container?: 'mp4' | 'webm') => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial container header.
-  - `worker?: Worker`: Provide a pre-created `Worker` instance instead of letting `Mp4Encoder` create one.
+  - `worker?: Worker`: Provide a pre-created `Worker` instance instead of letting `WebCodecsEncoder` create one.
   - `workerScriptUrl?: string | URL`: Specify a custom worker script to load when creating the worker.
   - `useAudioWorklet?: boolean`: Use an `AudioWorklet` to pipe audio data directly to the worker for lower latency.
 
@@ -451,12 +451,12 @@ const result = await recorder.stopRecording();
   Returns the current audio encoder queue size reported by the worker.
 
 - **`MediaStreamRecorder.isSupported(): boolean`**
-  Checks if `MediaStreamTrackProcessor` and `Mp4Encoder` are available.
+  Checks if `MediaStreamTrackProcessor` and `WebCodecsEncoder` are available.
 
 - **`new MediaStreamRecorder(config: EncoderConfig)`**
-  Creates a recorder that internally uses `Mp4Encoder`.
+  Creates a recorder that internally uses `WebCodecsEncoder`.
 
-- **`recorder.startRecording(stream: MediaStream, options?: Mp4EncoderInitializeOptions): Promise<void>`**
+- **`recorder.startRecording(stream: MediaStream, options?: WebCodecsEncoderInitializeOptions): Promise<void>`**
   Starts reading `VideoFrame` and `AudioData` from the provided stream.
 
 - **`recorder.stopRecording(): Promise<Uint8Array>`**

@@ -1,7 +1,7 @@
-import { Mp4Encoder } from 'webcodecs-muxer';
+import { WebCodecsEncoder } from 'webcodecs-muxer';
 
 async function encodeVideoRealtime() {
-  if (!Mp4Encoder.isSupported()) {
+  if (!WebCodecsEncoder.isSupported()) {
     console.error('WebCodecs or Workers not supported.');
     return;
   }
@@ -84,7 +84,7 @@ async function encodeVideoRealtime() {
     return;
   }
 
-  const encoder = new Mp4Encoder(config);
+  const encoder = new WebCodecsEncoder(config);
 
   async function startEncoding() {
     console.log("Starting encoding process...");
