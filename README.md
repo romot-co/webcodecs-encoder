@@ -26,6 +26,8 @@ Running `npm install` will automatically run the `postinstall` script, applying 
 
 ## Basic Usage (File Output)
 
+You can find this example in [`examples/encode-to-file.ts`](examples/encode-to-file.ts) for a quick way to try it out.
+
 ```typescript
 import { Mp4Encoder } from 'webcodecs-muxer';
 
@@ -108,6 +110,7 @@ encodeVideoToFile();
 ## Real-time Streaming Usage
 
 For applications like live streaming, you can configure the encoder to output data in chunks. This is typically used with Media Source Extensions (MSE) to play the video in an HTML `<video>` element as it's being encoded.
+See [`examples/encode-realtime.ts`](examples/encode-realtime.ts) for the full runnable snippet.
 
 ```typescript
 import { Mp4Encoder } from 'webcodecs-muxer';
@@ -261,6 +264,7 @@ async function encodeVideoRealtime() {
 `MediaStreamRecorder` simplifies capturing from a `MediaStream`. It internally
 uses `MediaStreamTrackProcessor` to feed `VideoFrame` and `AudioData` to
 `Mp4Encoder`.
+The snippet below is available in [`examples/record-mediastream.ts`](examples/record-mediastream.ts).
 
 ```typescript
 import { MediaStreamRecorder } from 'webcodecs-muxer';
