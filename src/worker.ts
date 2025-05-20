@@ -137,7 +137,7 @@ async function initializeEncoders(
         : videoCodec === "hevc"
           ? "hvc1"
           : videoCodec === "av1"
-            ? "av01"
+            ? "av01.0.04M.08"
             : "");
 
   const baseVideoConfig = {

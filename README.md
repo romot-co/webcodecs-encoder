@@ -4,7 +4,7 @@ A TypeScript library to encode video (H.264/AVC, VP9) and audio (AAC, Opus) usin
 
 ## Features
 
-- Encodes `VideoFrame` to H.264/AVC or VP9 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
+- Encodes `VideoFrame` to H.264/AVC, VP9, or AV1 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
 - Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into a standard MP4 file.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
@@ -466,9 +466,20 @@ This library supports encoding to MP4 container format with the following codecs
 - **Video Codecs:**
   - `avc1` (H.264/AVC): Widely supported.
   - `vp09` (VP9): Modern, efficient codec. Good for web usage.
+  - `av01` (AV1): High efficiency but may require modern hardware acceleration.
 - **Audio Codecs:**
   - `mp4a` (AAC): Widely supported, good quality.
   - `opus` (Opus): Modern, efficient, and versatile audio codec. Excellent for both speech and music, and good for real-time applications.
+
+Example configuration requesting AV1:
+
+```ts
+const config = {
+  codec: { video: 'av1' },
+  codecString: { video: 'av01.0.04M.08' },
+  // ...other options
+};
+```
 
 **Important Notes:**
 -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
