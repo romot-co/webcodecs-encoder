@@ -62,12 +62,10 @@ export class Mp4Encoder {
     };
 
     if (this.config.container === "webm") {
-      // Early warning, though worker will also send an error
+      // Early warning for unsupported container
       console.warn(
-        "Mp4Encoder: WebM container is specified but not supported in this version. MP4 will be used or an error will occur in the worker.",
+        "Mp4Encoder: WebM container output is not yet supported and will cause an error during initialization.",
       );
-      // Depending on strictness, could throw here or let worker handle container choice.
-      // For now, let it pass to worker which will error out if it only supports mp4.
     }
 
     // Initialize worker later, only if supported and initialize() is called.
@@ -99,6 +97,15 @@ export class Mp4Encoder {
       // and this.onErrorCallback will be called by the caller if they wish.
       // this.handleError(err);
       throw err; // Throw immediately
+    }
+
+    if (this.config.container === "webm") {
+      const err = new Mp4EncoderError(
+        EncoderErrorType.NotSupported,
+        "WebM container output is not yet supported.",
+      );
+      this.handleError(err);
+      throw err;
     }
 
     if (!Mp4Encoder.isSupported()) {
