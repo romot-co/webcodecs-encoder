@@ -7,6 +7,7 @@ export class MediaStreamRecorder {
   private audioReader?: ReadableStreamDefaultReader<AudioData>;
   private videoTrack?: MediaStreamTrack;
   private audioTrack?: MediaStreamTrack;
+  private audioSource?: MediaStreamAudioSourceNode;
   private recording = false;
 
   constructor(private config: EncoderConfig) {
@@ -46,12 +47,24 @@ export class MediaStreamRecorder {
 
     if (aTrack) {
       this.audioTrack = aTrack;
-      const processor = new MediaStreamTrackProcessor({
-        track: aTrack,
-      });
-      this.audioReader =
-        processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
-      this.processAudio();
+      if (options?.useAudioWorklet) {
+        const node = this.encoder.getAudioWorkletNode();
+        if (!node) {
+          throw new Error(
+            "MediaStreamRecorder: AudioWorkletNode not available from encoder.",
+          );
+        }
+        const ctx = node.context as AudioContext;
+        this.audioSource = ctx.createMediaStreamSource(stream);
+        this.audioSource.connect(node);
+      } else {
+        const processor = new MediaStreamTrackProcessor({
+          track: aTrack,
+        });
+        this.audioReader =
+          processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
+        this.processAudio();
+      }
     }
   }
 
@@ -80,10 +93,12 @@ export class MediaStreamRecorder {
     this.recording = false;
     this.videoReader?.cancel();
     this.audioReader?.cancel();
+    this.audioSource?.disconnect();
     this.videoTrack?.stop();
     this.audioTrack?.stop();
     this.videoReader = undefined;
     this.audioReader = undefined;
+    this.audioSource = undefined;
     this.videoTrack = undefined;
     this.audioTrack = undefined;
     return await this.encoder.finalize();
@@ -94,10 +109,12 @@ export class MediaStreamRecorder {
     this.recording = false;
     this.videoReader?.cancel();
     this.audioReader?.cancel();
+    this.audioSource?.disconnect();
     this.videoTrack?.stop();
     this.audioTrack?.stop();
     this.videoReader = undefined;
     this.audioReader = undefined;
+    this.audioSource = undefined;
     this.videoTrack = undefined;
     this.audioTrack = undefined;
     this.encoder.cancel();

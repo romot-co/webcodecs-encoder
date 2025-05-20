@@ -23,6 +23,7 @@ vi.mock("../src/encoder", () => {
       cancel: vi.fn(),
       getActualVideoCodec: vi.fn().mockReturnValue("mock-video-codec"),
       getActualAudioCodec: vi.fn().mockReturnValue("mock-audio-codec"),
+      getAudioWorkletNode: vi.fn(),
     };
     return encoderInstance;
   });
@@ -181,6 +182,25 @@ describe("MediaStreamRecorder", () => {
     expect(encoderInstance.finalize).toHaveBeenCalled();
     expect(videoTrack.stop).toHaveBeenCalled();
     expect(audioTrack.stop).toHaveBeenCalled();
+  });
+
+  it("uses AudioWorklet when option is true", async () => {
+    const mockContext = {
+      createMediaStreamSource: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
+    } as any;
+    const workletNode = { context: mockContext } as any;
+
+    const recorder = new MediaStreamRecorder(config);
+    encoderInstance.getAudioWorkletNode.mockReturnValue(workletNode);
+    await recorder.startRecording(mediaStream, { useAudioWorklet: true });
+
+    expect(encoderInstance.initialize).toHaveBeenCalledWith({ useAudioWorklet: true });
+    expect(mockContext.createMediaStreamSource).toHaveBeenCalled();
+    const source = mockContext.createMediaStreamSource.mock.results[0].value;
+    expect(source.connect).toHaveBeenCalledWith(workletNode);
+    // @ts-ignore - access private field for test
+    expect(recorder.audioReader).toBeUndefined();
+    expect(encoderInstance.addAudioData).not.toHaveBeenCalled();
   });
 
   it("should throw if startRecording is called while already recording", async () => {
