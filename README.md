@@ -307,6 +307,9 @@ const result = await recorder.stopRecording();
 
 - **`encoder.addAudioBuffer(audioBuffer: AudioBuffer): Promise<void>`**
   Adds an entire `AudioBuffer` for encoding. Useful for adding complete audio tracks.
+  For long audio segments, consider splitting the buffer into smaller chunks or
+  using `addAudioData` to stream data incrementally so that very large buffers
+  don't need to be transferred to the worker all at once.
 
 - **`encoder.addAudioData(audioData: AudioData): Promise<void>`**
   Adds an `AudioData` object for encoding. Suitable for streaming audio samples.
