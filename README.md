@@ -46,6 +46,7 @@ async function encodeVideoToFile() {
     audioBitrate: 128_000, // 128 kbps
     sampleRate: 48000, // Recommended: 48000 for Opus
     channels: 2,
+    hardwareAcceleration: 'prefer-hardware', // Optional
   };
 
   const encoder = new Mp4Encoder(config);
@@ -174,6 +175,7 @@ async function encodeVideoRealtime() {
     audioBitrate: 128_000,
     sampleRate: 48000,
     channels: 2,
+    hardwareAcceleration: 'prefer-hardware',
   };
 
   let mediaSource;
@@ -354,23 +356,25 @@ const result = await recorder.stopRecording();
 - **`new Mp4Encoder(config: EncoderConfig)`**
   Creates a new encoder instance.
   `EncoderConfig`:
-
-  - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
-  - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
-  - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
-  - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
-  - `width: number`: Video width.
-  - `height: number`: Video height.
-  - `frameRate: number`: Video frame rate.
-  - `videoBitrate: number`: Video bitrate in bits per second.
-  - `audioBitrate: number`: Audio bitrate in bits per second.
-  - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
-  - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
-  - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
-  - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
-  - `keyFrameInterval?: number`: (Optional) Force a key frame every N video frames. When set, the worker sends `{ keyFrame: true }` to `VideoEncoder.encode()` at that interval.
-  - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`.
-  - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`.
+    - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
+    - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
+    - `hardwareAcceleration?: 'prefer-hardware' | 'prefer-software' | 'no-preference'`: (Optional) Hint to use hardware or software encoders when available.
+    - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
+    - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
+    - `width: number`: Video width.
+    - `height: number`: Video height.
+    - `frameRate: number`: Video frame rate.
+    - `videoBitrate: number`: Video bitrate in bits per second.
+    - `audioBitrate: number`: Audio bitrate in bits per second.
+    - `audioBitrateMode?: 'constant' | 'variable'`: (Optional) Set `'constant'` for CBR or `'variable'` for VBR when using AAC.
+      Chrome 119 or later has improved CBR support.
+    - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
+    - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
+    - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
+    - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
+    - `keyFrameInterval?: number`: (Optional) Force a key frame every N video frames. When set, the worker sends `{ keyFrame: true }` to `VideoEncoder.encode()` at that interval.
+    - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`.
+    - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
@@ -444,6 +448,13 @@ This library supports encoding to MP4 container format with the following codecs
 - Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
 - When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 - For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
+
+## Choosing CBR or VBR for AAC
+
+Set `audioBitrateMode` in `EncoderConfig` to control how AAC bitrate is allocated.
+`'constant'` produces constant bitrate (CBR) output, while `'variable'` enables
+variable bitrate (VBR). Starting with Chrome 119, CBR handling in the
+`AudioEncoder` is much more reliable.
 
 ## Development
 
