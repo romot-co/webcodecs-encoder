@@ -30,7 +30,6 @@ async function encodeVideoToFile() {
     canvas.width = config.width;
     canvas.height = config.height;
     const ctx = canvas.getContext('2d');
-    let frameCount = 0;
 
     // Example: Encode 300 frames
     for (let i = 0; i < 300; i++) {
@@ -41,7 +40,6 @@ async function encodeVideoToFile() {
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
 
       await encoder.addCanvasFrame(canvas);
-      frameCount++;
     }
 
     // Example: Create a silent audio track
