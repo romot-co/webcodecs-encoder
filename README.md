@@ -355,7 +355,7 @@ This library supports encoding to MP4 container format with the following codecs
 ## Development
 
 - Clone the repository.
-- Install dependencies: `npm install`
+- Install dependencies: `npm install` (run this before executing `npm run lint`, `npm run type-check`, or `npm test`)
 - The `postinstall` script automatically runs `patch-package` to apply our patch for `@types/dom-webcodecs`, restoring the missing `AudioSampleFormat` definition.
 - Build: `npm run build`
 - Test: `npm test` (this will also generate a coverage report in `./coverage`)
