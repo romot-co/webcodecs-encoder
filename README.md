@@ -261,6 +261,20 @@ async function encodeVideoRealtime() {
 // encodeVideoRealtime(); // Uncomment to run
 ```
 
+## Recording a MediaStream
+
+`MediaStreamRecorder` simplifies capturing from a `MediaStream`. It internally
+uses `MediaStreamTrackProcessor` to feed `VideoFrame` and `AudioData` to
+`Mp4Encoder`.
+
+```typescript
+import { MediaStreamRecorder } from 'webcodecs-muxer';
+
+const recorder = new MediaStreamRecorder(config);
+await recorder.startRecording(stream);
+const result = await recorder.stopRecording();
+```
+
 ## API
 
 - **`Mp4Encoder.isSupported(): boolean`**
@@ -309,6 +323,18 @@ async function encodeVideoRealtime() {
 
 - **`encoder.getActualAudioCodec(): string | null`**
   Returns the actual audio codec string (e.g., 'mp4a.40.2', 'opus') being used by the `AudioEncoder` after initialization and potential fallbacks. Returns `null` if not initialized or audio is disabled.
+
+- **`MediaStreamRecorder.isSupported(): boolean`**
+  Checks if `MediaStreamTrackProcessor` and `Mp4Encoder` are available.
+
+- **`new MediaStreamRecorder(config: EncoderConfig)`**
+  Creates a recorder that internally uses `Mp4Encoder`.
+
+- **`recorder.startRecording(stream: MediaStream, options?: Mp4EncoderInitializeOptions): Promise<void>`**
+  Starts reading `VideoFrame` and `AudioData` from the provided stream.
+
+- **`recorder.stopRecording(): Promise<Uint8Array>`**
+  Stops recording and finalizes the encoder. Returns the encoded file or an empty array in real-time mode.
 
 ## Codec Compatibility
 
