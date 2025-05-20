@@ -202,6 +202,17 @@ describe("MediaStreamRecorder", () => {
     expect(encoderInstance.addAudioData).not.toHaveBeenCalled();
   });
 
+  it("rejects if AudioWorkletNode not available from encoder", async () => {
+    const recorder = new MediaStreamRecorder(config);
+    encoderInstance.getAudioWorkletNode.mockReturnValue(null);
+
+    await expect(
+      recorder.startRecording(mediaStream, { useAudioWorklet: true }),
+    ).rejects.toThrow(
+      "MediaStreamRecorder: AudioWorkletNode not available from encoder.",
+    );
+  });
+
   it("should throw if startRecording is called while already recording", async () => {
     const recorder = new MediaStreamRecorder(config);
     await recorder.startRecording(mediaStream);
