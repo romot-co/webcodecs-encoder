@@ -1005,6 +1005,27 @@ describe("worker", () => {
         console.warn = originalConsoleWarn;
       }
     });
+
+    it("should post error when all hardware acceleration options fail", async () => {
+      if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+
+      const failingConfig = { ...config, codec: { video: "vp9", audio: "aac" }, hardwareAcceleration: "prefer-hardware" };
+
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: false }));
+
+      await global.self.onmessage({ data: { type: "initialize", config: failingConfig } } as MessageEvent);
+
+      expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalled();
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          errorDetail: expect.objectContaining({
+            message: "Worker: AVC (H.264) video codec is not supported after fallback.",
+          }),
+        }),
+        undefined,
+      );
+    });
   });
 
 });

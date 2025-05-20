@@ -471,5 +471,28 @@ describe("Mp4MuxerWrapper", () => {
         }),
       );
     });
+
+    it("should post error when adding video chunk before configuration", () => {
+      const wrapper = new Mp4MuxerWrapper(baseConfig, postMessageCallback);
+      (wrapper as any).videoConfigured = false;
+      wrapper.addVideoChunk(
+        {
+          type: "key",
+          data: new Uint8Array(1),
+          byteLength: 1,
+          copyTo: vi.fn(),
+        } as any,
+        {} as any,
+      );
+      expect(postMessageCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          errorDetail: expect.objectContaining({
+            message: "MP4: Video track not configured.",
+            type: "configuration-error",
+          }),
+        }),
+      );
+    });
   });
 });
