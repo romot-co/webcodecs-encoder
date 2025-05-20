@@ -60,6 +60,45 @@ function postMessageToMainThread(
   self.postMessage(message, transfer as any);
 }
 
+async function isConfigSupportedWithHwFallback(
+  Ctor: any,
+  config: any,
+  label: string,
+) {
+  let support = await Ctor.isConfigSupported(config as any);
+  if (support?.supported) return support.config;
+
+  const pref = config.hardwareAcceleration;
+  if (pref) {
+    let altPref: string | undefined;
+    if (pref === "prefer-hardware") altPref = "prefer-software";
+    else if (pref === "prefer-software") altPref = "prefer-hardware";
+
+    if (altPref) {
+      const opposite = { ...config, hardwareAcceleration: altPref };
+      support = await Ctor.isConfigSupported(opposite as any);
+      if (support?.supported) {
+        console.warn(
+          `Worker: ${label} hardwareAcceleration preference '${pref}' not supported. Using '${altPref}'.`,
+        );
+        return support.config;
+      }
+    }
+
+    const noPref = { ...config };
+    delete noPref.hardwareAcceleration;
+    support = await Ctor.isConfigSupported(noPref as any);
+    if (support?.supported) {
+      console.warn(
+        `Worker: ${label} hardwareAcceleration preference '${pref}' not supported. Using no preference.`,
+      );
+      return support.config;
+    }
+  }
+
+  return null;
+}
+
 function postQueueSize(): void {
   postMessageToMainThread({
     type: "queueSize",
@@ -137,7 +176,7 @@ async function initializeEncoders(
         : videoCodec === "hevc"
           ? "hvc1"
           : videoCodec === "av1"
-            ? "av01"
+            ? "av01.0.04M.08"
             : "");
 
   const baseVideoConfig = {
@@ -174,11 +213,13 @@ async function initializeEncoders(
     return;
   }
 
-  let videoSupport = await VideoEncoderCtor.isConfigSupported(
-    baseVideoConfig as any,
+  let videoSupportConfig = await isConfigSupportedWithHwFallback(
+    VideoEncoderCtor,
+    baseVideoConfig,
+    "VideoEncoder",
   );
-  if (videoSupport?.supported) {
-    finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
+  if (videoSupportConfig) {
+    finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
   } else if (
     videoCodec === "vp9" ||
     videoCodec === "av1" ||
@@ -200,11 +241,13 @@ async function initializeEncoders(
       avc: { format: "avcc" },
     };
     delete (fallbackVideoConfig as any).scalabilityMode;
-    videoSupport = await VideoEncoderCtor.isConfigSupported(
-      fallbackVideoConfig as any,
+    videoSupportConfig = await isConfigSupportedWithHwFallback(
+      VideoEncoderCtor,
+      fallbackVideoConfig,
+      "VideoEncoder",
     );
-    if (videoSupport?.supported) {
-      finalVideoEncoderConfig = videoSupport.config as VideoEncoderConfig;
+    if (videoSupportConfig) {
+      finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
     } else {
       postMessageToMainThread({
         type: "error",
@@ -312,8 +355,10 @@ async function initializeEncoders(
       return;
     }
 
-    let audioSupport = await AudioEncoderCtor.isConfigSupported(
-      baseAudioConfig as any,
+    let audioSupportConfig = await isConfigSupportedWithHwFallback(
+      AudioEncoderCtor,
+      baseAudioConfig,
+      "AudioEncoder",
     );
     if (audioSupport?.supported) {
       if (
@@ -340,8 +385,10 @@ async function initializeEncoders(
         ...baseAudioConfig,
         codec: currentConfig.codecString?.audio ?? "mp4a.40.2",
       };
-      audioSupport = await AudioEncoderCtor.isConfigSupported(
-        fallbackAudioConfig as any,
+      audioSupportConfig = await isConfigSupportedWithHwFallback(
+        AudioEncoderCtor,
+        fallbackAudioConfig,
+        "AudioEncoder",
       );
       if (audioSupport?.supported) {
         if (
