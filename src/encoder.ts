@@ -64,7 +64,7 @@ export class Mp4Encoder {
 
     if (this.config.container === "webm") {
       // Early warning for unsupported container
-      console.warn(
+      logger.warn(
         "Mp4Encoder: WebM container output is not yet supported and will cause an error during initialization.",
       );
     }
@@ -119,7 +119,7 @@ export class Mp4Encoder {
     }
 
     if (this.worker) {
-      console.warn(
+      logger.warn(
         "Mp4Encoder already initialized or in progress. Call cancel() before re-initializing.",
       );
       // Allow re-initialization if already cancelled and cleaned up.
@@ -222,7 +222,7 @@ export class Mp4Encoder {
           !this.onDataCallback &&
           this.config.latencyMode === "realtime"
         ) {
-          console.warn(
+          logger.warn(
             "Mp4Encoder: Received dataChunk in real-time mode, but no onData callback was provided.",
           );
         }
@@ -279,7 +279,7 @@ export class Mp4Encoder {
       default:
         // Exhaustive check for MainThreadMessage types
         const _exhaustiveCheck: never = message;
-        console.warn(
+        logger.warn(
           "Mp4Encoder: Unknown message from worker:",
           _exhaustiveCheck,
         );
@@ -368,7 +368,7 @@ export class Mp4Encoder {
       this.config.channels <= 0 ||
       this.config.sampleRate <= 0
     ) {
-      console.warn(
+      logger.warn(
         "Audio encoding is disabled (audioBitrate, channels or sampleRate is zero/negative). Skipping addAudioBuffer.",
       );
       return Promise.resolve();
@@ -440,7 +440,7 @@ export class Mp4Encoder {
       this.config.channels <= 0 ||
       this.config.sampleRate <= 0
     ) {
-      console.warn(
+      logger.warn(
         "Audio encoding is disabled (audioBitrate, channels or sampleRate is zero/negative). Skipping addAudioData.",
       );
       return Promise.resolve();
@@ -515,7 +515,7 @@ export class Mp4Encoder {
       return Promise.reject(err);
     }
     if (this.onFinalizedPromise) {
-      console.warn("Finalize already called.");
+      logger.warn("Finalize already called.");
       const err = new Mp4EncoderError(
         EncoderErrorType.InternalError,
         "Finalize called multiple times.",
