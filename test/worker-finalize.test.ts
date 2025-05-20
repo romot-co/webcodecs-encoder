@@ -55,6 +55,7 @@ describe("handleFinalize", () => {
       flush: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(),
       state: "configured",
+      encodeQueueSize: 0,
     };
     mockAudioEncoderInstance = {
       configure: vi.fn(),
@@ -62,6 +63,7 @@ describe("handleFinalize", () => {
       flush: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(),
       state: "configured",
+      encodeQueueSize: 0,
     };
     mockSelf.VideoEncoder = vi.fn(() => mockVideoEncoderInstance) as any;
     mockSelf.AudioEncoder = vi.fn(() => mockAudioEncoderInstance) as any;

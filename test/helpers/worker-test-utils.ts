@@ -34,6 +34,7 @@ export function setupGlobals() {
     flush: vi.fn().mockResolvedValue(undefined),
     close: vi.fn(),
     state: "unconfigured",
+    encodeQueueSize: 0,
   }));
   // @ts-ignore
   mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
@@ -48,6 +49,7 @@ export function setupGlobals() {
     flush: vi.fn().mockResolvedValue(undefined),
     close: vi.fn(),
     state: "unconfigured",
+    encodeQueueSize: 0,
   }));
   // @ts-ignore
   mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>

@@ -58,6 +58,7 @@ describe("handleAddVideoFrame", () => {
         flush: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
         state: "configured",
+        encodeQueueSize: 0,
       };
       return videoEncoderInstance;
     }) as any;
@@ -168,6 +169,14 @@ describe("handleAddVideoFrame", () => {
         type: "progress",
         processedFrames: 1,
         totalFrames: 10,
+      },
+      undefined,
+    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "queueSize",
+        videoQueueSize: 0,
+        audioQueueSize: 0,
       },
       undefined,
     );

@@ -317,6 +317,18 @@ describe("Mp4Encoder", () => {
       expect(encoder.getActualAudioCodec()).toBe("mp4a.40.2");
     });
 
+    it("updates queue sizes from worker messages", async () => {
+      const encoder = new Mp4Encoder(baseConfig);
+      const initPromise = encoder.initialize({});
+      mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      await initPromise;
+      mockWorkerInstance.onmessage({
+        data: { type: "queueSize", videoQueueSize: 2, audioQueueSize: 1 },
+      });
+      expect(encoder.getVideoQueueSize()).toBe(2);
+      expect(encoder.getAudioQueueSize()).toBe(1);
+    });
+
     it("should reject if worker posts an error during initialization", async () => {
       const encoder = new Mp4Encoder(baseConfig);
       const onErrorCallback = vi.fn();

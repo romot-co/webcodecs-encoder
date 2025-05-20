@@ -60,6 +60,14 @@ function postMessageToMainThread(
   self.postMessage(message, transfer as any);
 }
 
+function postQueueSize(): void {
+  postMessageToMainThread({
+    type: "queueSize",
+    videoQueueSize: videoEncoder?.encodeQueueSize ?? 0,
+    audioQueueSize: audioEncoder?.encodeQueueSize ?? 0,
+  } as MainThreadMessage);
+}
+
 async function initializeEncoders(
   data: InitializeWorkerMessage,
 ): Promise<void> {
@@ -420,6 +428,7 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
       progressMessage.totalFrames = totalFramesToProcess;
     }
     postMessageToMainThread(progressMessage as MainThreadMessage);
+    postQueueSize();
   } catch (error: any) {
     postMessageToMainThread({
       type: "error",
@@ -439,6 +448,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
   if (data.audio) {
     try {
       audioEncoder.encode(data.audio);
+      postQueueSize();
     } catch (error: any) {
       postMessageToMainThread({
         type: "error",
@@ -510,6 +520,7 @@ async function handleAddAudioData(data: AddAudioDataMessage): Promise<void> {
     });
     try {
       audioEncoder.encode(audioData);
+      postQueueSize();
     } finally {
       audioData.close();
     }

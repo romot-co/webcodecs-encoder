@@ -359,9 +359,9 @@ const result = await recorder.stopRecording();
   `EncoderConfig`:
     - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
+    - `dropFrames?: boolean`: (Optional) Drop new video frames when the worker-reported video queue size exceeds `maxQueueDepth`.
+    - `maxQueueDepth?: number`: (Optional) Maximum video queue size before dropping occurs. The queue size uses WebCodecs `encodeQueueSize`. Defaults to unlimited.
     - `hardwareAcceleration?: 'prefer-hardware' | 'prefer-software' | 'no-preference'`: (Optional) Hint to use hardware or software encoders when available.
-    - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
-    - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
     - `width: number`: Video width.
     - `height: number`: Video height.
     - `frameRate: number`: Video frame rate.
@@ -425,6 +425,10 @@ const result = await recorder.stopRecording();
 
 - **`encoder.getActualAudioCodec(): string | null`**
   Returns the actual audio codec string (e.g., 'mp4a.40.2', 'opus') being used by the `AudioEncoder` after initialization and potential fallbacks. Returns `null` if not initialized or audio is disabled.
+- **`encoder.getVideoQueueSize(): number`**
+  Returns the current video encoder queue size reported by the worker.
+- **`encoder.getAudioQueueSize(): number`**
+  Returns the current audio encoder queue size reported by the worker.
 
 - **`MediaStreamRecorder.isSupported(): boolean`**
   Checks if `MediaStreamTrackProcessor` and `Mp4Encoder` are available.
