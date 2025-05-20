@@ -108,6 +108,26 @@ async function encodeVideoToFile() {
 encodeVideoToFile();
 ```
 
+### Hardware Acceleration Preference
+
+The `hardwareAcceleration` option hints whether to use hardware or software
+codecs when available. If the requested preference isn't supported, the encoder
+automatically falls back and logs a warning. Example:
+
+```typescript
+const config = {
+  width: 1920,
+  height: 1080,
+  frameRate: 30,
+  videoBitrate: 4_000_000,
+  audioBitrate: 192_000,
+  sampleRate: 48000,
+  channels: 2,
+  hardwareAcceleration: 'prefer-software',
+};
+```
+
+
 ## Generating Video from Images
 
 Decode a sequence of images with `ImageDecoder`, wrap each into a `VideoFrame`,
