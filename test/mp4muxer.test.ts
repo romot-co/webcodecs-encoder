@@ -161,6 +161,40 @@ describe("Mp4MuxerWrapper", () => {
     expect(mockMuxerMethods.addAudioChunk).toHaveBeenCalledWith(chunk, meta);
   });
 
+  it.each([
+    ["audioBitrate", { audioBitrate: 0 }],
+    ["channels", { channels: 0 }],
+    ["sampleRate", { sampleRate: 0 }],
+  ])(
+    "skips audio when %s <= 0",
+    (_label, override) => {
+      const cfg = { ...baseConfig, ...override } as EncoderConfig;
+      const wrapper = new Mp4MuxerWrapper(cfg, postMessageCallback);
+      const muxerArgs = MuxerMock.mock.calls[0][0] as any;
+      expect(muxerArgs.audio).toBeUndefined();
+
+      const chunk = {
+        type: "key",
+        timestamp: 0,
+        duration: 1000,
+        data: new Uint8Array(1),
+        byteLength: 1,
+        copyTo: vi.fn(),
+      } as EncodedAudioChunk;
+      wrapper.addAudioChunk(chunk, {} as any);
+      expect(mockMuxerMethods.addAudioChunk).not.toHaveBeenCalled();
+      expect(postMessageCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          errorDetail: expect.objectContaining({
+            message: "MP4: Audio track not configured.",
+            type: "configuration-error",
+          }),
+        }),
+      );
+    },
+  );
+
   it("finalizes and returns Uint8Array in non-realtime mode", async () => {
     const expectedBufferContent = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
     // const expectedBuffer = expectedBufferContent.buffer; // 未使用のため削除しました

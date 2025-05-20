@@ -170,6 +170,27 @@ describe("worker", () => {
     );
   });
 
+  it.each([
+    ["audioBitrate", { audioBitrate: 0 }],
+    ["channels", { channels: 0 }],
+    ["sampleRate", { sampleRate: 0 }],
+  ])(
+    "skips audio setup when %s <= 0",
+    async (_label, override) => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      Object.assign(config, override);
+      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+      expect(mockSelf.AudioEncoder).not.toHaveBeenCalled();
+      const msg = mockSelf.postMessage.mock.calls[0][0];
+      expect(msg).toEqual({
+        type: "initialized",
+        actualVideoCodec: "avc1.42001f",
+      });
+    },
+  );
+
   // Add more tests for addVideoData, addAudioData, error handling, etc.
   describe("worker error handling during initialization", () => {
     it("should post an error if video codec is not supported", async () => {

@@ -19,7 +19,7 @@ interface ExtendedMuxerOptions
   extends Omit<BaseOptions, "target" | "video" | "audio"> {
   target: ArrayBufferTarget | StreamTarget;
   video: NonNullable<BaseOptions["video"]>;
-  audio: NonNullable<BaseOptions["audio"]>;
+  audio?: NonNullable<BaseOptions["audio"]>;
   fastStart?:
     | false
     | "in-memory"
@@ -78,19 +78,27 @@ export class Mp4MuxerWrapper {
     // mp4-muxer directly supports 'aac' and 'opus'.
     const muxerAudioCodec = audioCodecOption;
 
-    const commonMuxerOptions = {
+    const skipAudio =
+      config.audioBitrate <= 0 ||
+      config.channels <= 0 ||
+      config.sampleRate <= 0;
+
+    const commonMuxerOptions: any = {
       video: {
         codec: muxerVideoCodec,
         width: config.width,
         height: config.height,
         // framerate is not directly a muxer option here, but good to have in config
       },
-      audio: {
+    };
+
+    if (!skipAudio) {
+      commonMuxerOptions.audio = {
         codec: muxerAudioCodec,
         sampleRate: config.sampleRate,
         numberOfChannels: config.channels,
-      },
-    };
+      };
+    }
 
     if (config.latencyMode === "realtime") {
       this.target = new StreamTarget({
@@ -125,7 +133,7 @@ export class Mp4MuxerWrapper {
     }
 
     this.videoConfigured = true;
-    this.audioConfigured = true;
+    this.audioConfigured = !skipAudio;
   }
 
   addVideoChunk(
