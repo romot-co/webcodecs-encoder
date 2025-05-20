@@ -20,6 +20,10 @@ export interface EncoderConfig {
     audio?: string;
   };
   latencyMode?: "quality" | "realtime"; // Default: 'quality'
+  /** Drop new video frames when the number of queued frames exceeds `maxQueueDepth`. */
+  dropFrames?: boolean;
+  /** Maximum number of queued video frames before dropping. Defaults to `Infinity`. */
+  maxQueueDepth?: number;
   /** Total frames for progress calculation if known in advance. */
   totalFrames?: number;
   /** Force a key frame every N video frames. */

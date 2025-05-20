@@ -25,6 +25,8 @@ export class Mp4Encoder {
   private worker: Worker | null = null;
   private totalFrames: number | undefined;
   private processedFramesInternal: number = 0;
+  private submittedFramesInternal: number = 0;
+  private droppedFramesInternal: number = 0;
   private actualVideoCodec: string | null = null;
   private actualAudioCodec: string | null = null;
 
@@ -54,6 +56,8 @@ export class Mp4Encoder {
       // Default values first
       container: "mp4",
       latencyMode: "quality",
+      dropFrames: false,
+      maxQueueDepth: Infinity,
       ...config, // User-provided config overrides defaults
       codec: {
         // Ensure codec object exists and has defaults
@@ -129,6 +133,8 @@ export class Mp4Encoder {
     }
     this.isCancelled = false;
     this.processedFramesInternal = 0;
+    this.submittedFramesInternal = 0;
+    this.droppedFramesInternal = 0;
     this.nextVideoTimestamp = 0;
     this.nextAudioTimestamp = 0;
 
@@ -204,8 +210,12 @@ export class Mp4Encoder {
         this.onInitializeError = null;
         break;
       case "progress":
-        this.processedFramesInternal = message.processedFrames;
-        this.onProgressCallback?.(message.processedFrames, message.totalFrames);
+        this.processedFramesInternal =
+          message.processedFrames + this.droppedFramesInternal;
+        this.onProgressCallback?.(
+          this.processedFramesInternal,
+          message.totalFrames,
+        );
         break;
       case "dataChunk": // Handle real-time data chunks
         if (this.config.latencyMode === "realtime" && this.onDataCallback) {
@@ -295,7 +305,10 @@ export class Mp4Encoder {
     this.onErrorCallback?.(error);
   }
 
-  public async addVideoFrame(frameSource: VideoFrame): Promise<void> {
+  public async addVideoFrame(
+    frameSource: VideoFrame,
+    timestampOverride?: number,
+  ): Promise<void> {
     if (!this.worker || this.isCancelled) {
       const err = new Mp4EncoderError(
         this.isCancelled
@@ -310,18 +323,33 @@ export class Mp4Encoder {
     }
 
     try {
-      // VideoFrame is sent directly
-      const transferList: Transferable[] = [frameSource];
+      const queueDepth =
+        this.submittedFramesInternal - this.processedFramesInternal;
+      const maxDepth = this.config.maxQueueDepth ?? Infinity;
+      if (this.config.dropFrames && queueDepth >= maxDepth) {
+        frameSource.close();
+        this.nextVideoTimestamp += 1_000_000 / this.config.frameRate;
+        this.submittedFramesInternal++;
+        this.droppedFramesInternal++;
+        this.processedFramesInternal++;
+        this.onProgressCallback?.(
+          this.processedFramesInternal,
+          this.totalFrames,
+        );
+        return;
+      }
 
-      const timestamp = this.nextVideoTimestamp;
-      this.nextVideoTimestamp += 1_000_000 / this.config.frameRate;
+      const timestamp = timestampOverride ?? this.nextVideoTimestamp;
+      this.nextVideoTimestamp = timestamp + 1_000_000 / this.config.frameRate;
+
+      this.submittedFramesInternal++;
 
       const message: WorkerMessage = {
         type: "addVideoFrame",
         frame: frameSource, // Send VideoFrame directly
         timestamp: timestamp,
       };
-      this.worker.postMessage(message, transferList);
+      this.worker.postMessage(message, [frameSource]);
       // frameSource is not closed here, it will be closed in the worker.
     } catch (e: any) {
       const err = new Mp4EncoderError(
@@ -337,13 +365,25 @@ export class Mp4Encoder {
   public async addCanvasFrame(
     canvas: HTMLCanvasElement | OffscreenCanvas,
   ): Promise<void> {
+    const queueDepth =
+      this.submittedFramesInternal - this.processedFramesInternal;
+    const maxDepth = this.config.maxQueueDepth ?? Infinity;
+    if (this.config.dropFrames && queueDepth >= maxDepth) {
+      this.nextVideoTimestamp += 1_000_000 / this.config.frameRate;
+      this.submittedFramesInternal++;
+      this.droppedFramesInternal++;
+      this.processedFramesInternal++;
+      this.onProgressCallback?.(this.processedFramesInternal, this.totalFrames);
+      return;
+    }
+
     const timestamp = this.nextVideoTimestamp;
     const frame = new VideoFrame(canvas, {
       timestamp,
       duration: 1_000_000 / this.config.frameRate,
     });
     try {
-      await this.addVideoFrame(frame);
+      await this.addVideoFrame(frame, timestamp);
     } finally {
       frame.close();
     }
