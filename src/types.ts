@@ -4,6 +4,12 @@ export interface EncoderConfig {
   frameRate: number;
   videoBitrate: number; // bps
   audioBitrate: number; // bps
+  /**
+   * Controls bitrate distribution for AAC. "constant" produces constant
+   * bitrate (CBR) output while "variable" enables variable bitrate (VBR).
+   * Not all browsers respect this setting. Chrome 119+ improves CBR support.
+   */
+  audioBitrateMode?: "constant" | "variable";
   sampleRate: number; // Hz
   channels: number; // e.g., 1 for mono, 2 for stereo
   container?: "mp4" | "webm"; // Default: 'mp4' or auto-selected based on codec

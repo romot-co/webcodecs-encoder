@@ -276,6 +276,9 @@ async function initializeEncoders(
       numberOfChannels: currentConfig.channels,
       bitrate: currentConfig.audioBitrate,
       codec: resolvedAudioCodecString,
+      ...(currentConfig.audioBitrateMode && {
+        bitrateMode: currentConfig.audioBitrateMode,
+      }),
       ...(currentConfig.latencyMode && {
         latencyMode: currentConfig.latencyMode,
       }),

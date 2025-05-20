@@ -291,6 +291,8 @@ const result = await recorder.stopRecording();
     - `frameRate: number`: Video frame rate.
     - `videoBitrate: number`: Video bitrate in bits per second.
     - `audioBitrate: number`: Audio bitrate in bits per second.
+    - `audioBitrateMode?: 'constant' | 'variable'`: (Optional) Set `'constant'` for CBR or `'variable'` for VBR when using AAC.
+      Chrome 119 or later has improved CBR support.
     - `sampleRate: number`: Audio sample rate (e.g., 44100, 48000). 48000 is recommended for Opus.
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
     - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
@@ -369,6 +371,13 @@ This library supports encoding to MP4 container format with the following codecs
 -   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
 -   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
 -   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
+
+## Choosing CBR or VBR for AAC
+
+Set `audioBitrateMode` in `EncoderConfig` to control how AAC bitrate is allocated.
+`'constant'` produces constant bitrate (CBR) output, while `'variable'` enables
+variable bitrate (VBR). Starting with Chrome 119, CBR handling in the
+`AudioEncoder` is much more reliable.
 
 ## Development
 
