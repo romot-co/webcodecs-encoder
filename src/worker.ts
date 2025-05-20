@@ -18,6 +18,7 @@ let muxer: Mp4MuxerWrapper | null = null;
 let currentConfig: EncoderConfig | null = null;
 let totalFramesToProcess: number | undefined;
 let processedFrames: number = 0;
+let videoFrameCount: number = 0;
 let isCancelled: boolean = false;
 let audioWorkletPort: MessagePort | null = null;
 
@@ -65,6 +66,7 @@ async function initializeEncoders(
   currentConfig = data.config;
   totalFramesToProcess = data.totalFrames;
   processedFrames = 0;
+  videoFrameCount = 0;
   isCancelled = false;
 
   if (!currentConfig) {
@@ -145,6 +147,7 @@ async function initializeEncoders(
     ...(videoCodec === "avc" && {
       avc: { format: "avcc" },
     }),
+    ...(currentConfig.videoEncoderConfig ?? {}),
   };
 
   const VideoEncoderCtor: any = getVideoEncoder();
@@ -276,6 +279,7 @@ async function initializeEncoders(
       ...(currentConfig.latencyMode && {
         latencyMode: currentConfig.latencyMode,
       }),
+      ...(currentConfig.audioEncoderConfig ?? {}),
     };
 
     const AudioEncoderCtor: any = getAudioEncoder();
@@ -390,8 +394,14 @@ async function handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
   if (isCancelled || !videoEncoder || !currentConfig) return;
   try {
     const frame = data.frame;
-    videoEncoder.encode(frame);
+    const interval = currentConfig.keyFrameInterval;
+    const opts =
+      interval && videoFrameCount % interval === 0
+        ? ({ keyFrame: true } as VideoEncoderEncodeOptions)
+        : undefined;
+    videoEncoder.encode(frame, opts as any);
     frame.close();
+    videoFrameCount++;
     processedFrames++;
     const progressMessage: any = {
       type: "progress",
@@ -575,6 +585,7 @@ function cleanup(resetCancelled: boolean = true): void {
   currentConfig = null;
   totalFramesToProcess = undefined;
   processedFrames = 0;
+  videoFrameCount = 0;
   if (audioWorkletPort) {
     audioWorkletPort.onmessage = null;
     audioWorkletPort.close();

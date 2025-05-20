@@ -46,18 +46,20 @@ afterEach(() => {
 describe("handleAddVideoFrame", () => {
   let initMessage: InitializeWorkerMessage;
   let videoEncoderErrorCallback: ((error: any) => void) | null = null;
+  let videoEncoderInstance: any;
 
   beforeEach(async () => {
     videoEncoderErrorCallback = null;
     mockSelf.VideoEncoder = vi.fn((options: { error: (e: any) => void }) => {
       videoEncoderErrorCallback = options.error;
-      return {
+      videoEncoderInstance = {
         configure: vi.fn(),
         encode: vi.fn(),
         flush: vi.fn().mockResolvedValue(undefined),
         close: vi.fn(),
         state: "configured",
       };
+      return videoEncoderInstance;
     }) as any;
     mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
       Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
@@ -170,5 +172,37 @@ describe("handleAddVideoFrame", () => {
       undefined,
     );
     videoFrame.close();
+  });
+
+  it("should pass keyFrame hint based on interval", async () => {
+    if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+    const cfg = { ...config, keyFrameInterval: 2 };
+    const newInit: InitializeWorkerMessage = { type: "initialize", config: cfg };
+    await global.self.onmessage({ data: newInit } as MessageEvent);
+    videoEncoderInstance.encode.mockClear();
+
+    const createFrame = () =>
+      new globalThis.VideoFrame(new Uint8Array(cfg.width * cfg.height * 4), {
+        timestamp: 0,
+        duration: 33333,
+        codedWidth: cfg.width,
+        codedHeight: cfg.height,
+        format: "RGBA",
+      });
+
+    const f1 = createFrame();
+    await global.self.onmessage({ data: { type: "addVideoFrame", frame: f1, timestamp: 0 } } as MessageEvent);
+    const f2 = createFrame();
+    await global.self.onmessage({ data: { type: "addVideoFrame", frame: f2, timestamp: 0 } } as MessageEvent);
+    const f3 = createFrame();
+    await global.self.onmessage({ data: { type: "addVideoFrame", frame: f3, timestamp: 0 } } as MessageEvent);
+
+    expect(videoEncoderInstance.encode.mock.calls[0][1]).toEqual({ keyFrame: true });
+    expect(videoEncoderInstance.encode.mock.calls[1][1]).toBeUndefined();
+    expect(videoEncoderInstance.encode.mock.calls[2][1]).toEqual({ keyFrame: true });
+
+    f1.close();
+    f2.close();
+    f3.close();
   });
 });

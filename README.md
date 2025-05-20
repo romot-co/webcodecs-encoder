@@ -284,6 +284,8 @@ const result = await recorder.stopRecording();
   `EncoderConfig`:
     - `container?: 'mp4' | 'webm'`: (Optional) Container format. Defaults to `'mp4'`. Setting `'webm'` will throw an error as WebM output is not yet supported.
     - `latencyMode?: 'quality' | 'realtime'`: (Optional) Encoding latency mode. `'quality'` (default) for best quality, `'realtime'` for lower latency and chunked output.
+    - `dropFrames?: boolean`: (Optional) Drop new video frames when the internal queue exceeds `maxQueueDepth`.
+    - `maxQueueDepth?: number`: (Optional) Maximum number of queued frames before dropping occurs. Defaults to unlimited.
     - `width: number`: Video width.
     - `height: number`: Video height.
     - `frameRate: number`: Video frame rate.
@@ -293,6 +295,9 @@ const result = await recorder.stopRecording();
     - `channels: number`: Number of audio channels (e.g., 1 for mono, 2 for stereo).
     - `codec?: { video?: 'avc' | 'hevc' | 'vp9' | 'av1'; audio?: 'aac' | 'opus' }`: (Optional) Preferred codecs. Defaults to `{ video: 'avc', audio: 'aac' }`.
     - `codecString?: { video?: string; audio?: string }`: (Optional) Explicit codec strings for the encoders. If omitted for H.264, a profile/level is derived from the resolution and frame rate.
+    - `keyFrameInterval?: number`: (Optional) Force a key frame every N video frames. When set, the worker sends `{ keyFrame: true }` to `VideoEncoder.encode()` at that interval.
+    - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`.
+    - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`.
 
 - **`encoder.initialize(options?: Mp4EncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
