@@ -74,7 +74,10 @@ describe("handleAddAudioData", () => {
       return mockAudioEncoderInstance;
     }) as any;
     mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+      Promise.resolve({
+        supported: true,
+        config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
+      }),
     );
     globalThis.AudioEncoder = mockSelf.AudioEncoder;
     globalThis.AudioData = vi.fn(() => mockAudioDataInstance) as any;

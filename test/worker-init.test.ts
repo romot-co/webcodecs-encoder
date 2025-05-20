@@ -347,7 +347,10 @@ describe("worker", () => {
       }));
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+        Promise.resolve({
+          supported: true,
+          config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
+        }),
       );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
@@ -403,7 +406,7 @@ describe("worker", () => {
       }));
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async () => ({
         supported: true,
-        config: { codec: "opus" },
+        config: { codec: "opus", numberOfChannels: webmConfig.channels },
       }));
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -509,7 +512,11 @@ describe("worker", () => {
         if (_cfg.codec === "mp4a.40.2")
           return {
             supported: true,
-            config: { ..._cfg, codec: "mp4a.40.2.test" },
+            config: {
+              ..._cfg,
+              codec: "mp4a.40.2.test",
+              numberOfChannels: opusConfig.channels,
+            },
           };
         return { supported: false, config: null };
       });
@@ -533,7 +540,51 @@ describe("worker", () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it("should post error if fallback audio codec (aac) is also not supported", async () => {
+    it("should fallback to opus if fallback audio codec (aac) is not supported but opus is", async () => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      const opusConfig = {
+        ...config,
+        codec: { ...config.codec, audio: "opus" as const },
+      };
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // @ts-ignore
+      let opusCalled = false;
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
+        if (_cfg.codec === "opus") {
+          if (!opusCalled) {
+            opusCalled = true;
+            return { supported: false, config: null };
+          }
+          return {
+            supported: true,
+            config: { ..._cfg, codec: "opus.test", numberOfChannels: opusConfig.channels },
+          };
+        }
+        return { supported: false, config: null }; // AAC unsupported
+      });
+      globalThis.AudioEncoder = mockSelf.AudioEncoder;
+
+      const initMessage: InitializeWorkerMessage = {
+        type: "initialize",
+        config: opusConfig,
+      };
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "Worker: AAC audio codec is not supported. Falling back to Opus.",
+      );
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "initialized",
+          actualAudioCodec: "opus.test",
+        }),
+        undefined,
+      );
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should post error if both aac and opus are unsupported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
       const opusConfig = {
@@ -556,8 +607,35 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: AAC audio codec is not supported after fallback.",
+            message: "Worker: Opus audio codec is not supported after fallback.",
             type: "not-supported",
+          },
+        },
+        undefined,
+      );
+    });
+
+    it("should post configuration error if encoder reports different channel count", async () => {
+      if (!global.self.onmessage)
+        throw new Error("Worker onmessage handler not set up");
+      // @ts-ignore
+      mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
+        return {
+          supported: true,
+          config: { ..._cfg, numberOfChannels: 1 },
+        };
+      });
+      globalThis.AudioEncoder = mockSelf.AudioEncoder;
+
+      const initMessage: InitializeWorkerMessage = { type: "initialize", config };
+      await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        {
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder reported numberOfChannels (1) does not match configured channels (${config.channels}).`,
+            type: "configuration-error",
           },
         },
         undefined,
@@ -634,7 +712,10 @@ describe("worker", () => {
       }));
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+        Promise.resolve({
+          supported: true,
+          config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
+        }),
       );
     });
 
@@ -672,7 +753,10 @@ describe("worker", () => {
       mockSelf.AudioEncoder = vi.fn(() => MockAudioEncoderInstance);
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+        Promise.resolve({
+          supported: true,
+          config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
+        }),
       );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
@@ -740,7 +824,7 @@ describe("worker", () => {
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
         Promise.resolve({
           supported: true,
-          config: { codec: "mp4a.40.2.default" },
+          config: { codec: "mp4a.40.2.default", numberOfChannels: config.channels },
         }),
       );
       globalThis.AudioEncoder = mockSelf.AudioEncoder;
@@ -765,7 +849,7 @@ describe("worker", () => {
       mockAudioEncoderConstructorThatThrows.isConfigSupported = vi.fn(() =>
         Promise.resolve({
           supported: true,
-          config: { codec: "mp4a.40.2.test" },
+          config: { codec: "mp4a.40.2.test", numberOfChannels: config.channels },
         }),
       );
       mockAudioEncoderConstructorThatThrows.mockImplementation(() => {

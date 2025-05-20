@@ -71,7 +71,10 @@ describe("handleFinalize", () => {
       Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
     );
     mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({ supported: true, config: { codec: "mp4a.40.2" } }),
+      Promise.resolve({
+        supported: true,
+        config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
+      }),
     );
     globalThis.VideoEncoder = mockSelf.VideoEncoder;
     globalThis.AudioEncoder = mockSelf.AudioEncoder;
