@@ -276,7 +276,7 @@ describe("Mp4MuxerWrapper", () => {
       expect(muxerCallArgs.target).toBeInstanceOf(StreamTargetMockConst);
     });
 
-    it("onData callback should post message to main thread", async () => {
+    it("onData callback should post message to main thread with header info", async () => {
       const realtimeConfig: EncoderConfig = {
         ...baseConfig,
         latencyMode: "realtime",
@@ -288,23 +288,37 @@ describe("Mp4MuxerWrapper", () => {
       expect(capturedOnData).toBeInstanceOf(Function);
 
       if (capturedOnData) {
-        const testChunk = new Uint8Array([1, 2, 3, 4, 5]);
-        const testPosition = 12345;
-        capturedOnData(testChunk, testPosition);
+        const headerChunk = new Uint8Array([1, 2, 3]);
+        const mediaChunk = new Uint8Array([4, 5, 6]);
 
-        expect(postMessageCallback).toHaveBeenCalledTimes(1);
-        expect(postMessageCallback).toHaveBeenCalledWith(
+        capturedOnData(headerChunk, 0);
+        capturedOnData(mediaChunk, headerChunk.length);
+
+        expect(postMessageCallback).toHaveBeenCalledTimes(2);
+
+        expect(postMessageCallback).toHaveBeenNthCalledWith(
+          1,
           expect.objectContaining({
             type: "dataChunk",
             chunk: expect.any(Uint8Array),
-            offset: testPosition,
+            offset: 0,
+            isHeader: true,
             container: "mp4",
           }),
           [expect.any(ArrayBuffer)],
         );
-        const actualSentChunk = postMessageCallback.mock.calls[0][0].chunk;
-        expect(actualSentChunk).toEqual(testChunk);
-        expect(actualSentChunk.buffer).not.toBe(testChunk.buffer);
+
+        expect(postMessageCallback).toHaveBeenNthCalledWith(
+          2,
+          expect.objectContaining({
+            type: "dataChunk",
+            chunk: expect.any(Uint8Array),
+            offset: headerChunk.length,
+            isHeader: false,
+            container: "mp4",
+          }),
+          [expect.any(ArrayBuffer)],
+        );
       } else {
         throw new Error("onData callback was not captured"); // Should not happen if mock is correct
       }

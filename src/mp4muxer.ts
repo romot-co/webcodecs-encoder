@@ -37,6 +37,7 @@ export class Mp4MuxerWrapper {
   private target: ArrayBufferTarget | StreamTarget;
   private videoConfigured: boolean = false;
   private audioConfigured: boolean = false;
+  private writtenPosition: number = 0;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -96,14 +97,15 @@ export class Mp4MuxerWrapper {
       this.target = new StreamTarget({
         onData: (chunk: Uint8Array, position: number) => {
           const chunkCopy = new Uint8Array(chunk.slice(0)); // Ensure buffer is not reused by mp4-muxer
+          const isHeader = position === 0;
           const message: WorkerDataChunkMessage = {
             type: "dataChunk",
             chunk: chunkCopy,
             offset: position, // Use position as offset
-            // isHeader cannot be determined from this signature, default to false or undefined
-            isHeader: undefined,
+            isHeader,
             container: "mp4",
           };
+          this.writtenPosition = position + chunk.byteLength;
           this.postMessageToMain(message, [chunkCopy.buffer]);
         },
       } as any); // Use `as any` to bypass the strict type check for StreamTargetOptions if it's causing issues
