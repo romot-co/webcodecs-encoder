@@ -27,6 +27,8 @@ export class Mp4Encoder {
   private processedFramesInternal: number = 0;
   private submittedFramesInternal: number = 0;
   private droppedFramesInternal: number = 0;
+  private videoQueueSizeInternal: number = 0;
+  private audioQueueSizeInternal: number = 0;
   private actualVideoCodec: string | null = null;
   private actualAudioCodec: string | null = null;
 
@@ -135,6 +137,8 @@ export class Mp4Encoder {
     this.processedFramesInternal = 0;
     this.submittedFramesInternal = 0;
     this.droppedFramesInternal = 0;
+    this.videoQueueSizeInternal = 0;
+    this.audioQueueSizeInternal = 0;
     this.nextVideoTimestamp = 0;
     this.nextAudioTimestamp = 0;
 
@@ -216,6 +220,10 @@ export class Mp4Encoder {
           this.processedFramesInternal,
           message.totalFrames,
         );
+        break;
+      case "queueSize":
+        this.videoQueueSizeInternal = message.videoQueueSize;
+        this.audioQueueSizeInternal = message.audioQueueSize;
         break;
       case "dataChunk": // Handle real-time data chunks
         if (this.config.latencyMode === "realtime" && this.onDataCallback) {
@@ -323,8 +331,7 @@ export class Mp4Encoder {
     }
 
     try {
-      const queueDepth =
-        this.submittedFramesInternal - this.processedFramesInternal;
+      const queueDepth = this.videoQueueSizeInternal;
       const maxDepth = this.config.maxQueueDepth ?? Infinity;
       if (this.config.dropFrames && queueDepth >= maxDepth) {
         frameSource.close();
@@ -365,8 +372,7 @@ export class Mp4Encoder {
   public async addCanvasFrame(
     canvas: HTMLCanvasElement | OffscreenCanvas,
   ): Promise<void> {
-    const queueDepth =
-      this.submittedFramesInternal - this.processedFramesInternal;
+    const queueDepth = this.videoQueueSizeInternal;
     const maxDepth = this.config.maxQueueDepth ?? Infinity;
     if (this.config.dropFrames && queueDepth >= maxDepth) {
       this.nextVideoTimestamp += 1_000_000 / this.config.frameRate;
@@ -629,6 +635,8 @@ export class Mp4Encoder {
       this.audioContext.close();
       this.audioContext = null;
     }
+    this.videoQueueSizeInternal = 0;
+    this.audioQueueSizeInternal = 0;
     this.isCancelled = true; // Ensure isCancelled is true after cleanup
   }
 
@@ -698,6 +706,14 @@ export class Mp4Encoder {
 
   public getActualAudioCodec(): string | null {
     return this.actualAudioCodec;
+  }
+
+  public getVideoQueueSize(): number {
+    return this.videoQueueSizeInternal;
+  }
+
+  public getAudioQueueSize(): number {
+    return this.audioQueueSizeInternal;
   }
 
   public getAudioWorkletNode(): AudioWorkletNode | null {

@@ -67,6 +67,7 @@ describe("handleAddAudioData", () => {
       flush: vi.fn().mockResolvedValue(undefined),
       close: vi.fn(),
       state: "configured",
+      encodeQueueSize: 0,
     };
     mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => {
       audioEncoderErrorCallback = options.error;
@@ -158,6 +159,14 @@ describe("handleAddAudioData", () => {
     await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
     expect(mockAudioEncoderInstance.encode).toHaveBeenCalledWith(mockAudioDataInstance);
     expect((globalThis as any).AudioData).not.toHaveBeenCalled();
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "queueSize",
+        videoQueueSize: 0,
+        audioQueueSize: 0,
+      },
+      undefined,
+    );
   });
 
   it("should close AudioData after encoding when created internally", async () => {
@@ -180,6 +189,14 @@ describe("handleAddAudioData", () => {
     };
     await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
     expect(mockAudioDataInstance.close).toHaveBeenCalled();
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      {
+        type: "queueSize",
+        videoQueueSize: 0,
+        audioQueueSize: 0,
+      },
+      undefined,
+    );
   });
 
   it("should post error if AudioData API is not available", async () => {

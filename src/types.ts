@@ -149,6 +149,12 @@ export interface WorkerFinalizedMessage {
   output: Uint8Array | null; // MP4 file data or null when streaming
 }
 
+export interface QueueSizeMessage {
+  type: "queueSize";
+  videoQueueSize: number;
+  audioQueueSize: number;
+}
+
 export interface WorkerDataChunkMessage {
   type: "dataChunk";
   chunk: Uint8Array;
@@ -177,6 +183,7 @@ export type MainThreadMessage =
   // | AudioChunkMessage // These are handled internally by the muxer in the worker
   | ProgressMessage
   | WorkerFinalizedMessage
+  | QueueSizeMessage
   | WorkerDataChunkMessage
   | WorkerErrorMessage
   | WorkerCancelledMessage;
