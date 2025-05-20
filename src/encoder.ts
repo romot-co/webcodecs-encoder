@@ -370,6 +370,79 @@ export class Mp4Encoder {
     }
   }
 
+  public async addAudioData(audio: AudioData): Promise<void> {
+    if (!this.worker || this.isCancelled) {
+      const err = new Mp4EncoderError(
+        this.isCancelled
+          ? EncoderErrorType.Cancelled
+          : EncoderErrorType.InternalError,
+        this.isCancelled
+          ? "Encoder cancelled"
+          : "Encoder not initialized or already finalized",
+      );
+      this.handleError(err);
+      return Promise.reject(err);
+    }
+    if (
+      !this.config.audioBitrate ||
+      this.config.audioBitrate <= 0 ||
+      this.config.channels <= 0 ||
+      this.config.sampleRate <= 0
+    ) {
+      console.warn(
+        "Audio encoding is disabled (audioBitrate, channels or sampleRate is zero/negative). Skipping addAudioData.",
+      );
+      return Promise.resolve();
+    }
+
+    const timestamp = this.nextAudioTimestamp;
+    this.nextAudioTimestamp +=
+      (audio.numberOfFrames / audio.sampleRate) * 1_000_000;
+
+    const baseMessage: WorkerMessage = {
+      type: "addAudioData",
+      audio,
+      timestamp,
+      format: audio.format as AudioSampleFormat,
+      sampleRate: audio.sampleRate,
+      numberOfFrames: audio.numberOfFrames,
+      numberOfChannels: audio.numberOfChannels,
+    };
+
+    try {
+      this.worker.postMessage(baseMessage, [audio as any]);
+    } catch (_e) {
+      try {
+        const planar: Float32Array[] = [];
+        for (let i = 0; i < audio.numberOfChannels; i++) {
+          const buf = new Float32Array(audio.numberOfFrames);
+          audio.copyTo(buf, { planeIndex: i });
+          planar.push(buf);
+        }
+        const fallbackMsg: WorkerMessage = {
+          type: "addAudioData",
+          audioData: planar,
+          timestamp,
+          format: "f32-planar",
+          sampleRate: audio.sampleRate,
+          numberOfFrames: audio.numberOfFrames,
+          numberOfChannels: audio.numberOfChannels,
+        };
+        const transfer = planar.map((p) => p.buffer);
+        this.worker.postMessage(fallbackMsg, transfer);
+        audio.close();
+      } catch (e2: any) {
+        const err = new Mp4EncoderError(
+          EncoderErrorType.AudioEncodingError,
+          `Failed to add audio data: ${e2.message}`,
+          e2,
+        );
+        this.handleError(err);
+        throw err;
+      }
+    }
+  }
+
   public finalize(): Promise<Uint8Array> {
     if (!this.worker || this.isCancelled) {
       const stateMsg = this.isCancelled

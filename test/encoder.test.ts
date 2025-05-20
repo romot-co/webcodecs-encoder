@@ -653,6 +653,77 @@ describe("Mp4Encoder", () => {
     });
   });
 
+  describe("addAudioData", () => {
+    const baseAudioConfig: EncoderConfig = {
+      width: 320,
+      height: 240,
+      frameRate: 30,
+      videoBitrate: 500000,
+      audioBitrate: 64000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should resolve when AudioData is added", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+      mockWorkerInstance.postMessage.mockClear();
+
+      const audio = {
+        format: "f32",
+        sampleRate: 48000,
+        numberOfFrames: 10,
+        numberOfChannels: 1,
+        timestamp: 0,
+        close: vi.fn(),
+      } as unknown as AudioData;
+
+      await expect(encoder.addAudioData(audio)).resolves.toBeUndefined();
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        {
+          type: "addAudioData",
+          audio,
+          timestamp: 0,
+          format: "f32",
+          sampleRate: 48000,
+          numberOfFrames: 10,
+          numberOfChannels: 1,
+        },
+        [audio],
+      );
+    });
+
+    it("should resolve immediately when audio disabled", async () => {
+      const cfg: EncoderConfig = { ...baseAudioConfig, audioBitrate: 0 };
+      const encoder = new Mp4Encoder(cfg);
+
+      const initPromise = encoder.initialize({});
+      if (typeof mockWorkerInstance.onmessage === "function") {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      await expect(
+        encoder.addAudioData({} as AudioData),
+      ).resolves.toBeUndefined();
+      const calls = mockWorkerInstance.postMessage.mock.calls.filter(
+        (c: any) => c[0].type === "addAudioData",
+      );
+      expect(calls.length).toBe(0);
+    });
+
+    it("should reject if encoder not initialized", async () => {
+      const encoder = new Mp4Encoder(baseAudioConfig);
+      await expect(encoder.addAudioData({} as AudioData)).rejects.toThrow(
+        "Encoder not initialized or already finalized",
+      );
+    });
+  });
+
   describe("finalize", () => {
     const baseFinalizeConfig: EncoderConfig = {
       width: 320,

@@ -226,6 +226,7 @@ async function encodeVideoRealtime() {
       }
 
       // For real-time audio, you would continuously call addAudioBuffer
+      // or addAudioData when you already have AudioData chunks
       // For this example, we'll add a silent track matching video duration after frames.
       // In a true real-time scenario, audio and video would be interleaved.
       const audioContext = new AudioContext({ sampleRate: config.sampleRate });
