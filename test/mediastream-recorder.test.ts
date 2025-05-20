@@ -81,9 +81,15 @@ class FakeProcessor<T extends VideoFrame | AudioData> {
   readable: { getReader: () => MockReadableStreamDefaultReader<T> };
   constructor(init: { track: MediaStreamTrack }) {
     if (init.track.kind === "video") {
-      this.readable = { getReader: () => new FakeVideoReader() as unknown as MockReadableStreamDefaultReader<T> };
+      this.readable = {
+        getReader: () =>
+          new FakeVideoReader() as unknown as MockReadableStreamDefaultReader<T>,
+      };
     } else {
-      this.readable = { getReader: () => new FakeAudioReader() as unknown as MockReadableStreamDefaultReader<T> };
+      this.readable = {
+        getReader: () =>
+          new FakeAudioReader() as unknown as MockReadableStreamDefaultReader<T>,
+      };
     }
   }
 }
@@ -94,12 +100,16 @@ declare global {
     maxBufferSize?: number;
   }
   // @ts-ignore - Using a simplified mock type for MediaStreamTrackProcessor readable
-  interface MediaStreamTrackProcessor<T extends VideoFrame | AudioData = VideoFrame | AudioData> {
+  interface MediaStreamTrackProcessor<
+    T extends VideoFrame | AudioData = VideoFrame | AudioData,
+  > {
     readonly readable: { getReader(): MockReadableStreamDefaultReader<T> };
   }
   // @ts-ignore - Using a simplified mock type for MediaStreamTrackProcessor constructor
   let MediaStreamTrackProcessor: {
-    new <T extends VideoFrame | AudioData>(init: MediaStreamTrackProcessorInit): MediaStreamTrackProcessor<T>;
+    new <T extends VideoFrame | AudioData>(
+      init: MediaStreamTrackProcessorInit,
+    ): MediaStreamTrackProcessor<T>;
   };
 }
 

@@ -39,7 +39,8 @@ export class MediaStreamRecorder {
       const processor = new MediaStreamTrackProcessor({
         track: vTrack,
       });
-      this.videoReader = processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
+      this.videoReader =
+        processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
       this.processVideo();
     }
 
@@ -48,7 +49,8 @@ export class MediaStreamRecorder {
       const processor = new MediaStreamTrackProcessor({
         track: aTrack,
       });
-      this.audioReader = processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
+      this.audioReader =
+        processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
       this.processAudio();
     }
   }

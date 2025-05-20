@@ -876,8 +876,8 @@ describe("Mp4Encoder", () => {
 
       const expectedTimestamp1 = initialNextAudioTimestamp;
       // @ts-ignore - access private member for test
-      const expectedNextAudioTimestampAfter1 = initialNextAudioTimestamp + (1024 / 48000) * 1_000_000;
-
+      const expectedNextAudioTimestampAfter1 =
+        initialNextAudioTimestamp + (1024 / 48000) * 1_000_000;
 
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -887,11 +887,13 @@ describe("Mp4Encoder", () => {
         expect.anything(),
       );
       // @ts-ignore - access private member for test
-      expect(encoder.nextAudioTimestamp).toBeCloseTo(expectedNextAudioTimestampAfter1);
+      expect(encoder.nextAudioTimestamp).toBeCloseTo(
+        expectedNextAudioTimestampAfter1,
+      );
 
       // Add another frame to see if timestamp is incremented from the new nextAudioTimestamp
       mockWorkerInstance.postMessage.mockClear();
-       const audio2 = {
+      const audio2 = {
         format: "f32",
         sampleRate: 48000,
         numberOfFrames: 512,
@@ -904,9 +906,10 @@ describe("Mp4Encoder", () => {
       await encoder.addAudioData(audio2);
       const expectedTimestamp2 = expectedNextAudioTimestampAfter1;
       // @ts-ignore - access private member for test
-      const expectedNextAudioTimestampAfter2 = expectedNextAudioTimestampAfter1 + (512 / 48000) * 1_000_000;
+      const expectedNextAudioTimestampAfter2 =
+        expectedNextAudioTimestampAfter1 + (512 / 48000) * 1_000_000;
 
-       expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "addAudioData",
           timestamp: expectedTimestamp2,
@@ -914,7 +917,9 @@ describe("Mp4Encoder", () => {
         expect.anything(),
       );
       // @ts-ignore - access private member for test
-      expect(encoder.nextAudioTimestamp).toBeCloseTo(expectedNextAudioTimestampAfter2);
+      expect(encoder.nextAudioTimestamp).toBeCloseTo(
+        expectedNextAudioTimestampAfter2,
+      );
     });
 
     it("should reject and call onError if copyTo fails", async () => {
@@ -1103,8 +1108,9 @@ describe("Mp4Encoder", () => {
       await initPromise;
       mockWorkerInstance.postMessage.mockClear();
 
-
-      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const consoleWarnSpy = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => {});
 
       const finalizePromise1 = encoder.finalize(); // 1回目 (まだ完了しない)
 
@@ -1123,7 +1129,9 @@ describe("Mp4Encoder", () => {
 
       // 1回目の finalize を解決させてエラーが出ないことを確認
       if (mockWorkerInstance.onmessage) {
-        mockWorkerInstance.onmessage({ data: { type: "finalized", output: new Uint8Array([1]) } });
+        mockWorkerInstance.onmessage({
+          data: { type: "finalized", output: new Uint8Array([1]) },
+        });
       }
       await expect(finalizePromise1).resolves.toEqual(new Uint8Array([1]));
       consoleWarnSpy.mockRestore();
@@ -1289,18 +1297,26 @@ describe("Mp4Encoder", () => {
       // Ensure onInitializeError is set on the promise before overwriting it locally.
       // It's better to rely on the public onError callback or the promise rejection for testing.
       // However, to specifically test if the internal onInitializeError is called:
-      const originalOnInitializeError = encoder['onInitializeError'];
-      encoder['onInitializeError'] = (err) => {
+      const originalOnInitializeError = encoder["onInitializeError"];
+      encoder["onInitializeError"] = (err) => {
         onInitializeErrorSpy(err);
         originalOnInitializeError?.(err);
       };
 
       encoder.cancel(); // initialize が完了する前にキャンセル
 
-      await expect(initPromise).rejects.toMatchObject({ type: EncoderErrorType.Cancelled });
-      expect(onInitializeErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
-      expect(onErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
-      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "cancel" });
+      await expect(initPromise).rejects.toMatchObject({
+        type: EncoderErrorType.Cancelled,
+      });
+      expect(onInitializeErrorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: EncoderErrorType.Cancelled }),
+      );
+      expect(onErrorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: EncoderErrorType.Cancelled }),
+      );
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "cancel",
+      });
 
       // Simulate worker acknowledging cancellation
       if (mockWorkerInstance.onmessage) {
@@ -1323,9 +1339,9 @@ describe("Mp4Encoder", () => {
       encoder.onErrorCallback = onErrorSpy;
 
       const finalizePromise = encoder.finalize();
-      const originalOnFinalizedReject = encoder['onFinalizedPromise']?.reject;
-      if (encoder['onFinalizedPromise']) {
-        encoder['onFinalizedPromise'].reject = (err) => {
+      const originalOnFinalizedReject = encoder["onFinalizedPromise"]?.reject;
+      if (encoder["onFinalizedPromise"]) {
+        encoder["onFinalizedPromise"].reject = (err) => {
           onFinalizedRejectSpy(err);
           originalOnFinalizedReject?.(err);
         };
@@ -1333,10 +1349,18 @@ describe("Mp4Encoder", () => {
 
       encoder.cancel(); // finalize が完了する前にキャンセル
 
-      await expect(finalizePromise).rejects.toMatchObject({ type: EncoderErrorType.Cancelled });
-      expect(onFinalizedRejectSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
-      expect(onErrorSpy).toHaveBeenCalledWith(expect.objectContaining({ type: EncoderErrorType.Cancelled }));
-      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({ type: "cancel" });
+      await expect(finalizePromise).rejects.toMatchObject({
+        type: EncoderErrorType.Cancelled,
+      });
+      expect(onFinalizedRejectSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: EncoderErrorType.Cancelled }),
+      );
+      expect(onErrorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: EncoderErrorType.Cancelled }),
+      );
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "cancel",
+      });
 
       // Simulate worker acknowledging cancellation
       if (mockWorkerInstance.onmessage) {
