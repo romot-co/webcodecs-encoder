@@ -13,6 +13,67 @@ import type {
 import { EncoderErrorType } from "./types";
 import logger from "./logger";
 
+// グローバルなエラーハンドラ (主に同期的なエラーや、Promise外の非同期エラー用)
+self.addEventListener("error", (event: ErrorEvent) => {
+  console.error("Unhandled global error in worker. Event:", event);
+  console.error(
+    "Unhandled global error in worker. event.message:",
+    event.message,
+  );
+  console.error(
+    "Unhandled global error in worker. event.filename:",
+    event.filename,
+  );
+  console.error(
+    "Unhandled global error in worker. event.lineno:",
+    event.lineno,
+  );
+  console.error("Unhandled global error in worker. event.colno:", event.colno);
+  console.error("Unhandled global error in worker. event.error:", event.error);
+
+  let detailMessage = `Unhandled global error in worker: ${event.message}`;
+  if (event.filename) {
+    detailMessage += ` in ${event.filename}`;
+    if (event.lineno) detailMessage += `:${event.lineno}`;
+    if (event.colno) detailMessage += `:${event.colno}`;
+  }
+
+  self.postMessage({
+    type: "error",
+    errorDetail: {
+      message: detailMessage,
+      type: EncoderErrorType.InternalError,
+      stack: event.error?.stack,
+    },
+  } as MainThreadMessage);
+});
+
+// 未処理のPromiseリジェクトをキャッチするハンドラ
+self.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
+  console.error("Unhandled promise rejection in worker. Event:", event);
+  console.error(
+    "Unhandled promise rejection in worker. event.reason:",
+    event.reason,
+  );
+  let detailMessage = "Unhandled promise rejection in worker: ";
+  if (event.reason instanceof Error) {
+    detailMessage += `${event.reason.message}`;
+  } else if (typeof event.reason === "string") {
+    detailMessage += event.reason;
+  } else {
+    detailMessage += String(event.reason);
+  }
+
+  self.postMessage({
+    type: "error",
+    errorDetail: {
+      message: detailMessage,
+      type: EncoderErrorType.InternalError,
+      stack: event.reason instanceof Error ? event.reason.stack : undefined,
+    },
+  } as MainThreadMessage);
+});
+
 const getVideoEncoder = () =>
   (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
 const getAudioEncoder = () =>
@@ -120,6 +181,8 @@ class EncoderWorker {
   }
 
   async initializeEncoders(data: InitializeWorkerMessage): Promise<void> {
+    // throw new Error("Intentional test error from worker initializeEncoders"); // ★テスト用エラーいったんコメントアウト
+
     this.currentConfig = data.config;
     this.totalFramesToProcess = data.totalFrames;
     this.processedFrames = 0;
@@ -197,27 +260,17 @@ class EncoderWorker {
               ? "hvc1"
               : videoCodec === "av1"
                 ? "av01.0.04M.08"
-                : "");
+                : videoCodec);
 
-    const baseVideoConfig = {
+    const videoEncoderConfig: VideoEncoderConfig = {
+      codec: resolvedVideoCodecString,
       width: this.currentConfig.width,
       height: this.currentConfig.height,
-      framerate: this.currentConfig.frameRate,
       bitrate: this.currentConfig.videoBitrate,
-      codec: resolvedVideoCodecString,
-      ...(this.currentConfig.latencyMode && {
-        latencyMode: this.currentConfig.latencyMode,
-      }),
-      ...(this.currentConfig.hardwareAcceleration && {
-        hardwareAcceleration: this.currentConfig.hardwareAcceleration,
-      }),
-      ...(videoCodec === "vp9" && {
-        scalabilityMode: "L1T2",
-      }),
-      ...(videoCodec === "avc" && {
-        avc: { format: "avcc" },
-      }),
-      ...(this.currentConfig.videoEncoderConfig ?? {}),
+      framerate: this.currentConfig.frameRate,
+      ...(this.currentConfig.container === "mp4" && videoCodec === "avc"
+        ? { avc: { format: "avc" } }
+        : {}),
     };
 
     const VideoEncoderCtor: any = getVideoEncoder();
@@ -233,127 +286,13 @@ class EncoderWorker {
       return;
     }
 
-    let videoSupportConfig = await this.isConfigSupportedWithHwFallback(
+    const videoSupportConfig = await this.isConfigSupportedWithHwFallback(
       VideoEncoderCtor,
-      baseVideoConfig,
+      videoEncoderConfig,
       "VideoEncoder",
     );
     if (videoSupportConfig) {
       finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
-    } else if (videoCodec === "avc") {
-      const currentProfile =
-        this.avcProfileFromCodecString(baseVideoConfig.codec) ?? "high";
-      const profileFallback: Record<
-        "high" | "main" | "baseline",
-        ("high" | "main" | "baseline")[]
-      > = {
-        high: ["main", "baseline"],
-        main: ["baseline"],
-        baseline: [],
-      };
-      for (const p of profileFallback[currentProfile]) {
-        const cfg = {
-          ...baseVideoConfig,
-          codec: this.defaultAvcCodecString(
-            this.currentConfig.width,
-            this.currentConfig.height,
-            this.currentConfig.frameRate,
-            p,
-          ),
-          avc: { format: "avcc" },
-        };
-        videoSupportConfig = await this.isConfigSupportedWithHwFallback(
-          VideoEncoderCtor,
-          cfg,
-          "VideoEncoder",
-        );
-        if (videoSupportConfig) {
-          finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
-          break;
-        }
-      }
-      if (!videoSupportConfig) {
-        console.warn(
-          "Worker: AVC profiles not supported. Falling back to VP9.",
-        );
-        const vp9Cfg = {
-          ...baseVideoConfig,
-          codec: "vp09.00.50.08",
-          scalabilityMode: "L1T2",
-        };
-        delete (vp9Cfg as any).avc;
-        videoCodec = "vp9";
-        videoSupportConfig = await this.isConfigSupportedWithHwFallback(
-          VideoEncoderCtor,
-          vp9Cfg,
-          "VideoEncoder",
-        );
-        if (videoSupportConfig) {
-          finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
-        }
-      }
-      if (!videoSupportConfig) {
-        this.postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message: "Worker: Video codec avc config not supported.",
-            type: EncoderErrorType.NotSupported,
-          },
-        });
-        this.cleanup();
-        return;
-      }
-    } else if (
-      videoCodec === "vp9" ||
-      videoCodec === "av1" ||
-      videoCodec === "hevc"
-    ) {
-      console.warn(
-        `Worker: Video codec ${videoCodec} not supported or config invalid. Falling back to AVC.`,
-      );
-      videoCodec = "avc";
-      const fallbackVideoConfig = {
-        ...baseVideoConfig,
-        codec:
-          this.currentConfig.codecString?.video ??
-          this.defaultAvcCodecString(
-            this.currentConfig.width,
-            this.currentConfig.height,
-            this.currentConfig.frameRate,
-          ),
-        avc: { format: "avcc" },
-      };
-      delete (fallbackVideoConfig as any).scalabilityMode;
-      if (this.currentConfig.container === "webm") {
-        this.postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message: "Worker: VP9/VP8/AV1 not supported for WebM container.",
-            type: EncoderErrorType.NotSupported,
-          },
-        });
-        this.cleanup();
-        return;
-      }
-      videoSupportConfig = await this.isConfigSupportedWithHwFallback(
-        VideoEncoderCtor,
-        fallbackVideoConfig,
-        "VideoEncoder",
-      );
-      if (videoSupportConfig) {
-        finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
-      } else {
-        this.postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message:
-              "Worker: AVC (H.264) video codec is not supported after fallback.",
-            type: EncoderErrorType.NotSupported,
-          },
-        });
-        this.cleanup();
-        return;
-      }
     } else {
       this.postMessageToMainThread({
         type: "error",
@@ -898,5 +837,3 @@ const encoder = new EncoderWorker();
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   await encoder.handleMessage(event.data);
 };
-
-logger.log("Worker script loaded.");

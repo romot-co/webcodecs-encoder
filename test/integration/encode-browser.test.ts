@@ -5,7 +5,6 @@ import { test, expect } from "vitest";
 import { chromium, Browser, Page } from "playwright";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
-import os from "os";
 import path from "path";
 import http from "http";
 
@@ -37,12 +36,28 @@ async function findAvailablePort(startPort: number): Promise<number> {
 function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      if (req.url === "/favicon.ico") {
+        res.writeHead(204, { "Content-Type": "image/x-icon" });
+        res.end();
+        return;
+      }
+
       // URLからパスを取得
       let filePath = path.join(rootDir, req.url || "");
+      console.log(
+        `[HTTP Server] Requested URL: ${req.url}, Trying filePath: ${filePath}`,
+      ); // デバッグログ
 
       // ディレクトリの場合はindex.htmlを探す
       if (filePath.endsWith("/")) {
         filePath = path.join(filePath, "index.html");
+      } else if (!existsSync(filePath) && req.url?.endsWith(".html")) {
+        // ルート直下以外のHTMLファイルも解決できるようにする
+        // 例えば /temp-html/test.html のようなリクエストに対応
+        const potentialPath = path.join(rootDir, req.url || "");
+        if (existsSync(potentialPath)) {
+          filePath = potentialPath;
+        }
       }
 
       // CORSヘッダーを設定
@@ -55,11 +70,26 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
         // Content-Typeを設定
         const extname = path.extname(filePath);
         let contentType = "text/html";
+        console.log(`[HTTP Server] File found: ${filePath}`); // デバッグログ
 
         switch (extname) {
           case ".js":
-          case ".mjs":
-            contentType = "text/javascript";
+            contentType = "application/javascript";
+            // worker.js の内容をコンソールに出力して確認
+            if (filePath.endsWith("worker.js")) {
+              try {
+                const workerContent = readFileSync(filePath, "utf-8");
+                console.log(
+                  "[HTTP Server] Content of worker.js being served:",
+                  workerContent.substring(0, 500) +
+                    (workerContent.length > 500 ? "... (truncated)" : ""),
+                );
+              } catch (readError: any) {
+                console.error(
+                  `[HTTP Server] Error reading worker.js for logging: ${readError.message}`,
+                );
+              }
+            }
             break;
           case ".css":
             contentType = "text/css";
@@ -81,6 +111,7 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
         res.end(content, "utf-8");
       } else {
         // ファイルが見つからない場合は404
+        console.log(`[HTTP Server] File NOT found: ${filePath}`); // デバッグログ
         res.writeHead(404);
         res.end("File not found: " + filePath);
       }
@@ -97,17 +128,25 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
 test("browser can create canvas and draw", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let server: http.Server | null = null;
+  let port: number;
 
   try {
     // テスト用HTMLファイルを作成（非常にシンプルなキャンバステスト）
-    const tempDir = os.tmpdir();
+    // distディレクトリにHTMLを配置してHTTP経由でアクセスする
+    const distDir = path.join(__dirname, "../../dist");
+    const tempDir = path.join(distDir, "temp-html"); // 一時HTML用のサブディレクトリ
+    execSync(`mkdir -p ${tempDir}`); // サブディレクトリ作成
+
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(tempDir, `webcodecs-test-${timestamp}.html`);
+    const tempHtmlFilename = `webcodecs-test-${timestamp}.html`;
+    const tempHtmlPath = path.join(tempDir, tempHtmlFilename);
 
     const testHtml = `
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <title>Canvas Test</title>
         <script>
           // テスト用の簡単なキャンバス操作
@@ -152,10 +191,24 @@ test("browser can create canvas and draw", async () => {
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created test HTML at: ${tempHtmlPath}`);
 
+    // 利用可能なポートを見つける
+    port = await findAvailablePort(8080);
+    console.log(`Using port: ${port} for canvas test`);
+
+    // HTTPサーバーを起動 (ルートは distDir)
+    server = await startHttpServer(port, distDir);
+
     // ブラウザを起動
     console.log("Launching browser...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true", // CI用にヘッドレス制御
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage", // CI環境でのリソース制限対策
+        "--enable-logging=stderr", // ブラウザログをstderrに出力
+        // WebCodecsやテストに必要な他のフラグがあればここに追加
+      ],
     });
 
     console.log("Browser launched successfully");
@@ -163,7 +216,8 @@ test("browser can create canvas and draw", async () => {
     page = await browser.newPage();
 
     console.log("Navigating to file...");
-    await page.goto(`file://${tempHtmlPath}`);
+    // HTTP経由でアクセス
+    await page.goto(`http://localhost:${port}/temp-html/${tempHtmlFilename}`);
 
     // テストの実行ボタンをクリック
     console.log("Running canvas test...");
@@ -195,6 +249,7 @@ test("browser can create canvas and draw", async () => {
     // リソースのクリーンアップ
     if (page) await page.close();
     if (browser) await browser.close();
+    if (server) server.close();
   }
 }, 60000); // 60 second timeout
 
@@ -202,20 +257,25 @@ test("browser can create canvas and draw", async () => {
 test("browser supports WebCodecs", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let server: http.Server | null = null;
+  let port: number;
 
   try {
     // テスト用HTMLファイルを作成
-    const tempDir = os.tmpdir();
+    // distディレクトリにHTMLを配置してHTTP経由でアクセスする
+    const distDir = path.join(__dirname, "../../dist");
+    const tempDir = path.join(distDir, "temp-html"); // 一時HTML用のサブディレクトリ
+    execSync(`mkdir -p ${tempDir}`); // サブディレクトリ作成
+
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(
-      tempDir,
-      `webcodecs-support-test-${timestamp}.html`,
-    );
+    const tempHtmlFilename = `webcodecs-support-test-${timestamp}.html`;
+    const tempHtmlPath = path.join(tempDir, tempHtmlFilename);
 
     const testHtml = `
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <title>WebCodecs Support Test</title>
         <script>
           // WebCodecsのサポートを確認
@@ -271,10 +331,23 @@ test("browser supports WebCodecs", async () => {
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created WebCodecs support test HTML at: ${tempHtmlPath}`);
 
+    // 利用可能なポートを見つける
+    port = await findAvailablePort(8081); // 別のポートを使用
+    console.log(`Using port: ${port} for WebCodecs support test`);
+
+    // HTTPサーバーを起動 (ルートは distDir)
+    server = await startHttpServer(port, distDir);
+
     // ブラウザを起動
     console.log("Launching browser for WebCodecs support test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--enable-logging=stderr",
+      ],
     });
 
     // 新しいページを作成
@@ -283,7 +356,7 @@ test("browser supports WebCodecs", async () => {
 
     // ファイルに移動
     console.log("Navigating to WebCodecs support test...");
-    await page.goto(`file://${tempHtmlPath}`);
+    await page.goto(`http://localhost:${port}/temp-html/${tempHtmlFilename}`);
 
     // サポート確認ボタンをクリック
     console.log("Checking WebCodecs support...");
@@ -324,6 +397,7 @@ test("browser supports WebCodecs", async () => {
     // リソースのクリーンアップ
     if (page) await page.close();
     if (browser) await browser.close();
+    if (server) server.close();
   }
 }, 60000);
 
@@ -331,6 +405,8 @@ test("browser supports WebCodecs", async () => {
 test("can create VideoEncoderConfig and verify format support", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let server: http.Server | null = null;
+  let port: number;
 
   try {
     // まずライブラリをビルドして、IIFEバンドルを作成
@@ -347,17 +423,20 @@ test("can create VideoEncoderConfig and verify format support", async () => {
     const code = readFileSync(iifeBundlePath, "utf8");
 
     // テスト用HTMLファイルを作成
-    const tempDir = os.tmpdir();
+    // distディレクトリにHTMLを配置してHTTP経由でアクセスする
+    const distDirForBundle = path.join(__dirname, "../../dist"); // バンドルはdistにある
+    const tempDir = path.join(distDirForBundle, "temp-html"); // 一時HTML用のサブディレクトリ
+    execSync(`mkdir -p ${tempDir}`); // サブディレクトリ作成
+
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(
-      tempDir,
-      `webcodecs-encoding-test-${timestamp}.html`,
-    );
+    const tempHtmlFilename = `webcodecs-encoding-test-${timestamp}.html`;
+    const tempHtmlPath = path.join(tempDir, tempHtmlFilename);
 
     const testHtml = `
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <title>WebCodecs Encoding Support Test</title>
         <script>
           ${code}
@@ -430,10 +509,23 @@ test("can create VideoEncoderConfig and verify format support", async () => {
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created encoding support test HTML at: ${tempHtmlPath}`);
 
+    // 利用可能なポートを見つける
+    port = await findAvailablePort(8082); // 別のポートを使用
+    console.log(`Using port: ${port} for encoding support test`);
+
+    // HTTPサーバーを起動 (ルートは distDirForBundle)
+    server = await startHttpServer(port, distDirForBundle);
+
     // ブラウザを起動
     console.log("Launching browser for encoding test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--enable-logging=stderr",
+      ],
     });
 
     // 新しいページを作成
@@ -442,7 +534,7 @@ test("can create VideoEncoderConfig and verify format support", async () => {
 
     // ファイルに移動
     console.log("Navigating to encoding test...");
-    await page.goto(`file://${tempHtmlPath}`);
+    await page.goto(`http://localhost:${port}/temp-html/${tempHtmlFilename}`);
 
     // エンコードサポート確認ボタンをクリック
     console.log("Checking encoding support...");
@@ -494,6 +586,7 @@ test("can create VideoEncoderConfig and verify format support", async () => {
     // リソースのクリーンアップ
     if (page) await page.close();
     if (browser) await browser.close();
+    if (server) server.close();
   }
 }, 60000);
 
@@ -501,20 +594,25 @@ test("can create VideoEncoderConfig and verify format support", async () => {
 test("can create VideoFrame and encode using WebCodecs directly", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
+  let server: http.Server | null = null;
+  let port: number;
 
   try {
     // テスト用HTMLファイルを作成
-    const tempDir = os.tmpdir();
+    // distディレクトリにHTMLを配置してHTTP経由でアクセスする
+    const distDir = path.join(__dirname, "../../dist");
+    const tempDir = path.join(distDir, "temp-html"); // 一時HTML用のサブディレクトリ
+    execSync(`mkdir -p ${tempDir}`); // サブディレクトリ作成
+
     const timestamp = Date.now();
-    const tempHtmlPath = path.join(
-      tempDir,
-      `webcodecs-videoframe-test-${timestamp}.html`,
-    );
+    const tempHtmlFilename = `webcodecs-videoframe-test-${timestamp}.html`;
+    const tempHtmlPath = path.join(tempDir, tempHtmlFilename);
 
     const testHtml = `
     <!DOCTYPE html>
     <html>
       <head>
+        <meta charset="utf-8">
         <title>WebCodecs VideoFrame Test</title>
         <script>
           // VideoFrameとエンコーダーを直接使用するテスト
@@ -628,10 +726,23 @@ test("can create VideoFrame and encode using WebCodecs directly", async () => {
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created VideoFrame test HTML at: ${tempHtmlPath}`);
 
+    // 利用可能なポートを見つける
+    port = await findAvailablePort(8083); // 別のポートを使用
+    console.log(`Using port: ${port} for VideoFrame test`);
+
+    // HTTPサーバーを起動 (ルートは distDir)
+    server = await startHttpServer(port, distDir);
+
     // ブラウザを起動
     console.log("Launching browser for VideoFrame test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--enable-logging=stderr",
+      ],
     });
 
     // 新しいページを作成
@@ -640,7 +751,7 @@ test("can create VideoFrame and encode using WebCodecs directly", async () => {
 
     // ファイルに移動
     console.log("Navigating to VideoFrame test...");
-    await page.goto(`file://${tempHtmlPath}`);
+    await page.goto(`http://localhost:${port}/temp-html/${tempHtmlFilename}`);
 
     // エンコードテスト実行ボタンをクリック
     console.log("Running VideoFrame encoding test...");
@@ -687,6 +798,7 @@ test("can create VideoFrame and encode using WebCodecs directly", async () => {
     // リソースのクリーンアップ
     if (page) await page.close();
     if (browser) await browser.close();
+    if (server) server.close();
   }
 }, 60000);
 
@@ -695,6 +807,7 @@ test("WebCodecsEncoder API via HTTP server", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
+  let port: number;
 
   try {
     // まずライブラリをビルド
@@ -703,7 +816,7 @@ test("WebCodecsEncoder API via HTTP server", async () => {
     console.log("Library built successfully");
 
     // 利用可能なポートを見つける
-    const port = await findAvailablePort(8765);
+    port = await findAvailablePort(8765);
     console.log(`Using port: ${port}`);
 
     // distディレクトリにテストHTMLを作成
@@ -839,7 +952,13 @@ test("WebCodecsEncoder API via HTTP server", async () => {
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--enable-logging=stderr",
+      ],
     });
 
     // 新しいページを作成
@@ -955,6 +1074,7 @@ test("WebCodecsEncoder can encode canvas to MP4", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
+  let port: number;
 
   try {
     // まずライブラリをビルド
@@ -963,7 +1083,7 @@ test("WebCodecsEncoder can encode canvas to MP4", async () => {
     console.log("Library built successfully");
 
     // 利用可能なポートを見つける
-    const port = await findAvailablePort(8766);
+    port = await findAvailablePort(8766);
     console.log(`Using port: ${port}`);
 
     // distディレクトリにテストHTMLを作成
@@ -1214,10 +1334,11 @@ test("WebCodecsEncoder can encode canvas to MP4", async () => {
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder MP4 test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
         "--enable-logging=stderr",
       ],
     });
@@ -1324,6 +1445,7 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let server: http.Server | null = null;
+  let port: number;
 
   try {
     // まずライブラリをビルド
@@ -1332,7 +1454,7 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
     console.log("Library built successfully");
 
     // 利用可能なポートを見つける
-    const port = await findAvailablePort(8767);
+    port = await findAvailablePort(8767);
     console.log(`Using port: ${port}`);
 
     // distディレクトリにテストHTMLを作成
@@ -1591,10 +1713,11 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
     // ブラウザを起動
     console.log("Launching browser for WebCodecsEncoder WebM test...");
     browser = await chromium.launch({
-      headless: false,
+      headless: process.env.HEADLESS === "true",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
         "--enable-logging=stderr",
       ],
     });

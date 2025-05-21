@@ -1,14 +1,17 @@
 import { defineConfig } from 'vitest/config';
 
+const isIntegrationTest = process.env.RUNNING_INTEGRATION_TESTS === 'true';
+
 export default defineConfig({
   test: {
     globals: true, // To use describe, it, etc. without importing them in every file
     environment: 'jsdom', // Use JSDOM environment to provide DOM APIs like document
-    include: [
-      // デフォルトではintegrationテストを含めない
-      'test/**/*.test.ts',
-      '!test/integration/**/*.test.ts',
-    ],
+    include: isIntegrationTest
+      ? ['test/integration/**/*.test.ts'] // 統合テスト実行時
+      : [ // 通常時
+          'test/**/*.test.ts',
+          '!test/integration/**/*.test.ts',
+        ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'], // Common reporters

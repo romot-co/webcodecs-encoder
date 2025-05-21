@@ -146,6 +146,31 @@ export class WebCodecsEncoder {
           };
 
           this.worker.onerror = (event: ErrorEvent) => {
+            console.error(
+              "MainThread: worker.onerror triggered. Event:",
+              event,
+            );
+            console.error(
+              "MainThread: worker.onerror event.message:",
+              event.message,
+            );
+            console.error(
+              "MainThread: worker.onerror event.filename:",
+              event.filename,
+            );
+            console.error(
+              "MainThread: worker.onerror event.lineno:",
+              event.lineno,
+            );
+            console.error(
+              "MainThread: worker.onerror event.colno:",
+              event.colno,
+            );
+            console.error(
+              "MainThread: worker.onerror event.error:",
+              event.error,
+            );
+
             const err = new WebCodecsEncoderError(
               EncoderErrorType.WorkerError,
               `Worker error: ${event.message || "Unknown worker error"}`,
