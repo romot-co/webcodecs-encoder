@@ -11,7 +11,11 @@ export class MediaStreamRecorder {
   private recording = false;
   private onErrorCallback?: (error: any) => void;
 
-  constructor(private config: EncoderConfig) {
+  constructor(
+    private config: EncoderConfig & {
+      firstTimestampBehavior?: "offset" | "strict";
+    },
+  ) {
     this.encoder = new WebCodecsEncoder(config);
   }
 
@@ -31,7 +35,13 @@ export class MediaStreamRecorder {
     }
 
     this.onErrorCallback = options?.onError;
-    await this.encoder.initialize(options ?? {});
+    const initializeOptions = {
+      ...(this.config.firstTimestampBehavior && {
+        firstTimestampBehavior: this.config.firstTimestampBehavior,
+      }),
+      ...(options ?? {}),
+    };
+    await this.encoder.initialize(initializeOptions);
     this.recording = true;
 
     const [vTrack] = stream.getVideoTracks();

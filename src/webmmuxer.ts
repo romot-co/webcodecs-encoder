@@ -20,6 +20,8 @@ export class WebMMuxerWrapper {
   private muxer: WebMMuxer;
   private videoConfigured = false;
   private audioConfigured = false;
+  private firstAudioTimestamp: number | null = null;
+  private firstVideoTimestamp: number | null = null;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -111,7 +113,40 @@ export class WebMMuxerWrapper {
       return;
     }
     try {
-      this.muxer.addVideoChunk(chunk, meta as any);
+      let adjustedChunk = chunk;
+      const adjustedMeta = meta as any;
+
+      if (
+        this.config.firstTimestampBehavior === "offset" &&
+        typeof chunk.timestamp === "number"
+      ) {
+        if (this.firstVideoTimestamp === null) {
+          this.firstVideoTimestamp = chunk.timestamp;
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedVideoChunk({
+            type: chunk.type,
+            timestamp: 0,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        } else {
+          const newTimestamp = Math.max(
+            0,
+            chunk.timestamp - this.firstVideoTimestamp,
+          );
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedVideoChunk({
+            type: chunk.type,
+            timestamp: newTimestamp,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        }
+      }
+
+      this.muxer.addVideoChunk(adjustedChunk, adjustedMeta);
     } catch (e: any) {
       this.postMessageToMain({
         type: "error",
@@ -130,7 +165,39 @@ export class WebMMuxerWrapper {
   ): void {
     if (!this.audioConfigured) return;
     try {
-      this.muxer.addAudioChunk(chunk, meta as any);
+      let adjustedChunk = chunk;
+      const adjustedMeta = meta as any;
+
+      if (
+        this.config.firstTimestampBehavior === "offset" &&
+        typeof chunk.timestamp === "number"
+      ) {
+        if (this.firstAudioTimestamp === null) {
+          this.firstAudioTimestamp = chunk.timestamp;
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedAudioChunk({
+            type: chunk.type,
+            timestamp: 0,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        } else {
+          const newTimestamp = Math.max(
+            0,
+            chunk.timestamp - this.firstAudioTimestamp,
+          );
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedAudioChunk({
+            type: chunk.type,
+            timestamp: newTimestamp,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        }
+      }
+      this.muxer.addAudioChunk(adjustedChunk, adjustedMeta);
     } catch (e: any) {
       this.postMessageToMain({
         type: "error",

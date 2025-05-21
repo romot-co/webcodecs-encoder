@@ -37,6 +37,8 @@ export class Mp4MuxerWrapper {
   private target: ArrayBufferTarget | StreamTarget;
   private videoConfigured: boolean = false;
   private audioConfigured: boolean = false;
+  private firstAudioTimestamp: number | null = null;
+  private firstVideoTimestamp: number | null = null;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -148,7 +150,50 @@ export class Mp4MuxerWrapper {
       return;
     }
     try {
-      this.muxer.addVideoChunk(chunk, meta);
+      let adjustedChunk = chunk;
+      const adjustedMeta = meta;
+
+      if (
+        this.config.firstTimestampBehavior === "offset" &&
+        typeof chunk.timestamp === "number"
+      ) {
+        if (this.firstVideoTimestamp === null) {
+          this.firstVideoTimestamp = chunk.timestamp;
+          // For the very first frame, use its original timestamp or 0 if it's the offset base
+          // However, mp4-muxer expects the first chunk to be 0 if offset is applied.
+          // So, if this is the first frame and we are offsetting, its timestamp should become 0.
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedVideoChunk({
+            type: chunk.type,
+            timestamp: 0, // First frame becomes 0
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        } else {
+          const newTimestamp = Math.max(
+            0,
+            chunk.timestamp - this.firstVideoTimestamp,
+          );
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedVideoChunk({
+            type: chunk.type,
+            timestamp: newTimestamp,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        }
+      } else if (
+        typeof chunk.timestamp !== "number" &&
+        this.config.firstTimestampBehavior === "offset"
+      ) {
+        // If timestamp is undefined but offset is requested, we might need to log a warning
+        // or decide on a default behavior, e.g., not creating a new chunk.
+        // For now, pass through if timestamp is not a number.
+      }
+
+      this.muxer.addVideoChunk(adjustedChunk, adjustedMeta);
     } catch (e: any) {
       this.postMessageToMain({
         type: "error",
@@ -169,7 +214,46 @@ export class Mp4MuxerWrapper {
       return;
     }
     try {
-      this.muxer.addAudioChunk(chunk, meta);
+      let adjustedChunk = chunk;
+      const adjustedMeta = meta;
+
+      if (
+        this.config.firstTimestampBehavior === "offset" &&
+        typeof chunk.timestamp === "number"
+      ) {
+        if (this.firstAudioTimestamp === null) {
+          this.firstAudioTimestamp = chunk.timestamp;
+          // As with video, if this is the first audio chunk and offset is applied, its timestamp becomes 0.
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedAudioChunk({
+            type: chunk.type,
+            timestamp: 0, // First audio frame becomes 0
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        } else {
+          const newTimestamp = Math.max(
+            0,
+            chunk.timestamp - this.firstAudioTimestamp,
+          );
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data.buffer);
+          adjustedChunk = new EncodedAudioChunk({
+            type: chunk.type,
+            timestamp: newTimestamp,
+            duration: chunk.duration ?? undefined,
+            data: data.buffer,
+          });
+        }
+      } else if (
+        typeof chunk.timestamp !== "number" &&
+        this.config.firstTimestampBehavior === "offset"
+      ) {
+        // Similar handling for audio if timestamp is not a number.
+      }
+
+      this.muxer.addAudioChunk(adjustedChunk, adjustedMeta);
     } catch (e: any) {
       this.postMessageToMain({
         type: "error",

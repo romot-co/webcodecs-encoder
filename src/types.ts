@@ -39,6 +39,12 @@ export interface EncoderConfig {
   totalFrames?: number;
   /** Force a key frame every N video frames. */
   keyFrameInterval?: number;
+  /**
+   * How to handle the first timestamp of a track.
+   * 'offset': Offsets all timestamps so the first one is 0.
+   * 'strict': Requires the first timestamp to be 0 (default).
+   */
+  firstTimestampBehavior?: "offset" | "strict";
   /** Additional VideoEncoder configuration overrides. */
   videoEncoderConfig?: Partial<VideoEncoderConfig>;
   /** Additional AudioEncoder configuration overrides. */

@@ -218,9 +218,13 @@ class EncoderWorker {
     }
 
     const audioDisabled =
+      !this.currentConfig.audioBitrate ||
       this.currentConfig.audioBitrate <= 0 ||
+      !this.currentConfig.channels ||
       this.currentConfig.channels <= 0 ||
-      this.currentConfig.sampleRate <= 0;
+      !this.currentConfig.sampleRate ||
+      this.currentConfig.sampleRate <= 0 ||
+      !this.currentConfig.codec?.audio;
 
     try {
       const MuxerCtor =
@@ -651,6 +655,8 @@ class EncoderWorker {
       actualVideoCodec: finalVideoEncoderConfig?.codec,
       actualAudioCodec: audioDisabled ? null : finalAudioEncoderConfig?.codec,
     } as MainThreadMessage);
+
+    logger.log("Worker: Initialized successfully");
   }
 
   async handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
