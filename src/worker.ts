@@ -14,65 +14,61 @@ import { EncoderErrorType } from "./types";
 import logger from "./logger";
 
 // グローバルなエラーハンドラ (主に同期的なエラーや、Promise外の非同期エラー用)
-self.addEventListener("error", (event: ErrorEvent) => {
-  console.error("Unhandled global error in worker. Event:", event);
-  console.error(
-    "Unhandled global error in worker. event.message:",
-    event.message,
-  );
-  console.error(
-    "Unhandled global error in worker. event.filename:",
-    event.filename,
-  );
-  console.error(
-    "Unhandled global error in worker. event.lineno:",
-    event.lineno,
-  );
-  console.error("Unhandled global error in worker. event.colno:", event.colno);
-  console.error("Unhandled global error in worker. event.error:", event.error);
+if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') {
+  self.addEventListener('error', (event: ErrorEvent) => {
+    console.error('Unhandled global error in worker. Event:', event);
+    // エラーオブジェクトから詳細情報を取得
+    const errorDetails = {
+      message: event.message || 'Unknown global error',
+      name: event.error?.name || 'Error',
+      stack: event.error?.stack || undefined,
+      filename: event.filename || undefined,
+      lineno: event.lineno || undefined,
+      colno: event.colno || undefined,
+    };
+    self.postMessage({
+      type: 'worker-error',
+      error: {
+        message: `Unhandled global error: ${errorDetails.message} (at ${errorDetails.filename}:${errorDetails.lineno}:${errorDetails.colno})`,
+        name: errorDetails.name,
+        stack: errorDetails.stack,
+        // cause: event.error?.cause // event.errorがErrorインスタンスであればcauseも取得可能
+      },
+    });
+  });
+}
 
-  let detailMessage = `Unhandled global error in worker: ${event.message}`;
-  if (event.filename) {
-    detailMessage += ` in ${event.filename}`;
-    if (event.lineno) detailMessage += `:${event.lineno}`;
-    if (event.colno) detailMessage += `:${event.colno}`;
-  }
-
-  self.postMessage({
-    type: "error",
-    errorDetail: {
-      message: detailMessage,
-      type: EncoderErrorType.InternalError,
-      stack: event.error?.stack,
-    },
-  } as MainThreadMessage);
-});
-
-// 未処理のPromiseリジェクトをキャッチするハンドラ
-self.addEventListener("unhandledrejection", (event: PromiseRejectionEvent) => {
-  console.error("Unhandled promise rejection in worker. Event:", event);
-  console.error(
-    "Unhandled promise rejection in worker. event.reason:",
-    event.reason,
-  );
-  let detailMessage = "Unhandled promise rejection in worker: ";
-  if (event.reason instanceof Error) {
-    detailMessage += `${event.reason.message}`;
-  } else if (typeof event.reason === "string") {
-    detailMessage += event.reason;
-  } else {
-    detailMessage += String(event.reason);
-  }
-
-  self.postMessage({
-    type: "error",
-    errorDetail: {
-      message: detailMessage,
-      type: EncoderErrorType.InternalError,
-      stack: event.reason instanceof Error ? event.reason.stack : undefined,
-    },
-  } as MainThreadMessage);
-});
+// Promiseの unhandledrejection イベントハンドラ
+if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') {
+  self.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+    console.error('Unhandled promise rejection in worker. Reason:', event.reason);
+    const reason = event.reason;
+    let errorDetails;
+    if (reason instanceof Error) {
+      errorDetails = {
+        message: reason.message,
+        name: reason.name,
+        stack: reason.stack,
+        // cause: reason.cause,
+      };
+    } else {
+      errorDetails = {
+        message: String(reason),
+        name: 'UnhandledRejection',
+        stack: undefined,
+      };
+    }
+    self.postMessage({
+      type: 'worker-error',
+      error: {
+        message: `Unhandled promise rejection: ${errorDetails.message}`,
+        name: errorDetails.name,
+        stack: errorDetails.stack,
+        // cause: errorDetails.cause,
+      },
+    });
+  });
+}
 
 const getVideoEncoder = () =>
   (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
@@ -139,11 +135,14 @@ class EncoderWorker {
     config: any,
     label: string,
   ) {
+    // オリジナルの設定で試行
     let support = await Ctor.isConfigSupported(config as any);
     if (support?.supported) return support.config;
 
+    // ハードウェアアクセラレーション設定がある場合のフォールバック処理
     const pref = config.hardwareAcceleration;
     if (pref) {
+      // 反対の設定を試す（prefer-hardware → prefer-software、または逆）
       let altPref: string | undefined;
       if (pref === "prefer-hardware") altPref = "prefer-software";
       else if (pref === "prefer-software") altPref = "prefer-hardware";
@@ -153,21 +152,27 @@ class EncoderWorker {
         support = await Ctor.isConfigSupported(opposite as any);
         if (support?.supported) {
           console.warn(
-            `Worker: ${label} hardwareAcceleration preference '${pref}' not supported. Using '${altPref}'.`,
+            `${label}: hardwareAcceleration preference '${pref}' not supported. Using '${altPref}'.`,
           );
           return support.config;
         }
       }
 
+      // 設定なしを試す
       const noPref = { ...config };
       delete noPref.hardwareAcceleration;
       support = await Ctor.isConfigSupported(noPref as any);
       if (support?.supported) {
         console.warn(
-          `Worker: ${label} hardwareAcceleration preference '${pref}' not supported. Using no preference.`,
+          `${label}: hardwareAcceleration preference '${pref}' not supported. Using no preference.`,
         );
         return support.config;
       }
+      
+      // すべてのオプションが失敗した場合
+      console.warn(
+        `${label}: Failed to find a supported hardware acceleration configuration for codec ${config.codec}.`,
+      );
     }
     return null;
   }
@@ -271,6 +276,9 @@ class EncoderWorker {
       ...(this.currentConfig.container === "mp4" && videoCodec === "avc"
         ? { avc: { format: "avc" } }
         : {}),
+      ...(this.currentConfig.hardwareAcceleration
+        ? { hardwareAcceleration: this.currentConfig.hardwareAcceleration }
+        : {}),
     };
 
     const VideoEncoderCtor: any = getVideoEncoder();
@@ -286,23 +294,73 @@ class EncoderWorker {
       return;
     }
 
-    const videoSupportConfig = await this.isConfigSupportedWithHwFallback(
-      VideoEncoderCtor,
-      videoEncoderConfig,
-      "VideoEncoder",
-    );
-    if (videoSupportConfig) {
-      finalVideoEncoderConfig = videoSupportConfig as VideoEncoderConfig;
+    // まず明示的に指定されたコーデックを試す
+    let support = await VideoEncoderCtor.isConfigSupported(videoEncoderConfig);
+    
+    if (support?.supported) {
+      finalVideoEncoderConfig = support.config as VideoEncoderConfig;
     } else {
-      this.postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message: `Worker: Video codec ${videoCodec} config not supported.`,
-          type: EncoderErrorType.NotSupported,
-        },
-      });
-      this.cleanup();
-      return;
+      // 明示的な指定がされていないか、サポートされていない場合
+      if (videoCodec === "vp9" || videoCodec === "vp8" || videoCodec === "av1") {
+        console.warn(
+          "Worker: Video codec " + videoCodec + " not supported or config invalid. Falling back to AVC.",
+        );
+        videoCodec = "avc";
+        
+        // ここでAVCコーデック設定を作成し直す
+        const avcCodecString = this.defaultAvcCodecString(
+          this.currentConfig.width, 
+          this.currentConfig.height, 
+          this.currentConfig.frameRate
+        );
+        
+        const avcConfig = {
+          ...videoEncoderConfig,
+          codec: avcCodecString,
+          ...(this.currentConfig.container === "mp4" ? { avc: { format: "avc" } } : {})
+        };
+        
+        support = await this.isConfigSupportedWithHwFallback(
+          VideoEncoderCtor,
+          avcConfig,
+          "VideoEncoder",
+        );
+        
+        if (support) {
+          finalVideoEncoderConfig = support as VideoEncoderConfig;
+        } else {
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: "Worker: AVC (H.264) video codec is not supported after fallback.",
+              type: EncoderErrorType.NotSupported,
+            },
+          });
+          this.cleanup();
+          return;
+        }
+      } else {
+        // フォールバックの必要のない他のコーデックでテスト
+        const result = await this.isConfigSupportedWithHwFallback(
+          VideoEncoderCtor,
+          videoEncoderConfig,
+          "VideoEncoder",
+        );
+        
+        if (result) {
+          finalVideoEncoderConfig = result as VideoEncoderConfig;
+        } else {
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `Worker: Video codec ${videoCodec} config not supported.`,
+              type: EncoderErrorType.NotSupported,
+            },
+          });
+          this.cleanup();
+          return;
+        }
+      }
     }
 
     try {
@@ -324,14 +382,26 @@ class EncoderWorker {
           this.cleanup();
         },
       });
-      if (this.videoEncoder) {
-        this.videoEncoder.configure(finalVideoEncoderConfig as any);
+      if (finalVideoEncoderConfig) {
+        if (this.videoEncoder) {
+          this.videoEncoder.configure(finalVideoEncoderConfig as any);
+        } else {
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: "Worker: VideoEncoder instance is null after creation.",
+              type: EncoderErrorType.InitializationFailed,
+            },
+          });
+          this.cleanup();
+          return;
+        }
       } else {
         this.postMessageToMainThread({
           type: "error",
           errorDetail: {
-            message: "Worker: VideoEncoder instance is null after creation.",
-            type: EncoderErrorType.InitializationFailed,
+            message: `Worker: VideoEncoder: Failed to find a supported hardware acceleration configuration for codec ${resolvedVideoCodecString}`,
+            type: EncoderErrorType.NotSupported,
           },
         });
         this.cleanup();

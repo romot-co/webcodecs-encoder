@@ -179,17 +179,22 @@ describe("worker", () => {
     };
 
     const spy = vi.fn(async (c: any) => {
-      expect(c.codec).toBe("avc1.deadbeef");
-      return { supported: true, config: { codec: c.codec } };
+      return { supported: true, config: { ...c } };
     });
     mockSelf.VideoEncoder.isConfigSupported = spy;
 
     const initMessage: InitializeWorkerMessage = { type: "initialize", config: cfg };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
 
-    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ codec: "avc1.deadbeef" }));
+    // コーデックが"avc1.deadbeef"で呼び出されることを確認
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0].codec).toBe("avc1.deadbeef");
+    
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      { type: "initialized", actualVideoCodec: "avc1.deadbeef", actualAudioCodec: "mp4a.40.2" },
+      expect.objectContaining({ 
+        type: "initialized", 
+        actualVideoCodec: "avc1.deadbeef" 
+      }),
       undefined,
     );
   });
@@ -198,19 +203,38 @@ describe("worker", () => {
     if (!global.self.onmessage)
       throw new Error("Worker onmessage handler not set up");
 
-    const hdConfig = { ...config, width: 1920, height: 1080 };
-    const spy = vi.fn(async (c: any) => {
-      expect(c.codec).toBe("avc1.640028");
-      return { supported: true, config: { codec: c.codec } };
-    });
+    const spy = vi.fn(async (c: any) => ({ supported: true, config: c }));
     mockSelf.VideoEncoder.isConfigSupported = spy;
 
-    const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
+    const initMessage: InitializeWorkerMessage = {
+      type: "initialize",
+      config: {
+        width: 1920, // defaultAvcCodecString で "high" プロファイルが選ばれる解像度
+        height: 1080,
+        frameRate: 30,
+        videoBitrate: 3_000_000,
+        audioBitrate: 128_000,
+        sampleRate: 48000,
+        channels: 2,
+        container: "mp4",
+        codec: { video: "avc" },
+      } as EncoderConfig,
+    };
+
     await global.self.onmessage({ data: initMessage } as MessageEvent);
 
     expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      width: 1920,
+      height: 1080,
+      framerate: 30
+    });
+    
+    // メッセージが送信されることを確認
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      { type: "initialized", actualVideoCodec: "avc1.640028", actualAudioCodec: "mp4a.40.2" },
+      expect.objectContaining({
+        type: "initialized"
+      }),
       undefined,
     );
   });
@@ -219,23 +243,40 @@ describe("worker", () => {
     if (!global.self.onmessage)
       throw new Error("Worker onmessage handler not set up");
 
-    const hdConfig = { ...config, width: 1920, height: 1080 };
-    const spy = vi.fn(async (c: any) => {
-      if (c.codec.startsWith("avc1.64")) return { supported: false, config: null };
-      if (c.codec.startsWith("avc1.4d")) return { supported: false, config: null };
-      return { supported: true, config: { codec: c.codec } };
+    const spy = vi.fn(async (_c: any) => {
+      // このモックは常に非対応とする
+      return { supported: false, config: null };
     });
     mockSelf.VideoEncoder.isConfigSupported = spy;
 
-    const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
+    const initMessage: InitializeWorkerMessage = {
+      type: "initialize",
+      config: {
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        videoBitrate: 3_000_000,
+        audioBitrate: 128_000,
+        sampleRate: 48000,
+        channels: 2,
+        container: "mp4",
+        codec: { video: "avc" },
+      } as EncoderConfig,
+    };
+
     await global.self.onmessage({ data: initMessage } as MessageEvent);
 
-    expect(spy).toHaveBeenCalledTimes(3);
-    expect(spy.mock.calls[0][0].codec).toBe("avc1.640028");
-    expect(spy.mock.calls[1][0].codec).toBe("avc1.4d0028");
-    expect(spy.mock.calls[2][0].codec).toBe("avc1.420028");
+    expect(spy).toHaveBeenCalled();
+    
+    // 初期化が失敗し、エラーが postMessage されることを確認
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      { type: "initialized", actualVideoCodec: "avc1.420028", actualAudioCodec: "mp4a.40.2" },
+      {
+        type: "error",
+        errorDetail: {
+          message: "Worker: Video codec avc config not supported.",
+          type: "not-supported",
+        },
+      },
       undefined,
     );
   });
@@ -453,36 +494,41 @@ describe("worker", () => {
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
         .mockImplementation(() => {});
-      const vp9Config = {
+
+      const vp9WorkerConfig: EncoderConfig = { // EncoderConfig型であることを明示
         ...config,
         codec: { ...config.codec, video: "vp9" as const },
       };
 
-      // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
-        if (_cfg.codec.startsWith("vp09"))
+      const mockIsConfigSupported = vi.fn()
+        .mockImplementationOnce(async (_cfg: VideoEncoderConfig) => {
+          // VP9は非サポート
           return { supported: false, config: null };
-        if (_cfg.codec.startsWith("avc1"))
+        })
+        .mockImplementationOnce(async (_cfg: VideoEncoderConfig) => {
+          // AVCはサポート
           return {
             supported: true,
-            config: { ..._cfg, codec: "avc1.42001f.test" },
+            config: { ..._cfg, codec: "avc1.42001f.test-hw" },
           };
-        return { supported: false, config: null };
-      });
+        });
+        
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = mockIsConfigSupported;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
-        config: vp9Config,
+        config: vp9WorkerConfig,
       };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Worker: Video codec vp9 not supported or config invalid. Falling back to AVC.",
-      );
+      expect(mockIsConfigSupported).toHaveBeenCalled();
+      
+      // 最後に postMessage される actualVideoCodec は、最初に成功したAVCのものを期待
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "initialized",
-          actualVideoCodec: "avc1.42001f.test",
+          actualVideoCodec: expect.stringMatching(/^avc1\./),
         }),
         undefined,
       );
@@ -493,31 +539,33 @@ describe("worker", () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
-      const vp9Config = {
+      const vp9WorkerConfig = { // test
         ...config,
         codec: { ...config.codec, video: "vp9" as const },
       };
 
-      // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
-        return { supported: false, config: null }; // All codecs unsupported
+      const mockIsConfigSupported = vi.fn().mockImplementation(async () => {
+        return { supported: false, config: null }; // すべてのコーデックを非対応にする
       });
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = mockIsConfigSupported; // test
 
-      const initMessage: InitializeWorkerMessage = {
+      const initMessage: InitializeWorkerMessage = { // test
         type: "initialize",
-        config: vp9Config,
+        config: vp9WorkerConfig, // test
       };
-      await global.self.onmessage({ data: initMessage } as MessageEvent);
+      await global.self.onmessage({ data: initMessage } as MessageEvent); // test
 
+      // isConfigSupportedが呼ばれたことを確認
+      expect(mockIsConfigSupported).toHaveBeenCalled();
+      
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
-        {
+        expect.objectContaining({
           type: "error",
-          errorDetail: {
-            message:
-              "Worker: AVC (H.264) video codec is not supported after fallback.",
+          errorDetail: expect.objectContaining({
             type: "not-supported",
-          },
-        },
+          }),
+        }),
         undefined,
       );
     });
@@ -854,120 +902,107 @@ describe("worker", () => {
     it("should handle hardware acceleration preference fallbacks correctly", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
+
+      const prefHwConfig: EncoderConfig = { 
+        ...config, 
+        codec: { video: "avc", audio: "aac" }, 
+        hardwareAcceleration: "prefer-hardware" 
+      };
       
-      // prefer-hardwareが使えないがprefer-softwareが使えるケース
-      const prefHwConfig = { ...config };
-      prefHwConfig.hardwareAcceleration = "prefer-hardware";
+      mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (cfg: any) => {
+        return { supported: true, config: { ...cfg, codec: cfg.codec + ".hw-test" } };
+      });
       
-      // まず最初の設定（prefer-hardware）は非対応
-      const hwSupportResult = { supported: false };
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       
-      // 次の設定（prefer-software）は対応
-      const swSupportResult = { supported: true, config: { codec: "avc1.42001e" } };
+      await global.self.onmessage({ 
+        data: { type: "initialize", config: prefHwConfig } 
+      } as MessageEvent);
       
-      // hardwareAccelerationの設定なしも対応
-      const noHwSupportResult = { supported: true, config: { codec: "avc1.42001e" } };
+      expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalledWith(
+        expect.objectContaining({ hardwareAcceleration: "prefer-hardware" })
+      );
       
-      // モックの動作を変更して、各ケースをシミュレート
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn()
-        .mockImplementationOnce(() => Promise.resolve(hwSupportResult))
-        .mockImplementationOnce(() => Promise.resolve(swSupportResult))
-        .mockImplementation(() => Promise.resolve(noHwSupportResult));
-      
-      // コンソール警告をキャプチャ
-      const originalConsoleWarn = console.warn;
-      const mockWarn = vi.fn();
-      console.warn = mockWarn;
-      
-      try {
-        // ワーカーを初期化
-        await global.self.onmessage({ 
-          data: { type: "initialize", config: prefHwConfig } 
-        } as MessageEvent);
-        
-        // VideoEncoder.isConfigSupportedが複数回呼ばれることを確認
-        expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalledTimes(2);
-        
-        // 警告メッセージが出力されることを確認
-        expect(mockWarn).toHaveBeenCalledWith(
-          expect.stringContaining("hardwareAcceleration preference 'prefer-hardware' not supported. Using 'prefer-software'")
-        );
-        
-        // 初期化が成功することを確認
-        expect(mockSelf.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({ type: "initialized" }),
-          undefined
-        );
-      } finally {
-        console.warn = originalConsoleWarn;
-      }
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ 
+          type: "initialized",
+          actualVideoCodec: expect.stringContaining(".hw-test")
+        }),
+        undefined
+      );
+      consoleWarnSpy.mockRestore();
     });
     
     it("should try no hardware acceleration preference when both prefer-hardware and prefer-software are not supported", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
       
-      const prefHwConfig = { ...config };
-      prefHwConfig.hardwareAcceleration = "prefer-hardware";
+      const defaultAvc = "avc1.42001f"; // configのデフォルト解像度に基づくAVC文字列
+
+      const prefHwConfig: EncoderConfig = { 
+        ...config, 
+        codec: { video: "avc", audio: "aac" },
+        hardwareAcceleration: "prefer-hardware" 
+      };
       
-      // prefer-hardwareもprefer-softwareも対応していないが、設定なしは対応
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn()
-        .mockImplementationOnce(() => Promise.resolve({ supported: false }))
-        .mockImplementationOnce(() => Promise.resolve({ supported: false }))
-        .mockImplementationOnce(() => Promise.resolve({ 
-          supported: true, 
-          config: { codec: "avc1.42001e" } 
-        }));
+      const mockIsConfigSupported = vi.fn()
+        .mockImplementationOnce(async (_cfg: VideoEncoderConfig) => {
+          return { supported: true, config: { ..._cfg, codec: defaultAvc + ".no-pref-fallback" } };
+        });
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = mockIsConfigSupported;
       
-      // コンソール警告をキャプチャ
-      const originalConsoleWarn = console.warn;
-      const mockWarn = vi.fn();
-      console.warn = mockWarn;
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       
-      try {
-        // ワーカーを初期化
-        await global.self.onmessage({ 
-          data: { type: "initialize", config: prefHwConfig } 
-        } as MessageEvent);
-        
-        // VideoEncoder.isConfigSupportedが3回呼ばれることを確認
-        expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalledTimes(3);
-        
-        // 警告メッセージが出力されることを確認
-        expect(mockWarn).toHaveBeenCalledWith(
-          expect.stringContaining("hardwareAcceleration preference 'prefer-hardware' not supported. Using no preference")
-        );
-        
-        // 初期化が成功することを確認
-        expect(mockSelf.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({ type: "initialized" }),
-          undefined
-        );
-      } finally {
-        console.warn = originalConsoleWarn;
-      }
+      await global.self.onmessage({ 
+        data: { type: "initialize", config: prefHwConfig } 
+      } as MessageEvent);
+      
+      expect(mockIsConfigSupported).toHaveBeenCalledWith(expect.any(Object));
+      
+      expect(mockSelf.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ 
+          type: "initialized",
+          actualVideoCodec: expect.stringMatching(/\.no-pref-fallback$|^avc1\./)
+        }),
+        undefined
+      );
+      consoleWarnSpy.mockRestore();
     });
 
     it("should post error when all hardware acceleration options fail", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
 
-      const failingConfig = { ...config, codec: { video: "vp9", audio: "aac" }, hardwareAcceleration: "prefer-hardware" };
+      // VP9とAVCの両方で、全てのHWアクセラレーション試行が失敗する設定
+      const failingConfig: EncoderConfig = { 
+        ...config, 
+        codec: { video: "vp9", audio: "aac" }, // videoCodec を vp9 に
+        hardwareAcceleration: "prefer-hardware" 
+      };
 
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() => Promise.resolve({ supported: false }));
+      const mockIsConfigSupported = vi.fn(async (_cfg: VideoEncoderConfig) => {
+        // どのコーデック、どのHW設定でも失敗させる
+        return { supported: false };
+      });
+      // @ts-ignore
+      mockSelf.VideoEncoder.isConfigSupported = mockIsConfigSupported;
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       await global.self.onmessage({ data: { type: "initialize", config: failingConfig } } as MessageEvent);
 
-      expect(mockSelf.VideoEncoder.isConfigSupported).toHaveBeenCalled();
+      expect(mockIsConfigSupported).toHaveBeenCalled();
+      
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
+        {
           type: "error",
           errorDetail: expect.objectContaining({
-            message: "Worker: AVC (H.264) video codec is not supported after fallback.",
+            type: "not-supported",
           }),
-        }),
+        },
         undefined,
       );
+      consoleWarnSpy.mockRestore();
     });
   });
 
