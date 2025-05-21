@@ -13,9 +13,12 @@ import type {
 import { EncoderErrorType } from "./types";
 import logger from "./logger";
 
-const getVideoEncoder = () => (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
-const getAudioEncoder = () => (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
-const getAudioData = () => (self as any).AudioData ?? (globalThis as any).AudioData;
+const getVideoEncoder = () =>
+  (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
+const getAudioEncoder = () =>
+  (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
+const getAudioData = () =>
+  (self as any).AudioData ?? (globalThis as any).AudioData;
 
 class EncoderWorker {
   private videoEncoder: VideoEncoder | null = null;
@@ -47,16 +50,11 @@ class EncoderWorker {
   ): string {
     const mbPerSec = Math.ceil(width / 16) * Math.ceil(height / 16) * frameRate;
     let level: number;
-    if (mbPerSec <= 108000)
-      level = 31;
-    else if (mbPerSec <= 216000)
-      level = 32;
-    else if (mbPerSec <= 245760)
-      level = 40;
-    else if (mbPerSec <= 589824)
-      level = 50;
-    else if (mbPerSec <= 983040)
-      level = 51;
+    if (mbPerSec <= 108000) level = 31;
+    else if (mbPerSec <= 216000) level = 32;
+    else if (mbPerSec <= 245760) level = 40;
+    else if (mbPerSec <= 589824) level = 50;
+    else if (mbPerSec <= 983040) level = 51;
     else level = 52;
     const chosenProfile: ("high" | "main" | "baseline") | undefined =
       profile ?? (width >= 1280 || height >= 720 ? "high" : "baseline");
@@ -66,7 +64,9 @@ class EncoderWorker {
     return `avc1.${profileHex}00${levelHex}`;
   }
 
-  private avcProfileFromCodecString(codec: string): ("high" | "main" | "baseline") | null {
+  private avcProfileFromCodecString(
+    codec: string,
+  ): ("high" | "main" | "baseline") | null {
     if (codec.startsWith("avc1.64")) return "high";
     if (codec.startsWith("avc1.4d")) return "main";
     if (codec.startsWith("avc1.42")) return "baseline";
@@ -119,9 +119,7 @@ class EncoderWorker {
     } as MainThreadMessage);
   }
 
-  async initializeEncoders(
-    data: InitializeWorkerMessage,
-  ): Promise<void> {
+  async initializeEncoders(data: InitializeWorkerMessage): Promise<void> {
     this.currentConfig = data.config;
     this.totalFramesToProcess = data.totalFrames;
     this.processedFrames = 0;
@@ -146,10 +144,16 @@ class EncoderWorker {
 
     try {
       const MuxerCtor =
-        this.currentConfig.container === "webm" ? WebMMuxerWrapper : Mp4MuxerWrapper;
-      this.muxer = new MuxerCtor(this.currentConfig, this.postMessageToMainThread.bind(this), {
-        disableAudio: audioDisabled,
-      });
+        this.currentConfig.container === "webm"
+          ? WebMMuxerWrapper
+          : Mp4MuxerWrapper;
+      this.muxer = new MuxerCtor(
+        this.currentConfig,
+        this.postMessageToMainThread.bind(this),
+        {
+          disableAudio: audioDisabled,
+        },
+      );
     } catch (e: any) {
       this.postMessageToMainThread({
         type: "error",
@@ -239,7 +243,10 @@ class EncoderWorker {
     } else if (videoCodec === "avc") {
       const currentProfile =
         this.avcProfileFromCodecString(baseVideoConfig.codec) ?? "high";
-      const profileFallback: Record<"high" | "main" | "baseline", ("high" | "main" | "baseline")[]> = {
+      const profileFallback: Record<
+        "high" | "main" | "baseline",
+        ("high" | "main" | "baseline")[]
+      > = {
         high: ["main", "baseline"],
         main: ["baseline"],
         baseline: [],
@@ -266,7 +273,9 @@ class EncoderWorker {
         }
       }
       if (!videoSupportConfig) {
-        console.warn("Worker: AVC profiles not supported. Falling back to VP9.");
+        console.warn(
+          "Worker: AVC profiles not supported. Falling back to VP9.",
+        );
         const vp9Cfg = {
           ...baseVideoConfig,
           codec: "vp09.00.50.08",
@@ -454,7 +463,9 @@ class EncoderWorker {
         "AudioEncoder",
       );
       if (audioSupportConfig) {
-        if (audioSupportConfig.numberOfChannels !== this.currentConfig.channels) {
+        if (
+          audioSupportConfig.numberOfChannels !== this.currentConfig.channels
+        ) {
           this.postMessageToMainThread({
             type: "error",
             errorDetail: {
@@ -493,7 +504,9 @@ class EncoderWorker {
           "AudioEncoder",
         );
         if (audioSupportConfig) {
-          if (audioSupportConfig.numberOfChannels !== this.currentConfig.channels) {
+          if (
+            audioSupportConfig.numberOfChannels !== this.currentConfig.channels
+          ) {
             this.postMessageToMainThread({
               type: "error",
               errorDetail: {
@@ -517,7 +530,10 @@ class EncoderWorker {
             "AudioEncoder",
           );
           if (audioSupportConfig) {
-            if (audioSupportConfig.numberOfChannels !== this.currentConfig.channels) {
+            if (
+              audioSupportConfig.numberOfChannels !==
+              this.currentConfig.channels
+            ) {
               this.postMessageToMainThread({
                 type: "error",
                 errorDetail: {
@@ -796,8 +812,10 @@ class EncoderWorker {
 
   cleanup(resetCancelled: boolean = true): void {
     logger.log("Worker: Cleaning up resources.");
-    if (this.videoEncoder && this.videoEncoder.state !== "closed") this.videoEncoder.close();
-    if (this.audioEncoder && this.audioEncoder.state !== "closed") this.audioEncoder.close();
+    if (this.videoEncoder && this.videoEncoder.state !== "closed")
+      this.videoEncoder.close();
+    if (this.audioEncoder && this.audioEncoder.state !== "closed")
+      this.audioEncoder.close();
     this.videoEncoder = null;
     this.audioEncoder = null;
     this.muxer = null;
