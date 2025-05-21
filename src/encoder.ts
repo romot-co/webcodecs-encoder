@@ -394,11 +394,7 @@ export class WebCodecsEncoder {
       timestamp,
       duration: 1_000_000 / this.config.frameRate,
     });
-    try {
-      await this.addVideoFrame(frame);
-    } finally {
-      frame.close();
-    }
+    await this.addVideoFrame(frame);
   }
 
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
