@@ -521,7 +521,8 @@ variable bitrate (VBR). Starting with Chrome 119, CBR handling in the
 - Install dependencies: `npm install` (run this before executing `npm run lint`, `npm run type-check`, or `npm test`)
 - The `postinstall` script automatically runs `patch-package` to apply our patch for `@types/dom-webcodecs`, restoring the missing `AudioSampleFormat` definition.
 - Build: `npm run build`
-- Test: `npm test` (this will also generate a coverage report in `./coverage`)
+- Unit tests: `npm test` (this will also generate a coverage report in `./coverage`)
+- Integration tests: `npm run test:int` (requires Playwright browsers; run `npx playwright install` once before executing)
 - Lint: `npm run lint`
 - Format: `npm run format`
 
