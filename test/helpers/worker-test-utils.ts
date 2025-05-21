@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+// import * as WorkerModule from "../../src/worker"; // 削除
 
 export const mockMuxerInstanceForWorker = {
   addVideoChunk: vi.fn(),
@@ -43,7 +44,6 @@ export function setupGlobals() {
   mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
     Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
   );
-  globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
   // @ts-ignore
   mockSelf.AudioEncoder = vi.fn(() => ({
@@ -61,7 +61,6 @@ export function setupGlobals() {
       config: { codec: "mp4a.40.2", numberOfChannels: 2 },
     }),
   );
-  globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
   if (typeof globalThis.VideoFrame === "undefined") {
     globalThis.VideoFrame = class VideoFrameMock {
@@ -81,11 +80,18 @@ export function setupGlobals() {
       close() {}
     } as any;
   }
+
+  // AudioDataMock を vi.fn() でラップしてコンストラクタ呼び出しを追跡可能にする
+  const AudioDataMock = vi.fn(function (this: any, init: any) {
+    Object.assign(this, init);
+    // モックインスタンスが close メソッドを持つようにする
+    // this.close = vi.fn(); // こちらではなくプロトタイプに設定する
+  });
+  AudioDataMock.prototype.close = vi.fn(); // close メソッドをプロトタイプにモックとして設定
+  globalThis.AudioData = AudioDataMock as any;
 }
 
 export function cleanupGlobals() {
-  delete (globalThis as any).VideoEncoder;
-  delete (globalThis as any).AudioEncoder;
   if ((globalThis as any).VideoFrame?.name === "VideoFrameMock")
     delete (globalThis as any).VideoFrame;
   if ((globalThis as any).AudioData?.name === "AudioDataMock")

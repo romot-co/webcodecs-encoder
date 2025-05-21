@@ -53,35 +53,76 @@ describe("handleAddAudioData", () => {
 
   beforeEach(async () => {
     audioEncoderErrorCallback = null;
-    mockAudioDataInstance = {
-      close: vi.fn(),
-      format: "f32-planar",
-      sampleRate: 48000,
-      numberOfFrames: 1024,
-      numberOfChannels: 1,
-      timestamp: 0,
-      duration: 21333,
+    // mockAudioDataInstance = { // 削除
+    //   close: vi.fn(), // 削除
+    //   format: "f32-planar", // 削除
+    //   sampleRate: 48000, // 削除
+    //   numberOfFrames: 1024, // 削除
+    //   numberOfChannels: 1, // 削除
+    //   timestamp: 0, // 削除
+    //   duration: 21333, // 削除
+    // }; // 削除
+    // mockAudioEncoderInstance = { // 削除
+    //   configure: vi.fn(), // 削除
+    //   encode: vi.fn(), // 削除
+    //   flush: vi.fn().mockResolvedValue(undefined), // 削除
+    //   close: vi.fn(), // 削除
+    //   state: "configured", // 削除
+    //   encodeQueueSize: 0, // 削除
+    // }; // 削除
+    // mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => { // 削除
+    //   audioEncoderErrorCallback = options.error; // 削除
+    //   return mockAudioEncoderInstance; // 削除
+    // }) as any; // 削除
+    // mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => // 削除
+    //   Promise.resolve({ // 削除
+    //     supported: true, // 削除
+    //     config: { codec: "mp4a.40.2", numberOfChannels: config.channels }, // 削除
+    //   }), // 削除
+    // ); // 削除
+    // globalThis.AudioEncoder = mockSelf.AudioEncoder; // 削除
+    // globalThis.AudioData = vi.fn(() => mockAudioDataInstance) as any; // 削除
+
+    // mockSelf.AudioEncoder は setupGlobals でモックコンストラクタとして設定される。
+    // そのコンストラクタが返すインスタンスの error コールバックをキャプチャする。
+    const aeMock = mockSelf.AudioEncoder as ReturnType<typeof vi.fn>;
+    if (aeMock && aeMock.getMockImplementation()) {
+        const originalImpl = aeMock.getMockImplementation();
+        aeMock.mockImplementation((options: { error: (e: any) => void }) => {
+            audioEncoderErrorCallback = options.error; // ここでコールバックを保存
+            mockAudioEncoderInstance = originalImpl ? originalImpl(options) : {};
+            // setupGlobalsのデフォルト実装をベースにテスト固有のモックをマージ
+            Object.assign(mockAudioEncoderInstance, {
+                configure: vi.fn(),
+                encode: vi.fn(),
+                flush: vi.fn().mockResolvedValue(undefined),
+                close: vi.fn(),
+                state: "configured",
+                encodeQueueSize: 0,
+            });
+            return mockAudioEncoderInstance;
+        });
+    }
+     // このテストスイート用にインスタンスを生成しておく (error callback 設定のため)
+    if (typeof mockSelf.AudioEncoder === 'function') {
+        mockAudioEncoderInstance = (mockSelf.AudioEncoder as any)({ error: (e:any) => { audioEncoderErrorCallback = e;} });
+    }
+
+    // AudioData のモックインスタンスの準備
+    // globalThis.AudioData は setupGlobals でモックコンストラクタ (スパイ) として設定される。
+    // そのプロトタイプの close がスパイになっている。
+    // ここで特定のインスタンス mockAudioDataInstance を固定するのではなく、
+    // テストケース内で AudioDataMock.prototype.close が呼ばれたかをチェックするように変更する。
+    mockAudioDataInstance = { // ダミーのプレースホルダーとして
+        close: globalThis.AudioData ? (globalThis.AudioData as any).prototype.close : vi.fn(),
+        // 他のプロパティはテストケースに応じてモックされるか、実際のモックインスタンスのものが使われる
+        format: "f32-planar",
+        sampleRate: 48000,
+        numberOfFrames: 1024,
+        numberOfChannels: 1,
+        timestamp: 0,
+        duration: 21333,
     };
-    mockAudioEncoderInstance = {
-      configure: vi.fn(),
-      encode: vi.fn(),
-      flush: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn(),
-      state: "configured",
-      encodeQueueSize: 0,
-    };
-    mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => {
-      audioEncoderErrorCallback = options.error;
-      return mockAudioEncoderInstance;
-    }) as any;
-    mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({
-        supported: true,
-        config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
-      }),
-    );
-    globalThis.AudioEncoder = mockSelf.AudioEncoder;
-    globalThis.AudioData = vi.fn(() => mockAudioDataInstance) as any;
 
     const audioConfig = { ...config, audioBitrate: 128000 };
     initMessage = { type: "initialize", config: audioConfig };
@@ -192,7 +233,7 @@ describe("handleAddAudioData", () => {
       numberOfChannels: config.channels,
     };
     await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
-    expect(mockAudioDataInstance.close).toHaveBeenCalled();
+    expect((globalThis.AudioData as any).prototype.close).toHaveBeenCalled();
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       {
         type: "queueSize",
@@ -205,8 +246,11 @@ describe("handleAddAudioData", () => {
 
   it("should post error if AudioData API is not available", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-    const AudioDataOriginal = (globalThis as any).AudioData;
+    mockSelf.postMessage.mockClear();
+
+    const AudioDataOriginal = globalThis.AudioData;
     delete (globalThis as any).AudioData;
+    (mockSelf as any).AudioData = undefined;
 
     const initMessage: InitializeWorkerMessage = {
       type: "initialize",
@@ -242,15 +286,21 @@ describe("handleAddAudioData", () => {
       undefined,
     );
     (globalThis as any).AudioData = AudioDataOriginal;
+    (mockSelf as any).AudioData = AudioDataOriginal;
   });
 
   it("should post error if AudioData constructor throws", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
-    const AudioDataOriginal = (globalThis as any).AudioData;
+    mockSelf.postMessage.mockClear();
+
+    const AudioDataOriginal = globalThis.AudioData;
     const constructionErrorMessage = "AudioData construction failed";
-    (globalThis as any).AudioData = vi.fn().mockImplementation(() => {
+
+    const mockAudioDataConstructorThatThrows = vi.fn().mockImplementation(() => {
       throw new Error(constructionErrorMessage);
     });
+    (globalThis as any).AudioData = mockAudioDataConstructorThatThrows;
+    (mockSelf as any).AudioData = mockAudioDataConstructorThatThrows;
 
     const initMessage: InitializeWorkerMessage = {
       type: "initialize",
@@ -287,6 +337,7 @@ describe("handleAddAudioData", () => {
       undefined,
     );
     (globalThis as any).AudioData = AudioDataOriginal;
+    (mockSelf as any).AudioData = AudioDataOriginal;
   });
 
   it("should post error if audioEncoder.encode triggers error callback", async () => {

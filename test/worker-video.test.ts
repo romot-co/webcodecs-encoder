@@ -50,22 +50,32 @@ describe("handleAddVideoFrame", () => {
 
   beforeEach(async () => {
     videoEncoderErrorCallback = null;
-    mockSelf.VideoEncoder = vi.fn((options: { error: (e: any) => void }) => {
-      videoEncoderErrorCallback = options.error;
-      videoEncoderInstance = {
-        configure: vi.fn(),
-        encode: vi.fn(),
-        flush: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn(),
-        state: "configured",
-        encodeQueueSize: 0,
-      };
-      return videoEncoderInstance;
-    }) as any;
-    mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
-    );
-    globalThis.VideoEncoder = mockSelf.VideoEncoder;
+    const veMock = mockSelf.VideoEncoder as ReturnType<typeof vi.fn>;
+    if (veMock && veMock.getMockImplementation()) {
+        const originalImpl = veMock.getMockImplementation();
+        veMock.mockImplementation((options: { error: (e: any) => void }) => {
+            videoEncoderErrorCallback = options.error;
+            videoEncoderInstance = originalImpl ? originalImpl(options) : {};
+            Object.assign(videoEncoderInstance, {
+                configure: vi.fn(),
+                encode: vi.fn(),
+                flush: vi.fn().mockResolvedValue(undefined),
+                close: vi.fn(),
+                state: "configured",
+                encodeQueueSize: 0,
+            });
+            return videoEncoderInstance;
+        });
+    } else {
+        videoEncoderInstance = {
+            configure: vi.fn(),
+            encode: vi.fn(),
+            flush: vi.fn().mockResolvedValue(undefined),
+            close: vi.fn(),
+            state: "configured",
+            encodeQueueSize: 0,
+        };
+    }
 
     initMessage = { type: "initialize", config };
     if (global.self.onmessage) {

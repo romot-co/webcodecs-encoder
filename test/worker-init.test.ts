@@ -183,7 +183,6 @@ describe("worker", () => {
       return { supported: true, config: { codec: c.codec } };
     });
     mockSelf.VideoEncoder.isConfigSupported = spy;
-    globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
     const initMessage: InitializeWorkerMessage = { type: "initialize", config: cfg };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
@@ -205,7 +204,6 @@ describe("worker", () => {
       return { supported: true, config: { codec: c.codec } };
     });
     mockSelf.VideoEncoder.isConfigSupported = spy;
-    globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
     const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
@@ -228,7 +226,6 @@ describe("worker", () => {
       return { supported: true, config: { codec: c.codec } };
     });
     mockSelf.VideoEncoder.isConfigSupported = spy;
-    globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
     const initMessage: InitializeWorkerMessage = { type: "initialize", config: hdConfig };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
@@ -268,6 +265,7 @@ describe("worker", () => {
     it("should post an error if video codec is not supported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
@@ -295,6 +293,7 @@ describe("worker", () => {
     it("should post an error if audio codec is not supported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
@@ -322,6 +321,7 @@ describe("worker", () => {
     it("should post an error if video encoder configuration fails", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
       const configureError = new Error("Video configure failed");
       // @ts-ignore
@@ -336,7 +336,6 @@ describe("worker", () => {
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
         Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
       );
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -361,6 +360,7 @@ describe("worker", () => {
     it("should post an error if audio encoder configuration fails", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
       const configureError = new Error("Audio configure failed");
       // @ts-ignore
@@ -378,7 +378,6 @@ describe("worker", () => {
           config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
         }),
       );
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -403,6 +402,7 @@ describe("worker", () => {
     it("should post an error if config is missing", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       // @ts-ignore
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -424,6 +424,7 @@ describe("worker", () => {
     it("should initialize WebM container and use WebMMuxerWrapper", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const webmConfig = { ...config, container: "webm" as const };
       // Adjust codec support mocks for VP9/Opus
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => ({
@@ -448,6 +449,7 @@ describe("worker", () => {
     it("should fallback to avc if preferred video codec (vp9) is not supported but avc is", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
         .mockImplementation(() => {});
@@ -467,7 +469,6 @@ describe("worker", () => {
           };
         return { supported: false, config: null };
       });
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -491,6 +492,7 @@ describe("worker", () => {
     it("should post error if fallback video codec (avc) is also not supported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const vp9Config = {
         ...config,
         codec: { ...config.codec, video: "vp9" as const },
@@ -500,7 +502,6 @@ describe("worker", () => {
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         return { supported: false, config: null }; // All codecs unsupported
       });
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -524,6 +525,7 @@ describe("worker", () => {
     it("should fallback to aac if preferred audio codec (opus) is not supported but aac is", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const consoleWarnSpy = vi
         .spyOn(console, "warn")
         .mockImplementation(() => {});
@@ -546,7 +548,6 @@ describe("worker", () => {
           };
         return { supported: false, config: null };
       });
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -569,6 +570,7 @@ describe("worker", () => {
     it("should fallback to opus if fallback audio codec (aac) is not supported but opus is", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const opusConfig = {
         ...config,
         codec: { ...config.codec, audio: "opus" as const },
@@ -589,7 +591,6 @@ describe("worker", () => {
         }
         return { supported: false, config: null }; // AAC unsupported
       });
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -613,6 +614,7 @@ describe("worker", () => {
     it("should post error if both aac and opus are unsupported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const opusConfig = {
         ...config,
         codec: { ...config.codec, audio: "opus" as const },
@@ -621,7 +623,6 @@ describe("worker", () => {
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         return { supported: false, config: null }; // All codecs unsupported
       });
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -644,6 +645,7 @@ describe("worker", () => {
     it("should post configuration error if encoder reports different channel count", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         return {
@@ -651,7 +653,6 @@ describe("worker", () => {
           config: { ..._cfg, numberOfChannels: 1 },
         };
       });
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = { type: "initialize", config };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
@@ -671,9 +672,11 @@ describe("worker", () => {
     it("should post error if VideoEncoder API is not available", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const originalVideoEncoder = globalThis.VideoEncoder;
+      const originalMockSelfVideoEncoder = mockSelf.VideoEncoder;
       delete (globalThis as any).VideoEncoder;
-      delete (mockSelf as any).VideoEncoder; // Also remove from mockSelf
+      delete (mockSelf as any).VideoEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -690,25 +693,16 @@ describe("worker", () => {
         },
         undefined,
       );
-      globalThis.VideoEncoder = originalVideoEncoder; // Restore
-      // @ts-ignore
-      mockSelf.VideoEncoder = vi.fn(() => ({
-        configure: vi.fn(),
-        encode: vi.fn(),
-        flush: vi.fn(),
-        close: vi.fn(),
-        state: "unconfigured",
-      }));
-      // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
-      );
+      globalThis.VideoEncoder = originalVideoEncoder;
+      mockSelf.VideoEncoder = originalMockSelfVideoEncoder;
     });
 
     it("should post error if AudioEncoder API is not available", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const originalAudioEncoder = globalThis.AudioEncoder;
+      const originalMockSelfAudioEncoder = mockSelf.AudioEncoder;
       delete (globalThis as any).AudioEncoder;
       delete (mockSelf as any).AudioEncoder;
 
@@ -727,27 +721,14 @@ describe("worker", () => {
         },
         undefined,
       );
-      globalThis.AudioEncoder = originalAudioEncoder; // Restore
-      // @ts-ignore
-      mockSelf.AudioEncoder = vi.fn(() => ({
-        configure: vi.fn(),
-        encode: vi.fn(),
-        flush: vi.fn(),
-        close: vi.fn(),
-        state: "unconfigured",
-      }));
-      // @ts-ignore
-      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({
-          supported: true,
-          config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
-        }),
-      );
+      globalThis.AudioEncoder = originalAudioEncoder;
+      mockSelf.AudioEncoder = originalMockSelfAudioEncoder;
     });
 
     it("should post error if VideoEncoder constructor throws", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       const originalVideoEncoderCtor = mockSelf.VideoEncoder;
       const constructorError = new Error("Video Constructor failed");
 
@@ -763,8 +744,7 @@ describe("worker", () => {
         throw constructorError;
       });
 
-      mockSelf.VideoEncoder = mockVideoEncoderConstructor;
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
+      (mockSelf as any).VideoEncoder = mockVideoEncoderConstructor;
 
       const originalAudioEncoderCtor = mockSelf.AudioEncoder;
       // @ts-ignore
@@ -776,7 +756,7 @@ describe("worker", () => {
         state: "unconfigured",
       };
       // @ts-ignore
-      mockSelf.AudioEncoder = vi.fn(() => MockAudioEncoderInstance);
+      (mockSelf as any).AudioEncoder = vi.fn(() => MockAudioEncoderInstance) as any;
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
         Promise.resolve({
@@ -784,7 +764,6 @@ describe("worker", () => {
           config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
         }),
       );
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -804,17 +783,15 @@ describe("worker", () => {
         undefined,
       );
 
-      mockSelf.VideoEncoder = originalVideoEncoderCtor;
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
-      mockSelf.AudioEncoder = originalAudioEncoderCtor;
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
+      (mockSelf as any).VideoEncoder = originalVideoEncoderCtor as any;
+      (mockSelf as any).AudioEncoder = originalAudioEncoderCtor as any;
     });
 
     it("should post error if AudioEncoder constructor throws", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
-      // === リセットフェーズ ===
       const originalVideoEncoderCtorForThisTest = mockSelf.VideoEncoder;
       const originalAudioEncoderCtorForThisTest = mockSelf.AudioEncoder;
 
@@ -825,16 +802,9 @@ describe("worker", () => {
         close: vi.fn(),
         state: "unconfigured",
       };
-      const MockAudioInstance = {
-        configure: vi.fn(),
-        encode: vi.fn(),
-        flush: vi.fn(),
-        close: vi.fn(),
-        state: "unconfigured",
-      };
 
       // @ts-ignore
-      mockSelf.VideoEncoder = vi.fn(() => MockVideoInstance);
+      (mockSelf as any).VideoEncoder = vi.fn(() => MockVideoInstance) as any;
       // @ts-ignore
       mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
         Promise.resolve({
@@ -842,33 +812,7 @@ describe("worker", () => {
           config: { codec: "avc1.42001f.default" },
         }),
       );
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
 
-      // @ts-ignore
-      mockSelf.AudioEncoder = vi.fn(() => MockAudioInstance);
-      // @ts-ignore
-      mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({
-          supported: true,
-          config: { codec: "mp4a.40.2.default", numberOfChannels: config.channels },
-        }),
-      );
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
-      // === リセットフェーズここまで ===
-
-      // === VideoEncoder をこのテスト用に正常動作させる設定 ===
-      // @ts-ignore
-      mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-        Promise.resolve({
-          supported: true,
-          config: { codec: "avc1.42001f.test" },
-        }),
-      );
-      // @ts-ignore
-      mockSelf.VideoEncoder.mockImplementation(() => MockVideoInstance);
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
-
-      // === AudioEncoder がエラーを投げるように設定 ===
       const constructorError = new Error("Audio Constructor failed for test");
       const mockAudioEncoderConstructorThatThrows = vi.fn();
       // @ts-ignore
@@ -882,8 +826,7 @@ describe("worker", () => {
         throw constructorError;
       });
 
-      mockSelf.AudioEncoder = mockAudioEncoderConstructorThatThrows;
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
+      (mockSelf as any).AudioEncoder = mockAudioEncoderConstructorThatThrows as any;
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
@@ -903,16 +846,14 @@ describe("worker", () => {
         undefined,
       );
 
-      // リストア
-      mockSelf.VideoEncoder = originalVideoEncoderCtorForThisTest;
-      globalThis.VideoEncoder = mockSelf.VideoEncoder;
-      mockSelf.AudioEncoder = originalAudioEncoderCtorForThisTest;
-      globalThis.AudioEncoder = mockSelf.AudioEncoder;
+      (mockSelf as any).VideoEncoder = originalVideoEncoderCtorForThisTest as any;
+      (mockSelf as any).AudioEncoder = originalAudioEncoderCtorForThisTest as any;
     });
 
     // isConfigSupportedWithHwFallback関数のブランチカバレッジを向上させるテスト
     it("should handle hardware acceleration preference fallbacks correctly", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       
       // prefer-hardwareが使えないがprefer-softwareが使えるケース
       const prefHwConfig = { ...config };
@@ -964,6 +905,7 @@ describe("worker", () => {
     
     it("should try no hardware acceleration preference when both prefer-hardware and prefer-software are not supported", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
       
       const prefHwConfig = { ...config };
       prefHwConfig.hardwareAcceleration = "prefer-hardware";
@@ -1008,6 +950,7 @@ describe("worker", () => {
 
     it("should post error when all hardware acceleration options fail", async () => {
       if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
+      mockSelf.postMessage.mockClear();
 
       const failingConfig = { ...config, codec: { video: "vp9", audio: "aac" }, hardwareAcceleration: "prefer-hardware" };
 

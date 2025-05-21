@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsup src/index.ts src/worker.ts src/audio-worklet-processor.ts --format esm,cjs --dts --sourcemap",
-    "test": "npm run build && vitest run --coverage",
+    "test": "vitest run --coverage",
     "test:int": "npm run build && vitest run test/integration",
     "lint": "eslint src/**/*.ts test/**/*.ts",
     "lint:fix": "eslint src/**/*.ts test/**/*.ts --fix",

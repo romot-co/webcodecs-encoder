@@ -65,19 +65,40 @@ describe("handleFinalize", () => {
       state: "configured",
       encodeQueueSize: 0,
     };
-    mockSelf.VideoEncoder = vi.fn(() => mockVideoEncoderInstance) as any;
-    mockSelf.AudioEncoder = vi.fn(() => mockAudioEncoderInstance) as any;
-    mockSelf.VideoEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({ supported: true, config: { codec: "avc1.42001f" } }),
-    );
-    mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
-      Promise.resolve({
-        supported: true,
-        config: { codec: "mp4a.40.2", numberOfChannels: config.channels },
-      }),
-    );
-    globalThis.VideoEncoder = mockSelf.VideoEncoder;
-    globalThis.AudioEncoder = mockSelf.AudioEncoder;
+
+    const veMock = mockSelf.VideoEncoder as ReturnType<typeof vi.fn>;
+    if (veMock && veMock.getMockImplementation()) {
+      const originalVeImpl = veMock.getMockImplementation();
+      veMock.mockImplementation((options?: any) => {
+        mockVideoEncoderInstance = originalVeImpl ? originalVeImpl(options) : {};
+        Object.assign(mockVideoEncoderInstance, {
+          configure: vi.fn(),
+          encode: vi.fn(),
+          flush: vi.fn().mockResolvedValue(undefined),
+          close: vi.fn(),
+          state: "configured",
+        });
+        return mockVideoEncoderInstance;
+      });
+    }
+    if (typeof mockSelf.VideoEncoder === 'function') mockVideoEncoderInstance = (mockSelf.VideoEncoder as any)();
+
+    const aeMock = mockSelf.AudioEncoder as ReturnType<typeof vi.fn>;
+    if (aeMock && aeMock.getMockImplementation()) {
+      const originalAeImpl = aeMock.getMockImplementation();
+      aeMock.mockImplementation((options?: any) => {
+        mockAudioEncoderInstance = originalAeImpl ? originalAeImpl(options) : {};
+        Object.assign(mockAudioEncoderInstance, {
+          configure: vi.fn(),
+          encode: vi.fn(),
+          flush: vi.fn().mockResolvedValue(undefined),
+          close: vi.fn(),
+          state: "configured",
+        });
+        return mockAudioEncoderInstance;
+      });
+    }
+    if (typeof mockSelf.AudioEncoder === 'function') mockAudioEncoderInstance = (mockSelf.AudioEncoder as any)();
 
     const mp4muxerModule = await import("../src/mp4muxer");
     const currentMp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
