@@ -146,27 +146,24 @@ export class WebCodecsEncoder {
           };
 
           this.worker.onerror = (event: ErrorEvent) => {
-            console.error(
-              "MainThread: worker.onerror triggered. Event:",
-              event,
-            );
-            console.error(
+            logger.error("MainThread: worker.onerror triggered. Event:", event);
+            logger.error(
               "MainThread: worker.onerror event.message:",
               event.message,
             );
-            console.error(
+            logger.error(
               "MainThread: worker.onerror event.filename:",
               event.filename,
             );
-            console.error(
+            logger.error(
               "MainThread: worker.onerror event.lineno:",
               event.lineno,
             );
-            console.error(
+            logger.error(
               "MainThread: worker.onerror event.colno:",
               event.colno,
             );
-            console.error(
+            logger.error(
               "MainThread: worker.onerror event.error:",
               event.error,
             );
