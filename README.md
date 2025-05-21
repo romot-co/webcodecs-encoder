@@ -1,4 +1,4 @@
-# WebCodecs MP4/WebM Encoder (MP4 Muxer Currently)
+# WebCodecs MP4/WebM Encoder (MP4 & WebM Muxers)
 
 A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers.
 
@@ -6,7 +6,7 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 
 - Encodes `VideoFrame` to H.264/AVC, VP9, or AV1 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
 - Encodes `AudioBuffer` to AAC or Opus audio.
-- Muxes encoded video and audio into a standard MP4 file.
+- Muxes encoded video and audio into standard MP4 or WebM files.
 - Real-time streaming: Delivers muxed data in chunks via a callback, suitable for live streaming with Media Source Extensions (MSE).
 - Optional AudioWorklet path for piping audio directly to the worker to reduce main-thread latency.
 - Uses Web Workers to offload encoding tasks from the main thread.
@@ -434,7 +434,7 @@ const result = await recorder.stopRecording();
   as configured for the encoder.
 
 - **`encoder.finalize(): Promise<Uint8Array | null>`**
-  Finalizes the encoding process and returns the MP4 file as a `Uint8Array`.
+  Finalizes the encoding process and returns the encoded file as a `Uint8Array`.
   If `latencyMode` is `'realtime'`, the promise resolves with the final `Uint8Array` when the worker provides output, or with `null` when no additional data is sent because everything has already been delivered via `onData`.
 
 - **`encoder.cancel(): void`**
@@ -481,7 +481,7 @@ The same approach works for audio with codec strings like `mp4a.40.2` or `opus`.
 
 ## Codec Compatibility
 
-This library supports encoding to MP4 container format with the following codecs:
+This library supports encoding to MP4 and WebM container formats with the following codecs:
 
 - **Video Codecs:**
   - `avc1` (H.264/AVC): Widely supported.
