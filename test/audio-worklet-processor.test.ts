@@ -157,6 +157,18 @@ describe("EncoderAudioWorkletProcessor", () => {
       expect(mockWorkerSidePort.postMessage).not.toHaveBeenCalled();
     });
 
+    it("should return true when first channel array is undefined or empty", () => {
+      let inputs: Float32Array[][] = [[undefined as any]];
+      expect(processor.process(inputs, [], {})).toBe(true);
+      expect(mockWorkerSidePort.postMessage).not.toHaveBeenCalled();
+
+      mockWorkerSidePort.postMessage.mockClear();
+
+      inputs = [[new Float32Array(0)]];
+      expect(processor.process(inputs, [], {})).toBe(true);
+      expect(mockWorkerSidePort.postMessage).not.toHaveBeenCalled();
+    });
+
     it("should post audio data to workerPort if inputs are valid", () => {
       const inputData = [
         new Float32Array([0.1, 0.2, 0.3]),

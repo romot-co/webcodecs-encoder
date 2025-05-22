@@ -36,11 +36,11 @@ class EncoderAudioWorkletProcessor extends AudioWorkletProcessor {
     if (!input || input.length === 0) return true;
 
     // At least one channel must exist, and it must have some frames.
-    // input[0] is the first channel. If it doesn't exist or has no frames, consider it invalid.
-    if (!input[0] || input[0].length === 0) return true;
+    const firstChannel = input[0];
+    if (!firstChannel || firstChannel.length === 0) return true;
 
     const numChannels = input.length;
-    const numFrames = input[0].length; // This will be > 0 due to the check above
+    const numFrames = firstChannel.length; // This will be > 0 due to the check above
     const buffers: Float32Array[] = [];
     for (let c = 0; c < numChannels; c++) {
       const copy = new Float32Array(input[c]);
