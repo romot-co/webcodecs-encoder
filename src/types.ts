@@ -56,6 +56,15 @@ export type ProgressCallback = (
   totalFrames?: number,
 ) => void;
 
+// --- Helper Types for environment-dependent constructors ---
+export type VideoEncoderConstructor = typeof VideoEncoder;
+export type AudioEncoderConstructor = typeof AudioEncoder;
+export type AudioDataConstructor = typeof AudioData;
+
+export type VideoEncoderGetter = () => VideoEncoderConstructor | undefined;
+export type AudioEncoderGetter = () => AudioEncoderConstructor | undefined;
+export type AudioDataGetter = () => AudioDataConstructor | undefined;
+
 // --- Custom Error for the library ---
 export enum EncoderErrorType {
   NotSupported = "not-supported",
