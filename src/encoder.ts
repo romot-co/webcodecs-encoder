@@ -590,6 +590,13 @@ export class WebCodecsEncoder {
     const message: WorkerMessage = { type: "cancel" };
     this.worker.postMessage(message);
 
+    // Ignore any further messages except the worker's acknowledgement
+    this.worker.onmessage = (event: MessageEvent<MainThreadMessage>) => {
+      if (event.data.type === "cancelled" || event.data.type === "error") {
+        this.handleWorkerMessage(event.data);
+      }
+    };
+
     // Reject pending promises
     const cancelError = new WebCodecsEncoderError(
       EncoderErrorType.Cancelled,

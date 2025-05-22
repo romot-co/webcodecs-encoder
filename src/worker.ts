@@ -840,10 +840,16 @@ class EncoderWorker {
     if (this.isCancelled) return;
     this.isCancelled = true;
     logger.log("Worker: Received cancel signal.");
+
+    // Ensure the main thread is notified even if cleanup throws
+    this.postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
+
     this.videoEncoder?.close();
     this.audioEncoder?.close();
+
+    // Cleanup without resetting the cancelled state so that any queued
+    // messages after this point are ignored.
     this.cleanup(false);
-    this.postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
   }
 
   cleanup(resetCancelled: boolean = true): void {
