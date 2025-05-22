@@ -164,6 +164,7 @@ export class Mp4MuxerWrapper {
           // So, if this is the first frame and we are offsetting, its timestamp should become 0.
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedVideoChunk({
             type: chunk.type,
             timestamp: 0, // First frame becomes 0
@@ -177,6 +178,7 @@ export class Mp4MuxerWrapper {
           );
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedVideoChunk({
             type: chunk.type,
             timestamp: newTimestamp,
@@ -226,6 +228,7 @@ export class Mp4MuxerWrapper {
           // As with video, if this is the first audio chunk and offset is applied, its timestamp becomes 0.
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedAudioChunk({
             type: chunk.type,
             timestamp: 0, // First audio frame becomes 0
@@ -239,6 +242,7 @@ export class Mp4MuxerWrapper {
           );
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedAudioChunk({
             type: chunk.type,
             timestamp: newTimestamp,
