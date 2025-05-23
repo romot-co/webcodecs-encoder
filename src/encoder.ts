@@ -270,7 +270,11 @@ export class WebCodecsEncoder {
               EncoderErrorType.MuxingFailed,
               "Finalized with null output in non-realtime mode.",
             );
-            this.onFinalizedPromise?.reject(err);
+            if (this.onFinalizedPromise) {
+              this.onFinalizedPromise.reject(err);
+            } else {
+              this.onInitializeError?.(err);
+            }
             this.handleError(err); // Ensure onErrorCallback is called
           }
         }

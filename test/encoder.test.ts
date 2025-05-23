@@ -1165,6 +1165,21 @@ describe("WebCodecsEncoder", () => {
       }
     });
 
+    it("should reject with explicit error when finalized with null output", async () => {
+      const finalizePromise = encoder.finalize();
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: { type: "finalized", output: null },
+        });
+      }
+
+      await expect(finalizePromise).rejects.toMatchObject({
+        type: EncoderErrorType.MuxingFailed,
+        message: "Finalized with null output in non-realtime mode.",
+      });
+    });
+
     it("should reject if finalize is called multiple times", async () => {
       // encoder is initialized in beforeEach
 
