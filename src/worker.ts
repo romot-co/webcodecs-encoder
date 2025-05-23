@@ -669,7 +669,14 @@ class EncoderWorker {
           ? ({ keyFrame: true } as VideoEncoderEncodeOptions)
           : undefined;
       this.videoEncoder.encode(frame, opts as any);
-      frame.close();
+      // Some implementations may automatically close the transferred frame
+      // when passed to `encode`. Guard against potential errors from calling
+      // `close()` on an already-consumed frame.
+      try {
+        frame.close();
+      } catch (closeErr) {
+        logger.warn("Worker: Ignored error closing VideoFrame", closeErr);
+      }
       this.videoFrameCount++;
       this.processedFrames++;
       const progressMessage: any = {
