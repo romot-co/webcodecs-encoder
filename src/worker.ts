@@ -697,8 +697,15 @@ class EncoderWorker {
         interval && this.videoFrameCount % interval === 0
           ? ({ keyFrame: true } as VideoEncoderEncodeOptions)
           : undefined;
-      this.videoEncoder.encode(frame, opts);
-      frame.close();
+      this.videoEncoder.encode(frame, opts as any);
+      // Some implementations may automatically close the transferred frame
+      // when passed to `encode`. Guard against potential errors from calling
+      // `close()` on an already-consumed frame.
+      try {
+        frame.close();
+      } catch (closeErr) {
+        logger.warn("Worker: Ignored error closing VideoFrame", closeErr);
+      }
       this.videoFrameCount++;
       this.processedFrames++;
       const progressMessage: any = {
@@ -869,10 +876,16 @@ class EncoderWorker {
     if (this.isCancelled) return;
     this.isCancelled = true;
     logger.log("Worker: Received cancel signal.");
+
+    // Ensure the main thread is notified even if cleanup throws
+    this.postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
+
     this.videoEncoder?.close();
     this.audioEncoder?.close();
+
+    // Cleanup without resetting the cancelled state so that any queued
+    // messages after this point are ignored.
     this.cleanup(false);
-    this.postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
   }
 
   cleanup(resetCancelled: boolean = true): void {

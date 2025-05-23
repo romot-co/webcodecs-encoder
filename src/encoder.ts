@@ -275,7 +275,11 @@ export class WebCodecsEncoder {
               EncoderErrorType.MuxingFailed,
               "Finalized with null output in non-realtime mode.",
             );
-            this.onFinalizedPromise?.reject(err);
+            if (this.onFinalizedPromise) {
+              this.onFinalizedPromise.reject(err);
+            } else {
+              this.onInitializeError?.(err);
+            }
             this.handleError(err); // Ensure onErrorCallback is called
           }
         }
@@ -399,7 +403,12 @@ export class WebCodecsEncoder {
       timestamp,
       duration: 1_000_000 / this.config.frameRate,
     });
-    await this.addVideoFrame(frame);
+    try {
+      await this.addVideoFrame(frame);
+    } catch (err) {
+      frame.close();
+      throw err;
+    }
   }
 
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
@@ -594,6 +603,13 @@ export class WebCodecsEncoder {
 
     const message: WorkerMessage = { type: "cancel" };
     this.worker.postMessage(message);
+
+    // Ignore any further messages except the worker's acknowledgement
+    this.worker.onmessage = (event: MessageEvent<MainThreadMessage>) => {
+      if (event.data.type === "cancelled" || event.data.type === "error") {
+        this.handleWorkerMessage(event.data);
+      }
+    };
 
     // Reject pending promises
     const cancelError = new WebCodecsEncoderError(

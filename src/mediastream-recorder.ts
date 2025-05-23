@@ -82,16 +82,21 @@ export class MediaStreamRecorder {
 
   private async processVideo(): Promise<void> {
     if (!this.videoReader) return;
+    const reader = this.videoReader;
     try {
       while (this.recording) {
-        const { value, done } = await this.videoReader.read();
+        const { value, done } = await reader.read();
         if (done || !value) {
           if (this.recording) {
             await this.stopRecording();
           }
           break;
         }
-        await this.encoder.addVideoFrame(value);
+        try {
+          await this.encoder.addVideoFrame(value);
+        } finally {
+          value.close();
+        }
       }
     } catch (err) {
       this.cancel();
@@ -100,21 +105,29 @@ export class MediaStreamRecorder {
       } else {
         throw err;
       }
+    } finally {
+      reader.cancel();
+      this.videoReader = undefined;
     }
   }
 
   private async processAudio(): Promise<void> {
     if (!this.audioReader) return;
+    const reader = this.audioReader;
     try {
       while (this.recording) {
-        const { value, done } = await this.audioReader.read();
+        const { value, done } = await reader.read();
         if (done || !value) {
           if (this.recording) {
             await this.stopRecording();
           }
           break;
         }
-        await this.encoder.addAudioData(value);
+        try {
+          await this.encoder.addAudioData(value);
+        } finally {
+          value.close();
+        }
       }
     } catch (err) {
       this.cancel();
@@ -123,6 +136,9 @@ export class MediaStreamRecorder {
       } else {
         throw err;
       }
+    } finally {
+      reader.cancel();
+      this.audioReader = undefined;
     }
   }
 
