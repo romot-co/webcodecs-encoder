@@ -145,7 +145,6 @@ describe("handleAddVideoFrame", () => {
           stack: expect.any(String),
         },
       },
-      undefined,
     );
   });
 
@@ -180,7 +179,6 @@ describe("handleAddVideoFrame", () => {
         processedFrames: 1,
         totalFrames: 10,
       },
-      undefined,
     );
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       {
@@ -188,7 +186,6 @@ describe("handleAddVideoFrame", () => {
         videoQueueSize: 0,
         audioQueueSize: 0,
       },
-      undefined,
     );
     videoFrame.close();
   });

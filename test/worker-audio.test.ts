@@ -210,7 +210,6 @@ describe("handleAddAudioData", () => {
         videoQueueSize: 0,
         audioQueueSize: 0,
       },
-      undefined,
     );
   });
 
@@ -240,7 +239,6 @@ describe("handleAddAudioData", () => {
         videoQueueSize: 0,
         audioQueueSize: 0,
       },
-      undefined,
     );
   });
 
@@ -283,7 +281,6 @@ describe("handleAddAudioData", () => {
           type: "not-supported",
         },
       },
-      undefined,
     );
     (globalThis as any).AudioData = AudioDataOriginal;
     (mockSelf as any).AudioData = AudioDataOriginal;
@@ -334,7 +331,6 @@ describe("handleAddAudioData", () => {
           type: "audio-encoding-error",
         }),
       }),
-      undefined,
     );
     (globalThis as any).AudioData = AudioDataOriginal;
     (mockSelf as any).AudioData = AudioDataOriginal;
@@ -368,7 +364,6 @@ describe("handleAddAudioData", () => {
           stack: expect.any(String),
         },
       },
-      undefined,
     );
   });
 
@@ -411,7 +406,6 @@ describe("handleAddAudioData", () => {
           type: "configuration-error",
         },
       },
-      undefined,
     );
   });
 });
@@ -502,7 +496,6 @@ describe("handleConnectAudioPort", () => {
         videoQueueSize: 0,
         audioQueueSize: 0,
       },
-      undefined,
     );
   });
 });

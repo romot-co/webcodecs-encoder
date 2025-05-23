@@ -119,7 +119,6 @@ describe("handleFinalize", () => {
       expect(initErrorPost, "Worker initialization in handleFinalize beforeEach should not post an error").toBeUndefined();
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ type: "initialized" }),
-        undefined,
       );
       mockSelf.postMessage.mockClear();
     } else {
@@ -165,7 +164,6 @@ describe("handleFinalize", () => {
           type: "initialization-failed",
         }),
       }),
-      undefined,
     );
     mockSelf.postMessage.mockClear();
 
@@ -179,7 +177,6 @@ describe("handleFinalize", () => {
           type: "muxing-failed",
         },
       },
-      undefined,
     );
     specificTestMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
   });
@@ -199,7 +196,6 @@ describe("handleFinalize", () => {
           type: "muxing-failed",
         },
       },
-      undefined,
     );
   });
 
@@ -220,7 +216,6 @@ describe("handleFinalize", () => {
     expect(initErrorPost, "Error during realtime re-initialization").toBeUndefined();
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "initialized" }),
-      undefined,
     );
     mockSelf.postMessage.mockClear();
 
@@ -228,7 +223,6 @@ describe("handleFinalize", () => {
     await global.self.onmessage({ data: finalizeMessage } as MessageEvent);
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       { type: "finalized", output: null },
-      undefined,
     );
   });
 
@@ -249,7 +243,6 @@ describe("handleFinalize", () => {
           stack: expect.any(String),
         },
       },
-      undefined,
     );
   });
 
@@ -273,7 +266,6 @@ describe("handleFinalize", () => {
           type: "muxing-failed",
         },
       },
-      undefined,
     );
   });
 });

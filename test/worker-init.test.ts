@@ -61,14 +61,11 @@ describe("worker", () => {
     const initMessage: InitializeWorkerMessage = { type: "initialize", config };
     mockSelf.postMessage.mockClear();
     await global.self.onmessage({ data: initMessage } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      {
-        type: "initialized",
-        actualVideoCodec: "avc1.42001f",
-        actualAudioCodec: "mp4a.40.2",
-      },
-      undefined,
-    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith({
+      type: "initialized",
+      actualVideoCodec: "avc1.42001f",
+      actualAudioCodec: "mp4a.40.2",
+    });
 
     // Simulate receiving a finalize message
     mockSelf.postMessage.mockClear();
@@ -129,23 +126,17 @@ describe("worker", () => {
     // Initialize first (or part of it, enough to set up for cancel)
     const initMessage: InitializeWorkerMessage = { type: "initialize", config };
     await global.self.onmessage({ data: initMessage } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      {
-        type: "initialized",
-        actualVideoCodec: "avc1.42001f",
-        actualAudioCodec: "mp4a.40.2",
-      },
-      undefined,
-    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith({
+      type: "initialized",
+      actualVideoCodec: "avc1.42001f",
+      actualAudioCodec: "mp4a.40.2",
+    });
     mockSelf.postMessage.mockClear();
 
     // Simulate receiving a cancel message
     const cancelMessage: CancelWorkerMessage = { type: "cancel" };
     await global.self.onmessage({ data: cancelMessage } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith(
-      { type: "cancelled" },
-      undefined,
-    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: "cancelled" });
 
     // After cancellation, other messages should be ignored
     mockSelf.postMessage.mockClear();
@@ -165,7 +156,6 @@ describe("worker", () => {
         actualVideoCodec: "avc1.42001f",
         actualAudioCodec: "mp4a.40.2",
       },
-      undefined,
     );
   });
 
@@ -195,7 +185,6 @@ describe("worker", () => {
         type: "initialized", 
         actualVideoCodec: "avc1.deadbeef" 
       }),
-      undefined,
     );
   });
 
@@ -235,7 +224,6 @@ describe("worker", () => {
       expect.objectContaining({
         type: "initialized"
       }),
-      undefined,
     );
   });
 
@@ -277,7 +265,6 @@ describe("worker", () => {
           type: "not-supported",
         },
       },
-      undefined,
     );
   });
 
@@ -297,7 +284,6 @@ describe("worker", () => {
     );
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       { type: "initialized", actualVideoCodec: "avc1.42001f", actualAudioCodec: null },
-      undefined,
     );
   });
 
@@ -327,7 +313,6 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined,
       );
     });
 
@@ -355,7 +340,6 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined,
       );
     });
 
@@ -394,7 +378,6 @@ describe("worker", () => {
             stack: expect.any(String),
           },
         },
-        undefined,
       );
     });
 
@@ -436,7 +419,6 @@ describe("worker", () => {
             stack: expect.any(String),
           },
         },
-        undefined,
       );
     });
 
@@ -458,7 +440,6 @@ describe("worker", () => {
             type: "initialization-failed",
           },
         },
-        undefined,
       );
     });
 
@@ -483,7 +464,6 @@ describe("worker", () => {
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         { type: "initialized", actualVideoCodec: "vp09.00.50.08", actualAudioCodec: "opus" },
-        undefined,
       );
     });
 
@@ -530,7 +510,6 @@ describe("worker", () => {
           type: "initialized",
           actualVideoCodec: expect.stringMatching(/^avc1\./),
         }),
-        undefined,
       );
       consoleWarnSpy.mockRestore();
     });
@@ -566,7 +545,6 @@ describe("worker", () => {
             type: "not-supported",
           }),
         }),
-        undefined,
       );
     });
 
@@ -610,7 +588,6 @@ describe("worker", () => {
           type: "initialized",
           actualAudioCodec: "mp4a.40.2.test",
         }),
-        undefined,
       );
       consoleWarnSpy.mockRestore();
     });
@@ -654,7 +631,6 @@ describe("worker", () => {
           type: "initialized",
           actualAudioCodec: "opus.test",
         }),
-        undefined,
       );
       consoleWarnSpy.mockRestore();
     });
@@ -686,7 +662,6 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined,
       );
     });
 
@@ -713,7 +688,6 @@ describe("worker", () => {
             type: "configuration-error",
           },
         },
-        undefined,
       );
     });
 
@@ -739,7 +713,6 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined,
       );
       globalThis.VideoEncoder = originalVideoEncoder;
       mockSelf.VideoEncoder = originalMockSelfVideoEncoder;
@@ -767,7 +740,6 @@ describe("worker", () => {
             type: "not-supported",
           },
         },
-        undefined,
       );
       globalThis.AudioEncoder = originalAudioEncoder;
       mockSelf.AudioEncoder = originalMockSelfAudioEncoder;
@@ -828,7 +800,6 @@ describe("worker", () => {
             stack: expect.any(String),
           }),
         }),
-        undefined,
       );
 
       (mockSelf as any).VideoEncoder = originalVideoEncoderCtor as any;
@@ -891,7 +862,6 @@ describe("worker", () => {
             stack: expect.any(String),
           }),
         }),
-        undefined,
       );
 
       (mockSelf as any).VideoEncoder = originalVideoEncoderCtorForThisTest as any;
@@ -927,8 +897,7 @@ describe("worker", () => {
         expect.objectContaining({ 
           type: "initialized",
           actualVideoCodec: expect.stringContaining(".hw-test")
-        }),
-        undefined
+        })
       );
       consoleWarnSpy.mockRestore();
     });
@@ -964,8 +933,7 @@ describe("worker", () => {
         expect.objectContaining({ 
           type: "initialized",
           actualVideoCodec: expect.stringMatching(/\.no-pref-fallback$|^avc1\./)
-        }),
-        undefined
+        })
       );
       consoleWarnSpy.mockRestore();
     });
@@ -1000,7 +968,6 @@ describe("worker", () => {
             type: "not-supported",
           }),
         },
-        undefined,
       );
       consoleWarnSpy.mockRestore();
     });

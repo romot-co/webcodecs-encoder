@@ -123,7 +123,6 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
     await global.self.onmessage({ data: initMessage } as MessageEvent);
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "initialized" }),
-      undefined,
     );
   });
 
@@ -132,7 +131,7 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
     await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
     mockSelf.postMessage.mockClear();
     await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent);
-    expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: "cancelled" }, undefined);
+    expect(mockSelf.postMessage).toHaveBeenCalledWith({ type: "cancelled" });
     mockSelf.postMessage.mockClear();
     await global.self.onmessage({ data: { type: "cancel" } } as MessageEvent);
     expect(mockSelf.postMessage).not.toHaveBeenCalled();
@@ -158,9 +157,7 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
           stack: expect.any(String),
         }),
       }),
-      undefined,
     );
-
     mockSelf.VideoEncoder.isConfigSupported = originalVideoEncoderIsSupported;
     globalThis.VideoEncoder = mockSelf.VideoEncoder;
   });

@@ -9,6 +9,9 @@ import type {
   FinalizeWorkerMessage,
   CancelWorkerMessage,
   MainThreadMessage,
+  VideoEncoderGetter,
+  AudioEncoderGetter,
+  AudioDataGetter,
 } from "./types";
 import { EncoderErrorType } from "./types";
 import logger from "./logger";
@@ -82,12 +85,17 @@ if (
   );
 }
 
-const getVideoEncoder = () =>
-  (self as any).VideoEncoder ?? (globalThis as any).VideoEncoder;
-const getAudioEncoder = () =>
-  (self as any).AudioEncoder ?? (globalThis as any).AudioEncoder;
-const getAudioData = () =>
-  (self as any).AudioData ?? (globalThis as any).AudioData;
+const getVideoEncoder: VideoEncoderGetter = () =>
+  (self as unknown as { VideoEncoder?: typeof VideoEncoder }).VideoEncoder ??
+  (globalThis as unknown as { VideoEncoder?: typeof VideoEncoder })
+    .VideoEncoder;
+const getAudioEncoder: AudioEncoderGetter = () =>
+  (self as unknown as { AudioEncoder?: typeof AudioEncoder }).AudioEncoder ??
+  (globalThis as unknown as { AudioEncoder?: typeof AudioEncoder })
+    .AudioEncoder;
+const getAudioData: AudioDataGetter = () =>
+  (self as unknown as { AudioData?: typeof AudioData }).AudioData ??
+  (globalThis as unknown as { AudioData?: typeof AudioData }).AudioData;
 
 class EncoderWorker {
   private videoEncoder: VideoEncoder | null = null;
@@ -108,7 +116,11 @@ class EncoderWorker {
     message: MainThreadMessage,
     transfer?: Transferable[],
   ): void {
-    self.postMessage(message, transfer as any);
+    if (transfer && transfer.length > 0) {
+      self.postMessage(message, transfer);
+    } else {
+      self.postMessage(message);
+    }
   }
 
   private defaultAvcCodecString(
@@ -142,14 +154,25 @@ class EncoderWorker {
     return null;
   }
 
-  private async isConfigSupportedWithHwFallback(
-    Ctor: any,
-    config: any,
+  private async isConfigSupportedWithHwFallback<
+    T extends (VideoEncoderConfig | AudioEncoderConfig) & {
+      hardwareAcceleration?:
+        | "prefer-hardware"
+        | "prefer-software"
+        | "no-preference";
+    },
+  >(
+    Ctor: {
+      isConfigSupported(
+        config: T,
+      ): Promise<{ supported?: boolean; config?: T }>;
+    },
+    config: T,
     label: string,
-  ) {
+  ): Promise<T | null> {
     // オリジナルの設定で試行
-    let support = await Ctor.isConfigSupported(config as any);
-    if (support?.supported) return support.config;
+    let support = await Ctor.isConfigSupported(config);
+    if (support?.supported && support.config) return support.config;
 
     // ハードウェアアクセラレーション設定がある場合のフォールバック処理
     const pref = config.hardwareAcceleration;
@@ -161,8 +184,8 @@ class EncoderWorker {
 
       if (altPref) {
         const opposite = { ...config, hardwareAcceleration: altPref };
-        support = await Ctor.isConfigSupported(opposite as any);
-        if (support?.supported) {
+        support = await Ctor.isConfigSupported(opposite);
+        if (support?.supported && support.config) {
           console.warn(
             `${label}: hardwareAcceleration preference '${pref}' not supported. Using '${altPref}'.`,
           );
@@ -171,10 +194,10 @@ class EncoderWorker {
       }
 
       // 設定なしを試す
-      const noPref = { ...config };
+      const noPref = { ...config } as T & { hardwareAcceleration?: undefined };
       delete noPref.hardwareAcceleration;
-      support = await Ctor.isConfigSupported(noPref as any);
-      if (support?.supported) {
+      support = await Ctor.isConfigSupported(noPref);
+      if (support?.supported && support.config) {
         console.warn(
           `${label}: hardwareAcceleration preference '${pref}' not supported. Using no preference.`,
         );
@@ -297,7 +320,7 @@ class EncoderWorker {
         : {}),
     };
 
-    const VideoEncoderCtor: any = getVideoEncoder();
+    const VideoEncoderCtor = getVideoEncoder();
     if (!VideoEncoderCtor) {
       this.postMessageToMainThread({
         type: "error",
@@ -311,10 +334,11 @@ class EncoderWorker {
     }
 
     // まず明示的に指定されたコーデックを試す
-    let support = await VideoEncoderCtor.isConfigSupported(videoEncoderConfig);
+    const initialSupport =
+      await VideoEncoderCtor.isConfigSupported(videoEncoderConfig);
 
-    if (support?.supported) {
-      finalVideoEncoderConfig = support.config as VideoEncoderConfig;
+    if (initialSupport?.supported && initialSupport.config) {
+      finalVideoEncoderConfig = initialSupport.config;
     } else {
       // 明示的な指定がされていないか、サポートされていない場合
       if (
@@ -336,22 +360,27 @@ class EncoderWorker {
           this.currentConfig.frameRate,
         );
 
-        const avcConfig = {
+        const avcConfig: VideoEncoderConfig & {
+          hardwareAcceleration?:
+            | "prefer-hardware"
+            | "prefer-software"
+            | "no-preference";
+        } = {
           ...videoEncoderConfig,
           codec: avcCodecString,
           ...(this.currentConfig.container === "mp4"
-            ? { avc: { format: "avc" } }
+            ? { avc: { format: "avc" as const } }
             : {}),
         };
 
-        support = await this.isConfigSupportedWithHwFallback(
+        const support = await this.isConfigSupportedWithHwFallback(
           VideoEncoderCtor,
           avcConfig,
           "VideoEncoder",
         );
 
         if (support) {
-          finalVideoEncoderConfig = support as VideoEncoderConfig;
+          finalVideoEncoderConfig = support;
         } else {
           this.postMessageToMainThread({
             type: "error",
@@ -373,7 +402,7 @@ class EncoderWorker {
         );
 
         if (result) {
-          finalVideoEncoderConfig = result as VideoEncoderConfig;
+          finalVideoEncoderConfig = result;
         } else {
           this.postMessageToMainThread({
             type: "error",
@@ -409,7 +438,7 @@ class EncoderWorker {
       });
       if (finalVideoEncoderConfig) {
         if (this.videoEncoder) {
-          this.videoEncoder.configure(finalVideoEncoderConfig as any);
+          this.videoEncoder.configure(finalVideoEncoderConfig);
         } else {
           this.postMessageToMainThread({
             type: "error",
@@ -624,7 +653,7 @@ class EncoderWorker {
           },
         });
         if (this.audioEncoder) {
-          this.audioEncoder.configure(finalAudioEncoderConfig as any);
+          this.audioEncoder.configure(finalAudioEncoderConfig);
         } else {
           this.postMessageToMainThread({
             type: "error",
@@ -925,7 +954,7 @@ class EncoderWorker {
         default:
           console.warn(
             "Worker received unknown message type:",
-            (eventData as any)?.type,
+            (eventData as { type?: unknown }).type,
           );
       }
     } catch (error: any) {

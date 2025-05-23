@@ -1,5 +1,10 @@
 import { EncoderErrorType, WebCodecsEncoderError } from "./types";
-import type { EncoderConfig, MainThreadMessage, WorkerMessage } from "./types";
+import type {
+  EncoderConfig,
+  MainThreadMessage,
+  WorkerMessage,
+  ConnectAudioPortMessage,
+} from "./types";
 import logger from "./logger";
 
 // Define the onData callback type for real-time streaming
@@ -138,7 +143,7 @@ export class WebCodecsEncoder {
             const script =
               options?.workerScriptUrl ??
               new URL("./worker.js", import.meta.url);
-            this.worker = new Worker(script as any, { type: "module" });
+            this.worker = new Worker(script, { type: "module" });
           }
 
           this.worker.onmessage = (event: MessageEvent<MainThreadMessage>) => {
@@ -214,8 +219,8 @@ export class WebCodecsEncoder {
 
     switch (message.type) {
       case "initialized":
-        this.actualVideoCodec = (message as any).actualVideoCodec ?? null;
-        this.actualAudioCodec = (message as any).actualAudioCodec ?? null;
+        this.actualVideoCodec = message.actualVideoCodec ?? null;
+        this.actualAudioCodec = message.actualAudioCodec ?? null;
         this.onInitialized?.();
         this.onInitialized = null;
         this.onInitializeError = null;
@@ -667,7 +672,9 @@ export class WebCodecsEncoder {
   }
 
   private async setupAudioWorklet(): Promise<void> {
-    const AudioContextCtor: any = (globalThis as any).AudioContext;
+    const AudioContextCtor = (
+      globalThis as unknown as { AudioContext?: typeof AudioContext }
+    ).AudioContext;
     if (!AudioContextCtor) {
       const err = new WebCodecsEncoderError(
         EncoderErrorType.NotSupported,
@@ -707,10 +714,10 @@ export class WebCodecsEncoder {
     );
 
     const { port1, port2 } = new MessageChannel();
-    const connectMessage: WorkerMessage = {
+    const connectMessage: ConnectAudioPortMessage = {
       type: "connectAudioPort",
       port: port1,
-    } as any;
+    };
     this.worker!.postMessage(connectMessage, [port1]);
     this.audioWorkletNode.port.postMessage(
       { port: port2, sampleRate: this.config.sampleRate },
