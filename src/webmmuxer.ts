@@ -124,6 +124,7 @@ export class WebMMuxerWrapper {
           this.firstVideoTimestamp = chunk.timestamp;
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedVideoChunk({
             type: chunk.type,
             timestamp: 0,
@@ -137,6 +138,7 @@ export class WebMMuxerWrapper {
           );
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedVideoChunk({
             type: chunk.type,
             timestamp: newTimestamp,
@@ -176,6 +178,7 @@ export class WebMMuxerWrapper {
           this.firstAudioTimestamp = chunk.timestamp;
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedAudioChunk({
             type: chunk.type,
             timestamp: 0,
@@ -189,6 +192,7 @@ export class WebMMuxerWrapper {
           );
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data.buffer);
+          (chunk as any).close?.();
           adjustedChunk = new EncodedAudioChunk({
             type: chunk.type,
             timestamp: newTimestamp,
