@@ -224,18 +224,54 @@ export class WebCodecsEncoder {
       return customUrl;
     }
 
-    // Try common public paths first for Vite/PWA compatibility
-    const publicPaths = ["/worker.js", "/webcodecs-worker.js"];
+    // Detect development environment
+    const isDev = WebCodecsEncoder.isDevEnvironment();
+
+    // Try common public paths with multiple strategies
+    const publicPaths = [
+      "/webcodecs-worker.js", // postinstall file (priority)
+      "/worker.js",           // common name
+    ];
 
     for (const path of publicPaths) {
-      try {
-        const response = await fetch(path, { method: "HEAD" });
-        if (response.ok) {
-          logger.log(`WebCodecsEncoder: Found worker at public path: ${path}`);
-          return path;
+      // Try both HEAD and GET requests for better compatibility
+      const methods = isDev ? ["GET", "HEAD"] : ["HEAD"];
+      
+      for (const method of methods) {
+        try {
+          const response = await fetch(path, { 
+            method,
+            // In dev, try with mode: 'no-cors' as fallback
+            ...(isDev && method === "GET" ? { mode: "no-cors" } : {})
+          });
+          
+          if (response.ok || (isDev && response.type === "opaque")) {
+            logger.log(`WebCodecsEncoder: Found worker at public path: ${path} (method: ${method})`);
+            return path;
+          }
+        } catch (e) {
+          // Continue to next method/path
         }
-      } catch (e) {
-        // Continue to next path
+      }
+    }
+
+    // For Vite development, try a direct file check approach
+    if (isDev) {
+      const devPaths = [
+        "/webcodecs-worker.js",
+        "/public/webcodecs-worker.js", // Sometimes Vite exposes public files this way
+      ];
+      
+      for (const path of devPaths) {
+        try {
+          // Create a temporary worker to test if the script loads
+          const testWorker = new Worker(path, { type: "module" });
+          testWorker.terminate();
+          logger.log(`WebCodecsEncoder: Found worker in dev environment: ${path}`);
+          return path;
+        } catch (e) {
+          // Continue to next path
+        }
       }
     }
 
@@ -257,6 +293,25 @@ export class WebCodecsEncoder {
       "WebCodecsEncoder: Creating inline worker (package worker not accessible)",
     );
     return WebCodecsEncoder.createInlineWorker();
+  }
+
+  private static isDevEnvironment(): boolean {
+    // Multiple checks for development environment
+    return (
+      // Node.js development
+      (typeof process !== "undefined" && process.env?.NODE_ENV === "development") ||
+      // Vite development (with type safety)
+      (typeof import.meta !== "undefined" && 
+       (import.meta as any).env?.DEV === true) ||
+      // Development server indicators
+      (typeof location !== "undefined" && 
+       (location.hostname === "localhost" || 
+        location.hostname === "127.0.0.1" ||
+        location.hostname.startsWith("192.168.") ||
+        location.port === "3000" ||
+        location.port === "5173" || // Vite default
+        location.port === "4173"))  // Vite preview
+    );
   }
 
   private static createInlineWorker(): string {
@@ -299,23 +354,34 @@ self.postMessage({
   }
 
   private async findAudioWorkletScript(): Promise<string> {
-    // Try common public paths first for Vite/PWA compatibility
+    const isDev = WebCodecsEncoder.isDevEnvironment();
+    
+    // Try common public paths with enhanced detection
     const publicPaths = [
-      "/webcodecs-audio-worklet.js",
-      "/audio-worklet-processor.js",
+      "/webcodecs-audio-worklet.js", // postinstall file (priority)
+      "/audio-worklet-processor.js", // alternative name
     ];
 
     for (const path of publicPaths) {
-      try {
-        const response = await fetch(path, { method: "HEAD" });
-        if (response.ok) {
-          logger.log(
-            `WebCodecsEncoder: Found AudioWorklet processor at: ${path}`,
-          );
-          return path;
+      // Try both HEAD and GET requests for better compatibility
+      const methods = isDev ? ["GET", "HEAD"] : ["HEAD"];
+      
+      for (const method of methods) {
+        try {
+          const response = await fetch(path, { 
+            method,
+            ...(isDev && method === "GET" ? { mode: "no-cors" } : {})
+          });
+          
+          if (response.ok || (isDev && response.type === "opaque")) {
+            logger.log(
+              `WebCodecsEncoder: Found AudioWorklet processor at: ${path} (method: ${method})`,
+            );
+            return path;
+          }
+        } catch (e) {
+          // Continue to next method/path
         }
-      } catch (e) {
-        // Continue to next path
       }
     }
 
