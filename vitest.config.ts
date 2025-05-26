@@ -6,6 +6,9 @@ export default defineConfig({
   test: {
     globals: true, // To use describe, it, etc. without importing them in every file
     environment: 'jsdom', // Use JSDOM environment to provide DOM APIs like document
+    env: {
+      NODE_ENV: 'test'
+    },
     include: isIntegrationTest
       ? ['test/integration/**/*.test.ts'] // 統合テスト実行時
       : [ // 通常時

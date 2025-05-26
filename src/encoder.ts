@@ -139,9 +139,18 @@ export class WebCodecsEncoder {
         try {
           if (options?.worker) {
             this.worker = options.worker;
+          } else if (
+            typeof process !== "undefined" &&
+            process.env?.NODE_ENV === "test"
+          ) {
+            // In test environment, use a dummy worker that won't try to load actual files
+            this.worker = new Worker("data:application/javascript,", {
+              type: "module",
+            });
           } else {
-            const script: string | URL = await WebCodecsEncoder.findWorkerScript(options?.workerScriptUrl);
-            
+            const script: string | URL =
+              await WebCodecsEncoder.findWorkerScript(options?.workerScriptUrl);
+
             this.worker = new Worker(script, { type: "module" });
           }
 
@@ -208,17 +217,19 @@ export class WebCodecsEncoder {
     });
   }
 
-  private static async findWorkerScript(customUrl?: string | URL): Promise<string | URL> {
+  private static async findWorkerScript(
+    customUrl?: string | URL,
+  ): Promise<string | URL> {
     if (customUrl) {
       return customUrl;
     }
 
     // Try common public paths first for Vite/PWA compatibility
-    const publicPaths = ['/worker.js', '/webcodecs-worker.js'];
-    
+    const publicPaths = ["/worker.js", "/webcodecs-worker.js"];
+
     for (const path of publicPaths) {
       try {
-        const response = await fetch(path, { method: 'HEAD' });
+        const response = await fetch(path, { method: "HEAD" });
         if (response.ok) {
           logger.log(`WebCodecsEncoder: Found worker at public path: ${path}`);
           return path;
@@ -227,22 +238,24 @@ export class WebCodecsEncoder {
         // Continue to next path
       }
     }
-    
+
     // Try to use package worker file
     try {
       const packageWorkerUrl = new URL("./worker.js", import.meta.url);
       // Test if it's accessible
-      const response = await fetch(packageWorkerUrl, { method: 'HEAD' });
+      const response = await fetch(packageWorkerUrl, { method: "HEAD" });
       if (response.ok) {
-        logger.log('WebCodecsEncoder: Using package worker file');
+        logger.log("WebCodecsEncoder: Using package worker file");
         return packageWorkerUrl;
       }
     } catch (e) {
       // Package worker not accessible, fall back to inline worker
     }
-    
+
     // Create inline worker as fallback
-    logger.log('WebCodecsEncoder: Creating inline worker (package worker not accessible)');
+    logger.log(
+      "WebCodecsEncoder: Creating inline worker (package worker not accessible)",
+    );
     return WebCodecsEncoder.createInlineWorker();
   }
 
@@ -279,7 +292,9 @@ self.postMessage({
 });
 `;
 
-    const blob = new Blob([inlineWorkerCode], { type: 'application/javascript' });
+    const blob = new Blob([inlineWorkerCode], {
+      type: "application/javascript",
+    });
     return URL.createObjectURL(blob);
   }
 

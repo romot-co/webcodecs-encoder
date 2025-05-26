@@ -6,4 +6,7 @@ export type {
   WebCodecsEncoderError,
   EncoderErrorType,
 } from "./types";
-export type { RealtimeDataCallback } from "./encoder";
+export type {
+  RealtimeDataCallback,
+  WebCodecsEncoderInitializeOptions,
+} from "./encoder";
