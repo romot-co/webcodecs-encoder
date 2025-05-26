@@ -1,4 +1,4 @@
-import { WebCodecsEncoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-encoder";
 
 export async function encodeImageSequence(imageUrls: string[]) {
   if (!WebCodecsEncoder.isSupported()) {

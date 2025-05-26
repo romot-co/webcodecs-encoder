@@ -18,10 +18,20 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 
 ## Installation
 
+### From GitHub (Current)
+
 ```bash
-npm install webcodecs-muxer
+npm install github:romot-co/webcodecs-encoder
 # or
-yarn add webcodecs-muxer
+yarn add github:romot-co/webcodecs-encoder
+```
+
+### From npm (Coming Soon)
+
+```bash
+npm install webcodecs-encoder
+# or
+yarn add webcodecs-encoder
 ```
 
 Running `npm install` will automatically run the `postinstall` script, applying a patch to `@types/dom-webcodecs` via `patch-package`. This patch restores the `AudioSampleFormat` type that is commented out in the published definitions.
@@ -31,7 +41,7 @@ Running `npm install` will automatically run the `postinstall` script, applying 
 You can find this example in [`examples/encode-to-file.ts`](examples/encode-to-file.ts) for a quick way to try it out.
 
 ```typescript
-import { WebCodecsEncoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-encoder";
 
 async function encodeVideoToFile() {
   if (!WebCodecsEncoder.isSupported()) {
@@ -136,7 +146,7 @@ and feed them to `WebCodecsEncoder`. See
 example.
 
 ```typescript
-import { WebCodecsEncoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-encoder";
 
 async function encodeImageSequence(imageUrls: string[]) {
   if (!WebCodecsEncoder.isSupported()) {
@@ -175,7 +185,7 @@ For applications like live streaming, you can configure the encoder to output da
 See [`examples/encode-realtime.ts`](examples/encode-realtime.ts) for the full runnable snippet.
 
 ```typescript
-import { WebCodecsEncoder } from "webcodecs-muxer";
+import { WebCodecsEncoder } from "webcodecs-encoder";
 
 async function encodeVideoRealtime() {
   if (!WebCodecsEncoder.isSupported()) {
@@ -362,7 +372,7 @@ uses `MediaStreamTrackProcessor` to feed `VideoFrame` and `AudioData` to
 The snippet below is available in [`examples/record-mediastream.ts`](examples/record-mediastream.ts).
 
 ```typescript
-import { MediaStreamRecorder } from "webcodecs-muxer";
+import { MediaStreamRecorder } from "webcodecs-encoder";
 
 const recorder = new MediaStreamRecorder(config);
 await recorder.startRecording(stream);

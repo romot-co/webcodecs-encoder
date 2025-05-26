@@ -1,4 +1,4 @@
-import { WebCodecsEncoder } from 'webcodecs-muxer';
+import { WebCodecsEncoder } from 'webcodecs-encoder';
 
 async function encodeVideoToFile() {
   if (!WebCodecsEncoder.isSupported()) {

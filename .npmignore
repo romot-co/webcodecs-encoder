@@ -1,0 +1,28 @@
+# Development files
+src/
+test/
+coverage/
+examples/
+ref/
+patches/
+
+# Configuration files
+.github/
+tsconfig*.json
+tsup.config.ts
+vitest.config.ts
+eslint.config.js
+
+# Environment files
+.env*
+.DS_Store
+
+# Development dependencies
+node_modules/
+
+# Build artifacts (except dist)
+*.tsbuildinfo
+
+# Test files in dist
+dist/temp-html/
+dist/*-test.html 

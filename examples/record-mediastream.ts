@@ -1,4 +1,4 @@
-import { MediaStreamRecorder } from 'webcodecs-muxer';
+import { MediaStreamRecorder } from 'webcodecs-encoder';
 
 /**
  * Record the user's camera and microphone for a few seconds and
