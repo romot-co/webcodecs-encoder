@@ -22,7 +22,7 @@ export default [
       'eslint:recommended',
       'plugin:@typescript-eslint/recommended',
     ],
-    ignorePatterns: ['dist/**'],
+    ignorePatterns: ['dist/**', 'scripts/**', 'eslint.config.js'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',

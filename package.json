@@ -26,14 +26,14 @@
     "build": "tsup",
     "prepublishOnly": "npm run build",
     "prepare": "npm run build",
+    "postinstall": "node scripts/postinstall.js && patch-package",
     "test": "vitest run --coverage",
     "test:int": "npm run build && DEBUG=pw:api RUNNING_INTEGRATION_TESTS=true vitest run test/integration/encode-browser.test.ts",
     "lint": "eslint src/**/*.ts test/**/*.ts",
     "lint:fix": "eslint src/**/*.ts test/**/*.ts --fix",
     "format": "prettier --write src/**/*.ts test/**/*.ts",
     "format:check": "prettier --check src/**/*.ts test/**/*.ts",
-    "type-check": "tsc --noEmit",
-    "postinstall": "patch-package"
+    "type-check": "tsc --noEmit"
   },
   "keywords": [
     "webcodecs",
@@ -69,6 +69,7 @@
   },
   "files": [
     "dist",
+    "scripts",
     "README.md",
     "LICENSE",
     "INSTALL.md"

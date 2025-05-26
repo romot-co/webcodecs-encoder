@@ -140,9 +140,8 @@ export class WebCodecsEncoder {
           if (options?.worker) {
             this.worker = options.worker;
           } else {
-            const script =
-              options?.workerScriptUrl ??
-              new URL("./worker.js", import.meta.url);
+            const script: string | URL = await WebCodecsEncoder.findWorkerScript(options?.workerScriptUrl);
+            
             this.worker = new Worker(script, { type: "module" });
           }
 
@@ -207,6 +206,81 @@ export class WebCodecsEncoder {
       };
       void start();
     });
+  }
+
+  private static async findWorkerScript(customUrl?: string | URL): Promise<string | URL> {
+    if (customUrl) {
+      return customUrl;
+    }
+
+    // Try common public paths first for Vite/PWA compatibility
+    const publicPaths = ['/worker.js', '/webcodecs-worker.js'];
+    
+    for (const path of publicPaths) {
+      try {
+        const response = await fetch(path, { method: 'HEAD' });
+        if (response.ok) {
+          logger.log(`WebCodecsEncoder: Found worker at public path: ${path}`);
+          return path;
+        }
+      } catch (e) {
+        // Continue to next path
+      }
+    }
+    
+    // Try to use package worker file
+    try {
+      const packageWorkerUrl = new URL("./worker.js", import.meta.url);
+      // Test if it's accessible
+      const response = await fetch(packageWorkerUrl, { method: 'HEAD' });
+      if (response.ok) {
+        logger.log('WebCodecsEncoder: Using package worker file');
+        return packageWorkerUrl;
+      }
+    } catch (e) {
+      // Package worker not accessible, fall back to inline worker
+    }
+    
+    // Create inline worker as fallback
+    logger.log('WebCodecsEncoder: Creating inline worker (package worker not accessible)');
+    return WebCodecsEncoder.createInlineWorker();
+  }
+
+  private static createInlineWorker(): string {
+    // Helper text for setup instructions
+    const setupInstructions = `
+WebCodecs Encoder Worker Setup Required:
+
+The worker file could not be loaded automatically. This is common in Vite/PWA projects.
+
+Quick Setup:
+1. Copy worker file to public directory:
+   cp node_modules/webcodecs-encoder/dist/worker.js public/
+
+2. Initialize with custom worker URL:
+   const encoder = new WebCodecsEncoder(config);
+   await encoder.initialize({
+     workerScriptUrl: '/worker.js'
+   });
+
+For more setup options: https://github.com/romot-co/webcodecs-encoder#setup-for-vitepwa-projects
+`;
+
+    // Simple error-only inline worker
+    const inlineWorkerCode = `
+// WebCodecs Encoder - Setup Required
+self.postMessage({
+  type: 'error',
+  errorDetail: {
+    type: 'WorkerError',
+    message: ${JSON.stringify(setupInstructions)},
+    stack: null
+  }
+});
+`;
+
+    const blob = new Blob([inlineWorkerCode], { type: 'application/javascript' });
+    return URL.createObjectURL(blob);
   }
 
   private handleWorkerMessage(message: MainThreadMessage): void {

@@ -36,6 +36,49 @@ yarn add webcodecs-encoder
 
 Running `npm install` will automatically run the `postinstall` script, applying a patch to `@types/dom-webcodecs` via `patch-package`. This patch restores the `AudioSampleFormat` type that is commented out in the published definitions.
 
+## ✨ Zero-Config Setup (Automatic)
+
+The package automatically attempts to copy the worker file to your `public/` directory during installation. In most cases, no additional setup is required!
+
+```typescript
+import { WebCodecsEncoder } from 'webcodecs-encoder';
+
+// Works automatically - no additional setup needed!
+const encoder = new WebCodecsEncoder(config);
+await encoder.initialize(); // Worker file found automatically
+```
+
+## Manual Setup (if needed)
+
+If automatic setup didn't work or you need custom configuration:
+
+### Copy Worker File Manually
+
+```bash
+# Copy to your public directory
+cp node_modules/webcodecs-encoder/dist/worker.js public/webcodecs-worker.js
+```
+
+### Or Specify Custom Worker URL
+
+```typescript
+import { WebCodecsEncoder } from 'webcodecs-encoder';
+
+const encoder = new WebCodecsEncoder(config);
+await encoder.initialize({
+  workerScriptUrl: '/custom-path/worker.js', // Custom worker location
+  // ... other options
+});
+```
+
+### Troubleshooting Worker Issues
+
+The encoder automatically tries these locations:
+1. `/worker.js` (copied by postinstall script)
+2. `/webcodecs-worker.js` (alternative location)  
+3. Package worker file (fallback, may require CORS setup)
+4. Inline helper (shows setup instructions if above fail)
+
 ## Basic Usage (File Output)
 
 You can find this example in [`examples/encode-to-file.ts`](examples/encode-to-file.ts) for a quick way to try it out.
