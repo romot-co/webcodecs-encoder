@@ -16,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Find the package root (where this script is located)
 const packageRoot = path.resolve(__dirname, '..');
 const workerSource = path.join(packageRoot, 'dist', 'worker.js');
+const audioWorkletSource = path.join(packageRoot, 'dist', 'audio-worklet-processor.js');
 
 // Also check the actual file location for better detection
 const scriptPath = fileURLToPath(import.meta.url);
@@ -78,8 +79,13 @@ function installWorker() {
     for (const pattern of publicDirPatterns) {
       const publicDir = path.join(projectRoot, pattern);
       if (fs.existsSync(publicDir)) {
-        const destination = path.join(publicDir, 'webcodecs-worker.js');
-        if (safeCopy(workerSource, destination)) {
+        const workerDestination = path.join(publicDir, 'webcodecs-worker.js');
+        const audioWorkletDestination = path.join(publicDir, 'webcodecs-audio-worklet.js');
+        
+        const workerCopied = safeCopy(workerSource, workerDestination);
+        const audioWorkletCopied = safeCopy(audioWorkletSource, audioWorkletDestination);
+        
+        if (workerCopied || audioWorkletCopied) {
           copied = true;
           break; // Only copy to the first available public directory
         }
@@ -89,23 +95,30 @@ function installWorker() {
     if (!copied) {
       // Try to create a public directory
       const publicDir = path.join(projectRoot, 'public');
-      const destination = path.join(publicDir, 'webcodecs-worker.js');
-      if (safeCopy(workerSource, destination)) {
+      const workerDestination = path.join(publicDir, 'webcodecs-worker.js');
+      const audioWorkletDestination = path.join(publicDir, 'webcodecs-audio-worklet.js');
+      
+      const workerCopied = safeCopy(workerSource, workerDestination);
+      const audioWorkletCopied = safeCopy(audioWorkletSource, audioWorkletDestination);
+      
+      if (workerCopied || audioWorkletCopied) {
         copied = true;
       }
     }
     
     if (copied) {
       console.log('\n🎉 WebCodecs Encoder is ready to use!');
-      console.log('The worker file has been automatically copied to your public directory.');
+      console.log('Worker and AudioWorklet files have been automatically copied to your public directory.');
       console.log('\nUsage:');
       console.log('  const encoder = new WebCodecsEncoder(config);');
       console.log('  await encoder.initialize(); // Worker will be found automatically');
+      console.log('  // For AudioWorklet: await encoder.initialize({ useAudioWorklet: true });');
     } else {
       console.log('\n⚠️  WebCodecs Encoder setup info:');
-      console.log('Unable to auto-copy worker file. You may need to copy it manually:');
-      console.log(`  cp node_modules/webcodecs-encoder/dist/worker.js public/webcodecs-worker.js`);
-      console.log('\nOr specify the worker URL manually:');
+      console.log('Unable to auto-copy worker files. You may need to copy them manually:');
+      console.log('  cp node_modules/webcodecs-encoder/dist/worker.js public/webcodecs-worker.js');
+      console.log('  cp node_modules/webcodecs-encoder/dist/audio-worklet-processor.js public/webcodecs-audio-worklet.js');
+      console.log('\nOr specify the URLs manually:');
       console.log('  await encoder.initialize({ workerScriptUrl: "/path/to/worker.js" });');
     }
   }

@@ -298,6 +298,36 @@ self.postMessage({
     return URL.createObjectURL(blob);
   }
 
+  private async findAudioWorkletScript(): Promise<string> {
+    // Try common public paths first for Vite/PWA compatibility
+    const publicPaths = [
+      "/webcodecs-audio-worklet.js",
+      "/audio-worklet-processor.js"
+    ];
+
+    for (const path of publicPaths) {
+      try {
+        const response = await fetch(path, { method: "HEAD" });
+        if (response.ok) {
+          logger.log(`WebCodecsEncoder: Found AudioWorklet processor at: ${path}`);
+          return path;
+        }
+      } catch (e) {
+        // Continue to next path
+      }
+    }
+
+    // Try to use package AudioWorklet file as fallback
+    try {
+      const packageUrl = new URL("./audio-worklet-processor.js", import.meta.url);
+      return packageUrl.href;
+    } catch (e) {
+      // If all else fails, use a fallback path
+      logger.warn("WebCodecsEncoder: AudioWorklet processor not found, using fallback");
+      return "/webcodecs-audio-worklet.js";
+    }
+  }
+
   private handleWorkerMessage(message: MainThreadMessage): void {
     if (
       this.isCancelled &&
@@ -777,23 +807,8 @@ self.postMessage({
       sampleRate: this.config.sampleRate,
     });
 
-    // CommonJSとESMの両方で動作するようにURLを解決する
-    let audioWorkletUrl: string;
-    try {
-      // ESMの場合
-      if (typeof import.meta !== "undefined" && import.meta.url) {
-        audioWorkletUrl = new URL(
-          "./audio-worklet-processor.js",
-          import.meta.url,
-        ).href;
-      } else {
-        // CommonJSの場合またはフォールバック
-        audioWorkletUrl = "./audio-worklet-processor.js";
-      }
-    } catch (e) {
-      // エラーが発生した場合のフォールバック
-      audioWorkletUrl = "./audio-worklet-processor.js";
-    }
+    // AudioWorkletプロセッサファイルを見つける
+    const audioWorkletUrl = await this.findAudioWorkletScript();
 
     await this.audioContext!.audioWorklet.addModule(audioWorkletUrl);
     this.audioWorkletNode = new AudioWorkletNode(
