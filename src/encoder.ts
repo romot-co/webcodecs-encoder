@@ -302,14 +302,16 @@ self.postMessage({
     // Try common public paths first for Vite/PWA compatibility
     const publicPaths = [
       "/webcodecs-audio-worklet.js",
-      "/audio-worklet-processor.js"
+      "/audio-worklet-processor.js",
     ];
 
     for (const path of publicPaths) {
       try {
         const response = await fetch(path, { method: "HEAD" });
         if (response.ok) {
-          logger.log(`WebCodecsEncoder: Found AudioWorklet processor at: ${path}`);
+          logger.log(
+            `WebCodecsEncoder: Found AudioWorklet processor at: ${path}`,
+          );
           return path;
         }
       } catch (e) {
@@ -319,11 +321,16 @@ self.postMessage({
 
     // Try to use package AudioWorklet file as fallback
     try {
-      const packageUrl = new URL("./audio-worklet-processor.js", import.meta.url);
+      const packageUrl = new URL(
+        "./audio-worklet-processor.js",
+        import.meta.url,
+      );
       return packageUrl.href;
     } catch (e) {
       // If all else fails, use a fallback path
-      logger.warn("WebCodecsEncoder: AudioWorklet processor not found, using fallback");
+      logger.warn(
+        "WebCodecsEncoder: AudioWorklet processor not found, using fallback",
+      );
       return "/webcodecs-audio-worklet.js";
     }
   }
