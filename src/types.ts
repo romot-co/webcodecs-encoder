@@ -51,10 +51,37 @@ export interface EncoderConfig {
   audioEncoderConfig?: Partial<AudioEncoderConfig>;
 }
 
+export interface DetailedProgressInfo {
+  /** 処理済みフレーム数 */
+  processedFrames: number;
+  /** 総フレーム数（不明の場合はundefined） */
+  totalFrames?: number;
+  /** 現在の処理ステージ */
+  stage: ProcessingStage;
+  /** 処理開始からの経過時間（ミリ秒） */
+  elapsedTimeMs: number;
+  /** 推定残り時間（ミリ秒、不明の場合はundefined） */
+  estimatedRemainingMs?: number;
+  /** フレーム/秒の処理速度 */
+  processingFps: number;
+  /** 平均処理速度（フレーム/秒） */
+  averageProcessingFps: number;
+  /** ドロップされたフレーム数 */
+  droppedFrames: number;
+  /** ビデオエンコーダーのキュー深度 */
+  videoQueueSize: number;
+  /** オーディオエンコーダーのキュー深度 */
+  audioQueueSize: number;
+  /** 処理済みデータサイズ（バイト） */
+  processedDataSize?: number;
+}
+
 export type ProgressCallback = (
   processedFrames: number,
   totalFrames?: number,
 ) => void;
+
+export type DetailedProgressCallback = (progress: DetailedProgressInfo) => void;
 
 // --- Helper Types for environment-dependent constructors ---
 export type VideoEncoderConstructor = typeof VideoEncoder;
@@ -64,6 +91,24 @@ export type AudioDataConstructor = typeof AudioData;
 export type VideoEncoderGetter = () => VideoEncoderConstructor | undefined;
 export type AudioEncoderGetter = () => AudioEncoderConstructor | undefined;
 export type AudioDataGetter = () => AudioDataConstructor | undefined;
+
+// --- Encoder State Management ---
+export enum EncoderState {
+  Idle = "idle",
+  Initializing = "initializing",
+  Encoding = "encoding",
+  Finalizing = "finalizing",
+  Disposed = "disposed",
+  Error = "error",
+}
+
+export enum ProcessingStage {
+  Initializing = "initializing",
+  VideoEncoding = "video-encoding",
+  AudioEncoding = "audio-encoding",
+  Muxing = "muxing",
+  Finalizing = "finalizing",
+}
 
 // --- Custom Error for the library ---
 export enum EncoderErrorType {
@@ -78,6 +123,7 @@ export enum EncoderErrorType {
   Timeout = "timeout",
   InternalError = "internal-error",
   WorkerError = "worker-error",
+  ValidationError = "validation-error",
 }
 
 export class WebCodecsEncoderError extends Error {
@@ -170,6 +216,11 @@ export interface ProgressMessage {
   totalFrames?: number;
 }
 
+export interface DetailedProgressMessage {
+  type: "detailedProgress";
+  progress: DetailedProgressInfo;
+}
+
 export interface WorkerFinalizedMessage {
   type: "finalized";
   output: Uint8Array | null; // MP4 file data or null when streaming
@@ -208,6 +259,7 @@ export type MainThreadMessage =
   // | VideoChunkMessage // These are handled internally by the muxer in the worker
   // | AudioChunkMessage // These are handled internally by the muxer in the worker
   | ProgressMessage
+  | DetailedProgressMessage
   | WorkerFinalizedMessage
   | QueueSizeMessage
   | WorkerDataChunkMessage

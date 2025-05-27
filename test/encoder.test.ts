@@ -225,8 +225,8 @@ describe("WebCodecsEncoder", () => {
         width: 100,
         height: 100,
         frameRate: 30,
-        videoBitrate: 1000,
-        audioBitrate: 128,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
         sampleRate: 44100,
         channels: 2,
       };
@@ -403,8 +403,8 @@ describe("WebCodecsEncoder", () => {
         width: 100,
         height: 100,
         frameRate: 30,
-        videoBitrate: 1000,
-        audioBitrate: 128,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
         sampleRate: 48000,
         channels: 1,
       });
@@ -415,8 +415,8 @@ describe("WebCodecsEncoder", () => {
         width: 100,
         height: 100,
         frameRate: 30,
-        videoBitrate: 1000,
-        audioBitrate: 128,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
         sampleRate: 48000,
         channels: 1,
       });
@@ -427,8 +427,8 @@ describe("WebCodecsEncoder", () => {
         width: 100,
         height: 100,
         frameRate: 30,
-        videoBitrate: 1000,
-        audioBitrate: 128,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
         sampleRate: 48000,
         channels: 1,
       });
@@ -559,8 +559,8 @@ describe("WebCodecsEncoder", () => {
         width: 640,
         height: 480,
         frameRate: 30,
-        videoBitrate: 1000,
-        audioBitrate: 128,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
         sampleRate: 48000,
         channels: 1,
       });
@@ -636,7 +636,7 @@ describe("WebCodecsEncoder", () => {
             duration: 33333,
           }) as VideoFrame,
         ),
-      ).rejects.toThrow("Encoder not initialized or already finalized");
+      ).rejects.toThrow("Cannot add video frame in state 'idle'. Allowed states: encoding");
     });
 
     it("should propagate errors from worker postMessage if it throws", async () => {
@@ -851,7 +851,7 @@ describe("WebCodecsEncoder", () => {
     it("should reject if encoder not initialized", async () => {
       const encoder = new WebCodecsEncoder(baseAudioConfig);
       await expect(encoder.addAudioBuffer({} as AudioBuffer)).rejects.toThrow(
-        "Encoder not initialized or already finalized",
+        "Cannot add audio buffer in state 'idle'. Allowed states: encoding",
       );
     });
 
@@ -1103,7 +1103,7 @@ describe("WebCodecsEncoder", () => {
     it("should reject if encoder not initialized", async () => {
       const encoder = new WebCodecsEncoder(baseAudioConfig);
       await expect(encoder.addAudioData({} as AudioData)).rejects.toThrow(
-        "Encoder not initialized or already finalized",
+        "Cannot add audio data in state 'idle'. Allowed states: encoding",
       );
     });
   });
@@ -1114,8 +1114,8 @@ describe("WebCodecsEncoder", () => {
       width: 640,
       height: 480,
       frameRate: 30,
-      videoBitrate: 1000,
-      audioBitrate: 128,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
       sampleRate: 48000,
       channels: 1,
     };
@@ -1162,7 +1162,7 @@ describe("WebCodecsEncoder", () => {
         expect(e).toBeInstanceOf(WebCodecsEncoderError);
         expect(e.type).toBe(EncoderErrorType.InternalError); // Or .Cancelled if it defaults to cancelled
         expect(e.message).toContain(
-          "Encoder not initialized or already finalized",
+          "Cannot finalize in state 'idle'. Allowed states: encoding",
         );
       }
     });
@@ -1218,8 +1218,8 @@ describe("WebCodecsEncoder", () => {
         });
       }
       await finalizePromise1;
-      // @ts-ignore access private member for test
-      expect(encoder.isCancelled).toBe(true);
+      // 1回目のfinalize完了後、状態はDisposedになる
+      expect(encoder.getState()).toBe("disposed");
 
       mockWorkerInstance.postMessage.mockClear();
       const consoleWarnSpy = vi
@@ -1231,8 +1231,8 @@ describe("WebCodecsEncoder", () => {
         throw new Error("Should have rejected");
       } catch (e: any) {
         expect(e).toBeInstanceOf(WebCodecsEncoderError);
-        expect(e.type).toBe(EncoderErrorType.Cancelled);
-        expect(e.message).toBe("Encoder cancelled");
+        expect(e.type).toBe(EncoderErrorType.InternalError);
+        expect(e.message).toBe("Cannot finalize in state 'disposed'. Allowed states: encoding");
       }
       expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith({
         type: "finalize",
@@ -1264,8 +1264,9 @@ describe("WebCodecsEncoder", () => {
 
       expect(finalizeError).toBeInstanceOf(WebCodecsEncoderError);
       expect(finalizeError.type).toBe(EncoderErrorType.InternalError);
-      expect(finalizeError.message).toBe("Finalize called multiple times.");
-      expect(consoleWarnSpy).toHaveBeenCalledWith("Finalize already called.");
+      expect(finalizeError.message).toBe("Cannot finalize in state 'finalizing'. Allowed states: encoding");
+      // 状態チェックが先に実行されるため、ログは出力されない
+      expect(consoleWarnSpy).not.toHaveBeenCalled();
       expect(mockWorkerInstance.postMessage).toHaveBeenCalledTimes(1); // 1回目しか呼ばれない
 
       // 1回目の finalize を解決させてエラーが出ないことを確認
@@ -1285,8 +1286,8 @@ describe("WebCodecsEncoder", () => {
       width: 640,
       height: 480,
       frameRate: 30,
-      videoBitrate: 1000,
-      audioBitrate: 128,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
       sampleRate: 48000,
       channels: 1,
       latencyMode: "realtime" as const,

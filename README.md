@@ -14,7 +14,9 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 - Built with TypeScript, providing type definitions.
 - Automatic codec fallback (e.g., VP9 to AVC, Opus to AAC) and AVC profile fallback (High → Main → Baseline) if the preferred options are unsupported.
 - Queue management with `dropFrames` and `maxQueueDepth` to control encoder backlog.
-- **WebM Container Support**: Set `container: 'webm'` to output a WebM file using the `webm-muxer` library.
+- Method Chaining API: Fluent interface for more readable and chainable configuration.
+- Progress Monitoring: Detailed progress information including processing speed, queue sizes, and estimated completion time.
+- Comprehensive Input Validation: Validates configuration parameters to catch errors early.
 
 ## Installation
 
@@ -79,7 +81,9 @@ The encoder automatically tries these locations:
 3. Package worker file (fallback, may require CORS setup)
 4. Inline helper (shows setup instructions if above fail)
 
-## Basic Usage (File Output)
+## Basic Usage
+
+### Traditional API (Constructor-based)
 
 You can find this example in [`examples/encode-to-file.ts`](examples/encode-to-file.ts) for a quick way to try it out.
 
@@ -117,7 +121,6 @@ async function encodeVideoToFile() {
     canvas.width = config.width;
     canvas.height = config.height;
     const ctx = canvas.getContext("2d");
-    let frameCount = 0;
 
     // Example: Encode 300 frames
     for (let i = 0; i < 300; i++) {
@@ -128,7 +131,6 @@ async function encodeVideoToFile() {
       ctx.fillText(`Frame ${i + 1}`, 50, 100);
 
       await encoder.addCanvasFrame(canvas);
-      frameCount++;
     }
 
     // Example: Create a silent audio track
@@ -159,6 +161,89 @@ async function encodeVideoToFile() {
 }
 
 encodeVideoToFile();
+```
+
+### Method Chaining API (Fluent Interface)
+
+For a more modern and readable approach, you can use the new method chaining API:
+
+```typescript
+import { WebCodecsEncoder } from "webcodecs-encoder";
+
+async function encodeVideoWithMethodChaining() {
+  if (!WebCodecsEncoder.isSupported()) {
+    console.error("WebCodecs or Workers not supported.");
+    return;
+  }
+
+  const encoder = WebCodecsEncoder.create()
+    .configure({
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 2_000_000,
+      audioBitrate: 128_000,
+      sampleRate: 48000,
+      channels: 2,
+      hardwareAcceleration: 'prefer-hardware'
+    })
+    .withTotalFrames(300)
+    .onProgress((frames, total) => {
+      const percentage = total ? (frames / total) * 100 : 0;
+      console.log(`Progress: ${percentage.toFixed(1)}%`);
+    })
+    .onDetailedProgress((progress) => {
+      console.log(`Stage: ${progress.stage}, Speed: ${progress.averageProcessingFps.toFixed(1)} fps`);
+      if (progress.estimatedRemainingMs) {
+        console.log(`ETA: ${Math.round(progress.estimatedRemainingMs / 1000)}s`);
+      }
+    })
+    .onError((error) => {
+      console.error(`Encoding error [${error.type}]:`, error.message);
+    });
+
+  try {
+    await encoder.start();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+
+    // Encode frames
+    for (let i = 0; i < 300; i++) {
+      ctx.fillStyle = `hsl(${(i * 5) % 360}, 100%, 50%)`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.font = "50px Arial";
+      ctx.fillText(`Frame ${i + 1}`, 50, 100);
+
+      await encoder.addCanvasFrame(canvas);
+    }
+
+    // Add audio
+    const audioContext = new AudioContext({ sampleRate: 48000 });
+    const silentAudioBuffer = audioContext.createBuffer(2, audioContext.sampleRate * 10, audioContext.sampleRate);
+    await encoder.addAudioBuffer(silentAudioBuffer);
+
+    const result = await encoder.finish();
+    console.log("Encoding complete! Size:", result.byteLength);
+
+    // Download the file
+    const blob = new Blob([result], { type: "video/mp4" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "encoded_video.mp4";
+    a.click();
+    URL.revokeObjectURL(url);
+
+  } catch (error) {
+    console.error("Encoding failed:", error);
+  }
+}
+
+encodeVideoWithMethodChaining();
 ```
 
 ### Hardware Acceleration Preference
@@ -338,7 +423,30 @@ async function encodeVideoRealtime() {
     return;
   }
 
+  // Using traditional API
   const encoder = new WebCodecsEncoder(config);
+  
+  // Alternative: Method chaining API for real-time streaming
+  // const encoder = WebCodecsEncoder.create()
+  //   .configure(config)
+  //   .onData((chunk, offset, isHeader) => {
+  //     if (isHeader) {
+  //       console.log("MediaSource header received");
+  //     }
+  //     if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState == "open") {
+  //       try {
+  //         sourceBuffer.appendBuffer(chunk);
+  //       } catch (e) {
+  //         console.error("Error appending buffer:", e);
+  //       }
+  //     }
+  //   })
+  //   .onProgress((processedFrames) => {
+  //     console.log(`Progress (Real-time): ${processedFrames}`);
+  //   })
+  //   .onError((error) => {
+  //     console.error("Encoder error:", error);
+  //   });
 
   async function startEncoding() {
     console.log("Starting encoding process...");
@@ -422,6 +530,205 @@ await recorder.startRecording(stream);
 const result = await recorder.stopRecording();
 ```
 
+## Method Chaining API
+
+### Overview
+
+The Method Chaining API provides a fluent interface for configuring and using the WebCodecs encoder. This approach offers better readability and allows for progressive configuration building.
+
+### Quick Comparison
+
+| Traditional API | Method Chaining API |
+|-----------------|-------------------|
+| ```const encoder = new WebCodecsEncoder(config);``` | ```const encoder = WebCodecsEncoder.create()``` |
+| ```await encoder.initialize(options);``` | ```.configure(config).onProgress(callback)``` |
+| ```const result = await encoder.finalize();``` | ```await encoder.start(); const result = await encoder.finish();``` |
+
+### Factory Method
+
+#### `WebCodecsEncoder.create()`
+Creates a new encoder instance for method chaining.
+
+```typescript
+const encoder = WebCodecsEncoder.create();
+```
+
+### Configuration Methods
+
+#### `configure(config: EncoderConfig): this`
+Sets the basic encoder configuration.
+
+```typescript
+encoder.configure({
+  width: 1920,
+  height: 1080,
+  frameRate: 60,
+  videoBitrate: 8_000_000,
+  audioBitrate: 192_000,
+  container: "mp4",
+  codec: { video: "avc", audio: "aac" }
+});
+```
+
+### Callback Methods
+
+#### `onProgress(callback): this`
+Sets up basic progress monitoring.
+
+```typescript
+encoder.onProgress((processedFrames, totalFrames) => {
+  const percentage = totalFrames ? (processedFrames / totalFrames) * 100 : 0;
+  updateProgressBar(percentage);
+});
+```
+
+#### `onDetailedProgress(callback): this`
+Sets up detailed progress monitoring with processing speed, queue sizes, and time estimates.
+
+```typescript
+encoder.onDetailedProgress((progress) => {
+  console.log(`Stage: ${progress.stage}`);
+  console.log(`Speed: ${progress.averageProcessingFps.toFixed(1)} fps`);
+  console.log(`Queue: Video=${progress.videoQueueSize}, Audio=${progress.audioQueueSize}`);
+  
+  if (progress.estimatedRemainingMs) {
+    const minutes = Math.floor(progress.estimatedRemainingMs / 60000);
+    const seconds = Math.floor((progress.estimatedRemainingMs % 60000) / 1000);
+    console.log(`ETA: ${minutes}:${seconds.toString().padStart(2, '0')}`);
+  }
+});
+```
+
+#### `onError(callback): this`
+Sets up error handling.
+
+```typescript
+encoder.onError((error) => {
+  console.error(`Encoding error [${error.type}]:`, error.message);
+  showErrorToUser(error);
+});
+```
+
+#### `onData(callback): this`
+Sets up real-time data streaming (for `latencyMode: "realtime"`).
+
+```typescript
+encoder.onData((chunk, offset, isHeader, container) => {
+  if (isHeader) {
+    initializeMediaSource(chunk);
+  } else {
+    appendToMediaSource(chunk);
+  }
+});
+```
+
+### Option Methods
+
+#### `withTotalFrames(count: number): this`
+Sets the expected total frame count for progress calculation.
+
+```typescript
+encoder.withTotalFrames(1800); // 30fps × 60 seconds
+```
+
+#### `withWorker(worker: Worker): this`
+Uses a custom worker instance.
+
+```typescript
+const customWorker = new Worker('./my-encoder-worker.js');
+encoder.withWorker(customWorker);
+```
+
+#### `withWorkerScript(url: string | URL): this`
+Specifies a custom worker script URL.
+
+```typescript
+encoder.withWorkerScript('/workers/webcodecs-worker.js');
+```
+
+#### `withAudioWorklet(enabled: boolean = true): this`
+Enables AudioWorklet for lower audio latency.
+
+```typescript
+encoder.withAudioWorklet(true);
+```
+
+### Execution Methods
+
+#### `start(): Promise<this>`
+Initializes and starts the encoder (equivalent to `initialize()`).
+
+```typescript
+await encoder.start();
+// Now you can call addVideoFrame(), addCanvasFrame(), etc.
+```
+
+#### `finish(): Promise<Uint8Array | null>`
+Finalizes encoding and returns the result (equivalent to `finalize()`).
+
+```typescript
+const encodedData = await encoder.finish();
+```
+
+### Complex Example
+
+Here's an example showing advanced usage with conditional configuration:
+
+```typescript
+import { WebCodecsEncoder } from 'webcodecs-encoder';
+
+async function advancedEncoding() {
+  // Base configuration
+  let encoder = WebCodecsEncoder.create()
+    .configure({
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+      videoBitrate: 5_000_000,
+      audioBitrate: 192_000,
+      sampleRate: 48000,
+      channels: 2,
+      container: "mp4"
+    });
+
+  // Conditional configuration
+  const isHighQuality = getUserPreference('quality') === 'high';
+  if (isHighQuality) {
+    encoder = encoder.configure({
+      ...encoder.config,
+      videoBitrate: 15_000_000,
+      codec: { video: "hevc", audio: "aac" }
+    });
+  }
+
+  // Add monitoring and error handling
+  encoder = encoder
+    .withTotalFrames(estimatedFrameCount)
+    .onDetailedProgress((progress) => {
+      updateDetailedUI(progress);
+    })
+    .onError((error) => {
+      handleEncodingError(error);
+    });
+
+  // Start encoding
+  try {
+    await encoder.start();
+    
+    // Process video frames...
+    for (const frame of videoFrames) {
+      await encoder.addVideoFrame(frame);
+    }
+    
+    const result = await encoder.finish();
+    saveEncodedVideo(result);
+    
+  } catch (error) {
+    console.error('Encoding failed:', error);
+  }
+}
+```
+
 ## API
 
 - **`WebCodecsEncoder.isSupported(): boolean`**
@@ -453,11 +760,50 @@ const result = await recorder.stopRecording();
     - `videoEncoderConfig?: Partial<VideoEncoderConfig>`: (Optional) Additional codec-specific options passed to `VideoEncoder.configure`. Include `hardwareAcceleration` to prefer hardware or software encoding.
     - `audioEncoderConfig?: Partial<AudioEncoderConfig>`: (Optional) Additional settings passed to `AudioEncoder.configure`. This also accepts `hardwareAcceleration`.
 
+### Enhanced Progress Information
+
+The `onDetailedProgress` callback provides a `DetailedProgressInfo` object with comprehensive encoding statistics:
+
+```typescript
+interface DetailedProgressInfo {
+  processedFrames: number;           // Total frames processed
+  totalFrames?: number;              // Expected total frames (if provided)
+  stage: ProcessingStage;            // Current processing stage
+  elapsedTimeMs: number;             // Time elapsed since encoding started
+  estimatedRemainingMs?: number;     // Estimated time to completion
+  processingFps: number;             // Current processing speed (fps)
+  averageProcessingFps: number;      // Average processing speed (fps)
+  droppedFrames: number;             // Number of dropped frames
+  videoQueueSize: number;            // Current video encoder queue size
+  audioQueueSize: number;            // Current audio encoder queue size
+  processedDataSize: number;         // Total bytes processed so far
+}
+```
+
+### State Management
+
+The encoder maintains strict state management to prevent invalid operations:
+
+- **EncoderState**: `Idle` → `Initializing` → `Encoding` → `Finalizing` → `Disposed` (or `Error`)
+- **ProcessingStage**: `Initializing` → `VideoEncoding` → `AudioEncoding` → `Muxing` → `Finalizing`
+
+### Input Validation
+
+The encoder validates all configuration parameters at initialization time:
+
+- **Resolution**: Width and height must be between 1-7680px and 1-4320px respectively
+- **Frame Rate**: Must be between 0.1-120 fps
+- **Video Bitrate**: Must be between 100kbps-100Mbps
+- **Audio Bitrate**: Must be between 32kbps-320kbps (when audio enabled)
+- **Audio Settings**: Channels (1-8), sample rate (8kHz-192kHz)
+- **Codec Compatibility**: Validates codec/container combinations (e.g., VP9/Opus for WebM)
+
 - **`encoder.initialize(options?: WebCodecsEncoderInitializeOptions): Promise<void>`**
   Initializes the encoder and worker.
   `WebCodecsEncoderInitializeOptions`:
 
   - `onProgress?: (processedFrames: number, totalFrames?: number) => void`: Callback for encoding progress. `totalFrames` might be undefined in real-time or if not provided.
+  - `onDetailedProgress?: (progress: DetailedProgressInfo) => void`: Callback for detailed progress information including processing speed, queue sizes, estimated completion time, and current processing stage.
   - `totalFrames?: number`: Total number of video frames to be encoded. Used for progress calculation.
   - `onError?: (error: WebCodecsEncoderError) => void`: Callback for errors occurring in the worker after initialization. Receives an `WebCodecsEncoderError` object.
   - `onData?: (chunk: Uint8Array, isHeader?: boolean, container?: 'mp4' | 'webm') => void`: Callback for receiving muxed data chunks. Used when `latencyMode` is `'realtime'`. `isHeader` is true for the initial container header.
@@ -502,6 +848,48 @@ const result = await recorder.stopRecording();
   Returns the current video encoder queue size reported by the worker.
 - **`encoder.getAudioQueueSize(): number`**
   Returns the current audio encoder queue size reported by the worker.
+- **`encoder.getState(): EncoderState`**
+  Returns the current encoder state (`Idle`, `Initializing`, `Encoding`, `Finalizing`, `Disposed`, `Error`).
+- **`encoder.getCurrentStage(): ProcessingStage`**
+  Returns the current processing stage (`Initializing`, `VideoEncoding`, `AudioEncoding`, `Muxing`, `Finalizing`).
+
+### Method Chaining API Reference
+
+- **`WebCodecsEncoder.create(): WebCodecsEncoder`**
+  Creates a new encoder instance for method chaining.
+
+- **`encoder.configure(config: EncoderConfig): this`**
+  Sets the encoder configuration.
+
+- **`encoder.onProgress(callback: (processedFrames: number, totalFrames?: number) => void): this`**
+  Sets basic progress monitoring callback.
+
+- **`encoder.onDetailedProgress(callback: (progress: DetailedProgressInfo) => void): this`**
+  Sets detailed progress monitoring callback.
+
+- **`encoder.onError(callback: (error: WebCodecsEncoderError) => void): this`**
+  Sets error handling callback.
+
+- **`encoder.onData(callback: RealtimeDataCallback): this`**
+  Sets real-time data streaming callback.
+
+- **`encoder.withTotalFrames(count: number): this`**
+  Sets expected total frame count for progress calculation.
+
+- **`encoder.withWorker(worker: Worker): this`**
+  Uses a custom worker instance.
+
+- **`encoder.withWorkerScript(url: string | URL): this`**
+  Specifies custom worker script URL.
+
+- **`encoder.withAudioWorklet(enabled: boolean = true): this`**
+  Enables AudioWorklet for lower audio latency.
+
+- **`encoder.start(): Promise<this>`**
+  Initializes and starts the encoder (equivalent to `initialize()`).
+
+- **`encoder.finish(): Promise<Uint8Array | null>`**
+  Finalizes encoding and returns the result (equivalent to `finalize()`).
 
 - **`MediaStreamRecorder.isSupported(): boolean`**
   Checks if `MediaStreamTrackProcessor` and `WebCodecsEncoder` are available.

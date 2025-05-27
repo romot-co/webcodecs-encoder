@@ -1,9 +1,16 @@
-import { EncoderErrorType, WebCodecsEncoderError } from "./types";
+import {
+  EncoderErrorType,
+  WebCodecsEncoderError,
+  EncoderState,
+  ProcessingStage,
+} from "./types";
 import type {
   EncoderConfig,
   MainThreadMessage,
   WorkerMessage,
   ConnectAudioPortMessage,
+  DetailedProgressInfo,
+  DetailedProgressCallback,
 } from "./types";
 import logger from "./logger";
 
@@ -17,12 +24,101 @@ export type RealtimeDataCallback = (
 
 export interface WebCodecsEncoderInitializeOptions {
   onProgress?: (processedFrames: number, totalFrames?: number) => void;
+  onDetailedProgress?: DetailedProgressCallback;
   totalFrames?: number;
   onError?: (error: WebCodecsEncoderError) => void;
   onData?: RealtimeDataCallback;
   worker?: Worker;
   workerScriptUrl?: string | URL;
   useAudioWorklet?: boolean;
+}
+
+/**
+ * 設定値のバリデーション関数
+ */
+function validateEncoderConfig(config: EncoderConfig): void {
+  // 解像度の検証
+  if (config.width <= 0 || config.width > 7680) {
+    throw new WebCodecsEncoderError(
+      EncoderErrorType.ValidationError,
+      `Invalid width: ${config.width}. Must be between 1 and 7680 pixels.`,
+    );
+  }
+  if (config.height <= 0 || config.height > 4320) {
+    throw new WebCodecsEncoderError(
+      EncoderErrorType.ValidationError,
+      `Invalid height: ${config.height}. Must be between 1 and 4320 pixels.`,
+    );
+  }
+
+  // フレームレートの検証
+  if (config.frameRate <= 0 || config.frameRate > 120) {
+    throw new WebCodecsEncoderError(
+      EncoderErrorType.ValidationError,
+      `Invalid frameRate: ${config.frameRate}. Must be between 0.1 and 120 fps.`,
+    );
+  }
+
+  // ビットレートの検証
+  if (config.videoBitrate < 100_000 || config.videoBitrate > 100_000_000) {
+    throw new WebCodecsEncoderError(
+      EncoderErrorType.ValidationError,
+      `Invalid videoBitrate: ${config.videoBitrate}. Must be between 100kbps and 100Mbps.`,
+    );
+  }
+
+  // オーディオ設定の検証（オーディオが有効な場合）
+  if (config.audioBitrate > 0) {
+    if (config.channels <= 0 || config.channels > 8) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Invalid channels: ${config.channels}. Must be between 1 and 8.`,
+      );
+    }
+
+    if (config.sampleRate < 8000 || config.sampleRate > 192000) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Invalid sampleRate: ${config.sampleRate}. Must be between 8kHz and 192kHz.`,
+      );
+    }
+
+    if (config.audioBitrate < 32_000 || config.audioBitrate > 320_000) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Invalid audioBitrate: ${config.audioBitrate}. Must be between 32kbps and 320kbps.`,
+      );
+    }
+  }
+
+  // コーデックとコンテナの組み合わせ検証
+  const container = config.container ?? "mp4";
+  const videoCodec =
+    config.codec?.video ?? (container === "webm" ? "vp9" : "avc");
+  const audioCodec =
+    config.codec?.audio ?? (container === "webm" ? "opus" : "aac");
+
+  if (container === "webm") {
+    if (!["vp8", "vp9", "av1"].includes(videoCodec)) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Video codec '${videoCodec}' is not compatible with WebM container. Use vp8, vp9, or av1.`,
+      );
+    }
+    if (audioCodec === "aac") {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Audio codec 'aac' is not compatible with WebM container. Use opus.`,
+      );
+    }
+  } else if (container === "mp4") {
+    if (!["avc", "hevc", "av1"].includes(videoCodec)) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ValidationError,
+        `Video codec '${videoCodec}' is not compatible with MP4 container. Use avc, hevc, or av1.`,
+      );
+    }
+  }
 }
 
 export class WebCodecsEncoder {
@@ -37,6 +133,18 @@ export class WebCodecsEncoder {
   private actualVideoCodec: string | null = null;
   private actualAudioCodec: string | null = null;
 
+  // 状態管理
+  private currentState: EncoderState = EncoderState.Idle;
+  private currentStage: ProcessingStage = ProcessingStage.Initializing;
+
+  // 詳細プログレス追跡
+  private processingStartTime: number = 0;
+  private lastProgressTime: number = 0;
+  private lastProcessedFrames: number = 0;
+  private processedDataSize: number = 0;
+  private processingFpsHistory: number[] = [];
+  private readonly maxFpsHistoryLength = 10;
+
   // Callbacks for asynchronous operations
   private onInitialized: ((value: void | PromiseLike<void>) => void) | null =
     null;
@@ -48,6 +156,7 @@ export class WebCodecsEncoder {
   private onProgressCallback:
     | ((processedFrames: number, totalFrames?: number) => void)
     | null = null;
+  private onDetailedProgressCallback: DetailedProgressCallback | null = null;
   private onErrorCallback: ((error: WebCodecsEncoderError) => void) | null =
     null;
   private onDataCallback: RealtimeDataCallback | null = null; // For real-time data
@@ -59,7 +168,114 @@ export class WebCodecsEncoder {
   private audioWorkletNode: AudioWorkletNode | null = null;
   private cancelTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(config: EncoderConfig) {
+  // メソッドチェーン用の設定保持
+  private configuredWorker?: Worker;
+  private configuredWorkerScriptUrl?: string | URL;
+  private configuredUseAudioWorklet?: boolean;
+
+  constructor(config?: EncoderConfig) {
+    if (config) {
+      // 従来の使用方法: new WebCodecsEncoder(config)
+      validateEncoderConfig(config);
+
+      this.config = {
+        // Default values first
+        container: "mp4",
+        latencyMode: "quality",
+        dropFrames: false,
+        maxQueueDepth: Infinity,
+        ...config, // User-provided config overrides defaults
+        codec: {
+          // Ensure codec object exists and has defaults
+          video: config.codec?.video ?? "avc", // Use 'avc' as per type
+          audio: config.codec?.audio ?? "aac", // Use 'avc' as per type
+        },
+      };
+    } else {
+      // メソッドチェーン用: new WebCodecsEncoder().configure()
+      // 初期化は後で行う
+      this.config = {} as EncoderConfig;
+    }
+
+    // Initialize worker later, only if supported and initialize() is called.
+    // This avoids creating a worker if the class is just instantiated.
+  }
+
+  public static isSupported(): boolean {
+    return (
+      typeof VideoEncoder !== "undefined" &&
+      typeof AudioEncoder !== "undefined" &&
+      typeof Worker !== "undefined"
+    );
+  }
+
+  /**
+   * メソッドチェーン用のファクトリーメソッド
+   */
+  public static create(): WebCodecsEncoder {
+    return new WebCodecsEncoder();
+  }
+
+  /**
+   * 現在の状態を取得
+   */
+  public getState(): EncoderState {
+    return this.currentState;
+  }
+
+  /**
+   * 現在の処理ステージを取得
+   */
+  public getCurrentStage(): ProcessingStage {
+    return this.currentStage;
+  }
+
+  /**
+   * 指定された状態でのAPI呼び出しが許可されているかチェック
+   */
+  private checkStateForOperation(
+    operation: string,
+    allowedStates: EncoderState[],
+  ): void {
+    if (!allowedStates.includes(this.currentState)) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.InternalError,
+        `Cannot ${operation} in state '${this.currentState}'. Allowed states: ${allowedStates.join(", ")}`,
+      );
+    }
+  }
+
+  /**
+   * 状態を変更
+   */
+  private setState(newState: EncoderState): void {
+    logger.log(
+      `WebCodecsEncoder: State transition: ${this.currentState} -> ${newState}`,
+    );
+    this.currentState = newState;
+  }
+
+  /**
+   * 処理ステージを変更
+   */
+  private setStage(newStage: ProcessingStage): void {
+    logger.log(
+      `WebCodecsEncoder: Stage transition: ${this.currentStage} -> ${newStage}`,
+    );
+    this.currentStage = newStage;
+  }
+
+  // === メソッドチェーン用API ===
+
+  /**
+   * エンコーダーの設定を行う（メソッドチェーン用）
+   */
+  public configure(config: EncoderConfig): this {
+    this.checkStateForOperation("configure", [EncoderState.Idle]);
+
+    // 設定値のバリデーション
+    validateEncoderConfig(config);
+
     this.config = {
       // Default values first
       container: "mp4",
@@ -74,25 +290,185 @@ export class WebCodecsEncoder {
       },
     };
 
-    // Initialize worker later, only if supported and initialize() is called.
-    // This avoids creating a worker if the class is just instantiated.
+    return this;
   }
 
-  public static isSupported(): boolean {
-    return (
-      typeof VideoEncoder !== "undefined" &&
-      typeof AudioEncoder !== "undefined" &&
-      typeof Worker !== "undefined"
-    );
+  /**
+   * プログレスコールバックを設定（メソッドチェーン用）
+   */
+  public onProgress(
+    callback: (processedFrames: number, totalFrames?: number) => void,
+  ): this {
+    this.onProgressCallback = callback;
+    return this;
+  }
+
+  /**
+   * 詳細プログレスコールバックを設定（メソッドチェーン用）
+   */
+  public onDetailedProgress(callback: DetailedProgressCallback): this {
+    this.onDetailedProgressCallback = callback;
+    return this;
+  }
+
+  /**
+   * エラーコールバックを設定（メソッドチェーン用）
+   */
+  public onError(callback: (error: WebCodecsEncoderError) => void): this {
+    this.onErrorCallback = callback;
+    return this;
+  }
+
+  /**
+   * リアルタイムデータコールバックを設定（メソッドチェーン用）
+   */
+  public onData(callback: RealtimeDataCallback): this {
+    this.onDataCallback = callback;
+    return this;
+  }
+
+  /**
+   * 総フレーム数を設定（メソッドチェーン用）
+   */
+  public withTotalFrames(totalFrames: number): this {
+    this.totalFrames = totalFrames;
+    return this;
+  }
+
+  /**
+   * ワーカーを設定（メソッドチェーン用）
+   */
+  public withWorker(worker: Worker): this {
+    this.configuredWorker = worker;
+    return this;
+  }
+
+  /**
+   * ワーカースクリプトURLを設定（メソッドチェーン用）
+   */
+  public withWorkerScript(url: string | URL): this {
+    this.configuredWorkerScriptUrl = url;
+    return this;
+  }
+
+  /**
+   * AudioWorkletの使用を設定（メソッドチェーン用）
+   */
+  public withAudioWorklet(useAudioWorklet: boolean = true): this {
+    this.configuredUseAudioWorklet = useAudioWorklet;
+    return this;
+  }
+
+  /**
+   * エンコーダーを開始（メソッドチェーン用のinitialize）
+   */
+  public async start(): Promise<this> {
+    if (Object.keys(this.config).length === 0) {
+      throw new WebCodecsEncoderError(
+        EncoderErrorType.ConfigurationError,
+        "Configuration not set. Call configure() before start().",
+      );
+    }
+
+    const options: WebCodecsEncoderInitializeOptions = {
+      onProgress: this.onProgressCallback || undefined,
+      onDetailedProgress: this.onDetailedProgressCallback || undefined,
+      totalFrames: this.totalFrames,
+      onError: this.onErrorCallback || undefined,
+      onData: this.onDataCallback || undefined,
+      worker: this.configuredWorker,
+      workerScriptUrl: this.configuredWorkerScriptUrl,
+      useAudioWorklet: this.configuredUseAudioWorklet,
+    };
+
+    await this.initialize(options);
+    return this;
+  }
+
+  /**
+   * エンコーダーを終了（メソッドチェーン用のfinalize）
+   */
+  public async finish(): Promise<Uint8Array | null> {
+    return this.finalize();
+  }
+
+  /**
+   * 詳細プログレス情報を計算
+   */
+  private calculateDetailedProgress(): DetailedProgressInfo {
+    const currentTime = Date.now();
+    const elapsedTimeMs = currentTime - this.processingStartTime;
+
+    // 現在の処理速度を計算
+    let processingFps = 0;
+    if (this.lastProgressTime > 0) {
+      const timeDiff = currentTime - this.lastProgressTime;
+      const framesDiff =
+        this.processedFramesInternal - this.lastProcessedFrames;
+      if (timeDiff > 0) {
+        processingFps = (framesDiff / timeDiff) * 1000;
+      }
+    }
+
+    // FPS履歴を更新
+    if (processingFps > 0) {
+      this.processingFpsHistory.push(processingFps);
+      if (this.processingFpsHistory.length > this.maxFpsHistoryLength) {
+        this.processingFpsHistory.shift();
+      }
+    }
+
+    // 平均処理速度を計算
+    const averageProcessingFps =
+      this.processingFpsHistory.length > 0
+        ? this.processingFpsHistory.reduce((a, b) => a + b, 0) /
+          this.processingFpsHistory.length
+        : 0;
+
+    // 推定残り時間を計算
+    let estimatedRemainingMs: number | undefined;
+    if (this.totalFrames && averageProcessingFps > 0) {
+      const remainingFrames = this.totalFrames - this.processedFramesInternal;
+      estimatedRemainingMs = (remainingFrames / averageProcessingFps) * 1000;
+    }
+
+    // 進捗情報を更新
+    this.lastProgressTime = currentTime;
+    this.lastProcessedFrames = this.processedFramesInternal;
+
+    return {
+      processedFrames: this.processedFramesInternal,
+      totalFrames: this.totalFrames,
+      stage: this.currentStage,
+      elapsedTimeMs,
+      estimatedRemainingMs,
+      processingFps,
+      averageProcessingFps,
+      droppedFrames: this.droppedFramesInternal,
+      videoQueueSize: this.videoQueueSizeInternal,
+      audioQueueSize: this.audioQueueSizeInternal,
+      processedDataSize: this.processedDataSize,
+    };
   }
 
   public async initialize(
     options?: WebCodecsEncoderInitializeOptions,
   ): Promise<void> {
+    this.checkStateForOperation("initialize", [
+      EncoderState.Idle,
+      EncoderState.Error,
+    ]);
+    this.setState(EncoderState.Initializing);
+    this.setStage(ProcessingStage.Initializing);
+
     this.onErrorCallback = options?.onError || null;
     this.onProgressCallback = options?.onProgress || null;
+    this.onDetailedProgressCallback = options?.onDetailedProgress || null;
     this.onDataCallback = options?.onData || null; // Store onData callback
     this.totalFrames = options?.totalFrames;
+
+    // 処理開始時間を記録
+    this.processingStartTime = Date.now();
 
     if (this.config.latencyMode === "realtime" && !this.onDataCallback) {
       const err = new WebCodecsEncoderError(
@@ -416,6 +792,8 @@ self.postMessage({
 
     switch (message.type) {
       case "initialized":
+        this.setState(EncoderState.Encoding);
+        this.setStage(ProcessingStage.VideoEncoding);
         this.actualVideoCodec = message.actualVideoCodec ?? null;
         this.actualAudioCodec = message.actualAudioCodec ?? null;
         this.onInitialized?.();
@@ -429,6 +807,18 @@ self.postMessage({
           this.processedFramesInternal,
           message.totalFrames,
         );
+
+        // 詳細プログレス情報も送信
+        if (this.onDetailedProgressCallback) {
+          const detailedProgress = this.calculateDetailedProgress();
+          this.onDetailedProgressCallback(detailedProgress);
+        }
+        break;
+      case "detailedProgress":
+        // ワーカーから直接詳細プログレス情報を受信した場合
+        if (this.onDetailedProgressCallback) {
+          this.onDetailedProgressCallback(message.progress);
+        }
         break;
       case "queueSize":
         this.videoQueueSizeInternal = message.videoQueueSize;
@@ -437,6 +827,7 @@ self.postMessage({
       case "dataChunk": // Handle real-time data chunks
         if (this.config.latencyMode === "realtime" && this.onDataCallback) {
           const { chunk, isHeader, container } = message;
+          this.processedDataSize += chunk.byteLength;
           this.onDataCallback(chunk, undefined, isHeader, container);
         } else if (
           this.onDataCallback &&
@@ -455,6 +846,7 @@ self.postMessage({
         break;
       case "finalized":
         this.clearCancelTimeout();
+        this.setState(EncoderState.Disposed);
         if (this.config.latencyMode === "realtime") {
           // Realtime mode: finalize() resolves with null if worker sends null,
           // or with an empty Uint8Array if worker sends empty (e.g. for header-only)
@@ -465,6 +857,7 @@ self.postMessage({
         } else {
           // Non-realtime mode
           if (message.output !== null) {
+            this.processedDataSize = message.output.byteLength;
             this.onFinalizedPromise?.resolve(message.output);
           } else {
             // This case should ideally not happen: null output in non-realtime mode.
@@ -485,6 +878,7 @@ self.postMessage({
         break;
       case "error":
         this.clearCancelTimeout();
+        this.setState(EncoderState.Error);
         const err = new WebCodecsEncoderError(
           message.errorDetail.type,
           message.errorDetail.message,
@@ -497,6 +891,7 @@ self.postMessage({
         break;
       case "cancelled":
         this.clearCancelTimeout();
+        this.setState(EncoderState.Disposed);
         logger.log("WebCodecsEncoder: Cancelled by worker.");
         const cancelErrWorker = new WebCodecsEncoderError(
           EncoderErrorType.Cancelled,
@@ -529,6 +924,8 @@ self.postMessage({
     frameSource: VideoFrame,
     timestampOverride?: number,
   ): Promise<void> {
+    this.checkStateForOperation("add video frame", [EncoderState.Encoding]);
+
     if (!this.worker || this.isCancelled) {
       const err = new WebCodecsEncoderError(
         this.isCancelled
@@ -609,6 +1006,8 @@ self.postMessage({
   }
 
   public async addAudioBuffer(audioBuffer: AudioBuffer): Promise<void> {
+    this.checkStateForOperation("add audio buffer", [EncoderState.Encoding]);
+
     if (!this.worker || this.isCancelled) {
       const err = new WebCodecsEncoderError(
         this.isCancelled
@@ -681,6 +1080,8 @@ self.postMessage({
   }
 
   public async addAudioData(audioData: AudioData): Promise<void> {
+    this.checkStateForOperation("add audio data", [EncoderState.Encoding]);
+
     if (!this.worker || this.isCancelled) {
       const err = new WebCodecsEncoderError(
         this.isCancelled
@@ -755,6 +1156,10 @@ self.postMessage({
   }
 
   public finalize(): Promise<Uint8Array | null> {
+    this.checkStateForOperation("finalize", [EncoderState.Encoding]);
+    this.setState(EncoderState.Finalizing);
+    this.setStage(ProcessingStage.Finalizing);
+
     if (this.isCancelled) {
       // isCancelled を先にチェック
       const err = new WebCodecsEncoderError(
@@ -858,6 +1263,11 @@ self.postMessage({
     this.videoQueueSizeInternal = 0;
     this.audioQueueSizeInternal = 0;
     this.isCancelled = true; // Ensure isCancelled is true after cleanup
+
+    // 状態をDisposedに設定（エラー状態でない場合のみ）
+    if (this.currentState !== EncoderState.Error) {
+      this.setState(EncoderState.Disposed);
+    }
   }
 
   // Specific cleanup for errors to avoid double-terminating if worker itself errored.

@@ -121,8 +121,8 @@ describe("MediaStreamRecorder", () => {
     width: 320,
     height: 240,
     frameRate: 30,
-    videoBitrate: 1,
-    audioBitrate: 1,
+    videoBitrate: 1000000,
+    audioBitrate: 128000,
     sampleRate: 48000,
     channels: 2,
   };

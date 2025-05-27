@@ -79,8 +79,8 @@ const baseConfig: EncoderConfig = {
   width: 320,
   height: 240,
   frameRate: 30,
-  videoBitrate: 1000,
-  audioBitrate: 64,
+  videoBitrate: 1000000,
+  audioBitrate: 64000,
   sampleRate: 48000,
   channels: 2,
   // codec is optional, let tests specify it or rely on defaults in Mp4MuxerWrapper
