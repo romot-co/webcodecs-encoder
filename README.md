@@ -90,6 +90,21 @@ The encoder automatically tries these locations:
 3. Package worker file (fallback, may require CORS setup)
 4. Inline helper (shows setup instructions if above fail)
 
+## Setup for Vite/PWA projects
+
+If you're bundling your application with tools like **Vite**, **Webpack**, or **Rollup**, you can let the bundler resolve the worker file directly instead of copying it manually. Construct the worker URL using `import.meta.url`:
+
+```ts
+const workerUrl = new URL(
+  './node_modules/webcodecs-encoder/dist/worker.js',
+  import.meta.url
+).toString();
+
+await encoder.initialize({ workerScriptUrl: workerUrl });
+```
+
+This allows your bundler to include the worker script in the build and serve it correctly without any manual steps.
+
 ## Basic Usage
 
 ### Traditional API (Constructor-based)
