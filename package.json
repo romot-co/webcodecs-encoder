@@ -5,7 +5,7 @@
   "homepage": "https://github.com/romot-co/webcodecs-encoder",
   "repository": {
     "type": "git",
-    "url": "https://github.com/romot-co/webcodecs-encoder.git"
+    "url": "git+https://github.com/romot-co/webcodecs-encoder.git"
   },
   "bugs": {
     "url": "https://github.com/romot-co/webcodecs-encoder/issues"
