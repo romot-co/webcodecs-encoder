@@ -1,6 +1,6 @@
 {
   "name": "webcodecs-encoder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers with real-time streaming support.",
   "homepage": "https://github.com/romot-co/webcodecs-encoder",
   "repository": {
