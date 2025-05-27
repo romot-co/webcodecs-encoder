@@ -52,6 +52,10 @@ function safeCopy(source, destination) {
 
 // Main installation logic
 function installWorker() {
+  if (process.env.WEB_CODECS_ENCODER_SKIP_COPY) {
+    console.log('WEB_CODECS_ENCODER_SKIP_COPY is set, skipping worker copy.');
+    return;
+  }
   // Check if we're being run from within node_modules via package path
   const cwd = process.cwd();
   const packagePath = packageRoot;

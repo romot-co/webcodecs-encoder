@@ -41,6 +41,8 @@ yarn add webcodecs-encoder
 
 Running `npm install` will automatically run the `postinstall` script, applying a patch to `@types/dom-webcodecs` via `patch-package`. This patch restores the `AudioSampleFormat` type that is commented out in the published definitions.
 
+The same `postinstall` script also tries to copy the Web Worker and AudioWorklet files into a `public/` directory. If your environment disables lifecycle scripts (for example using `--ignore-scripts` or Yarn Plug'n'Play), this step won't run. In that case you can copy `node_modules/webcodecs-encoder/dist/worker.js` and `node_modules/webcodecs-encoder/dist/audio-worklet-processor.js` to your public folder manually or run `node scripts/postinstall.js` yourself. Set the environment variable `WEB_CODECS_ENCODER_SKIP_COPY=1` before installing to disable the automatic copy.
+
 ## ✨ Zero-Config Setup (Automatic)
 
 The package automatically attempts to copy the worker file to your `public/` directory during installation. In most cases, no additional setup is required!
@@ -63,6 +65,10 @@ If automatic setup didn't work or you need custom configuration:
 # Copy to your public directory
 cp node_modules/webcodecs-encoder/dist/worker.js public/webcodecs-worker.js
 ```
+
+### Disable Automatic Worker Copy
+
+Set `WEB_CODECS_ENCODER_SKIP_COPY=1` before installation if you want to skip the copy performed by the `postinstall` script.
 
 ### Or Specify Custom Worker URL
 
