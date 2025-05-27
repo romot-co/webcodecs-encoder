@@ -64,6 +64,16 @@ If automatic setup didn't work or you need custom configuration:
 cp node_modules/webcodecs-encoder/dist/worker.js public/webcodecs-worker.js
 ```
 
+```cmd
+# Windows equivalent
+copy node_modules\webcodecs-encoder\dist\worker.js public\webcodecs-worker.js
+```
+
+```bash
+# Cross-platform Node script (requires fs-extra)
+node -e "require('fs-extra').copySync('node_modules/webcodecs-encoder/dist/worker.js', 'public/webcodecs-worker.js')"
+```
+
 ### Or Specify Custom Worker URL
 
 ```typescript
