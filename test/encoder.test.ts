@@ -468,10 +468,6 @@ describe("WebCodecsEncoder", () => {
       const initPromise = encoder.initialize({ onProgress });
       if (mockWorkerInstance.onmessage) {
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
-      } else {
-        console.warn(
-          "mockWorkerInstance.onmessage was not set for 'onProgress' test initialization",
-        );
       }
       await initPromise;
 
@@ -642,7 +638,7 @@ describe("WebCodecsEncoder", () => {
     it("should propagate errors from worker postMessage if it throws", async () => {
       const encoder = new WebCodecsEncoder(baseVideoConfig);
       const onError = vi.fn();
-      const initPromise = encoder.initialize({ onError: onError });
+      const initPromise = encoder.initialize({ onError });
       if (typeof mockWorkerInstance.onmessage === "function") {
         mockWorkerInstance.onmessage({ data: { type: "initialized" } });
       }
@@ -1655,6 +1651,756 @@ describe("WebCodecsEncoder", () => {
       const ctxInstance = AudioContextMock.mock.results[0].value;
       expect(ctxInstance.close).toHaveBeenCalled();
       delete (globalThis as any).AudioContext;
+    });
+  });
+
+  describe("Input Validation", () => {
+    it("should reject invalid width values", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 0,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid width: 0. Must be between 1 and 7680 pixels.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 8000,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid width: 8000. Must be between 1 and 7680 pixels.");
+    });
+
+    it("should reject invalid height values", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 0,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid height: 0. Must be between 1 and 4320 pixels.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 5000,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid height: 5000. Must be between 1 and 4320 pixels.");
+    });
+
+    it("should reject invalid frameRate values", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 0,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid frameRate: 0. Must be between 0.1 and 120 fps.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 150,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid frameRate: 150. Must be between 0.1 and 120 fps.");
+    });
+
+    it("should reject invalid videoBitrate values", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 50000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid videoBitrate: 50000. Must be between 100kbps and 100Mbps.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 200000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid videoBitrate: 200000000. Must be between 100kbps and 100Mbps.");
+    });
+
+    it("should reject invalid audio configuration values", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 0,
+        });
+      }).toThrow("Invalid channels: 0. Must be between 1 and 8.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 10,
+        });
+      }).toThrow("Invalid channels: 10. Must be between 1 and 8.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 5000,
+          channels: 2,
+        });
+      }).toThrow("Invalid sampleRate: 5000. Must be between 8kHz and 192kHz.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 20000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid audioBitrate: 20000. Must be between 32kbps and 320kbps.");
+    });
+
+    it("should reject invalid codec/container combinations", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+          container: "webm",
+          codec: { video: "avc", audio: "opus" },
+        });
+      }).toThrow("Video codec 'avc' is not compatible with WebM container. Use vp8, vp9, or av1.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+          container: "webm",
+          codec: { video: "vp9", audio: "aac" },
+        });
+      }).toThrow("Audio codec 'aac' is not compatible with WebM container. Use opus.");
+
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+          container: "mp4",
+          codec: { video: "vp9", audio: "aac" },
+        });
+      }).toThrow("Video codec 'vp9' is not compatible with MP4 container. Use avc, hevc, or av1.");
+    });
+
+    it("should allow audio bitrate of 0 (audio disabled)", () => {
+      expect(() => {
+        new WebCodecsEncoder({
+          width: 1280,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 0,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).not.toThrow();
+    });
+  });
+
+  describe("Method Chaining API", () => {
+    let chainConfig: EncoderConfig;
+    
+    beforeEach(() => {
+      chainConfig = {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
+        sampleRate: 48000,
+        channels: 2,
+      };
+    });
+
+    it("should create encoder with factory method", () => {
+      const encoder = WebCodecsEncoder.create();
+      expect(encoder).toBeInstanceOf(WebCodecsEncoder);
+      expect(encoder.getState()).toBe("idle");
+    });
+
+    it("should throw error if start() called without configure()", async () => {
+      const encoder = WebCodecsEncoder.create();
+      await expect(encoder.start()).rejects.toThrow(
+        "Configuration not set. Call configure() before start()."
+      );
+    });
+
+    it("should configure encoder with method chaining", () => {
+      const encoder = WebCodecsEncoder.create().configure(chainConfig);
+      expect(encoder.getState()).toBe("idle");
+    });
+
+    it("should chain configuration methods", () => {
+      const encoder = WebCodecsEncoder.create()
+        .configure(chainConfig)
+        .withTotalFrames(100)
+        .onProgress(() => { /* progress callback */ })
+        .onError(() => { /* error callback */ })
+        .onData(() => { /* data callback */ })
+        .withAudioWorklet(true);
+
+      expect(encoder).toBeInstanceOf(WebCodecsEncoder);
+    });
+
+    it("should validate configuration in configure() method", () => {
+      const encoder = WebCodecsEncoder.create();
+      expect(() => {
+        encoder.configure({
+          width: 0,
+          height: 720,
+          frameRate: 30,
+          videoBitrate: 1000000,
+          audioBitrate: 128000,
+          sampleRate: 48000,
+          channels: 2,
+        });
+      }).toThrow("Invalid width: 0. Must be between 1 and 7680 pixels.");
+    });
+
+    it("should not allow configure() in non-idle state", () => {
+      const encoder = WebCodecsEncoder.create().configure(chainConfig);
+      
+      // Manually set state to simulate non-idle state without async operations
+      (encoder as any).currentState = "encoding";
+
+      expect(() => {
+        encoder.configure(chainConfig);
+      }).toThrow("Cannot configure in state 'encoding'. Allowed states: idle");
+    });
+  });
+
+  describe("State Management", () => {
+    it("should get current state and stage", () => {
+      const config = {
+        width: 1280,
+        height: 720,
+        frameRate: 30,
+        videoBitrate: 1000000,
+        audioBitrate: 128000,
+        sampleRate: 48000,
+        channels: 2,
+      };
+      const encoder = new WebCodecsEncoder(config);
+      expect(encoder.getState()).toBe("idle");
+      expect(encoder.getCurrentStage()).toBe("initializing");
+    });
+  });
+
+  describe("Method Chaining API Advanced", () => {
+    const chainConfig: EncoderConfig = {
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should handle start() and finish() methods", async () => {
+      const encoder = WebCodecsEncoder.create()
+        .configure(chainConfig)
+        .withTotalFrames(100);
+
+      const startPromise = encoder.start();
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      const startedEncoder = await startPromise;
+      expect(startedEncoder).toBe(encoder);
+
+      mockWorkerInstance.postMessage.mockClear();
+      const finishPromise = encoder.finish();
+      
+      const mockOutput = new Uint8Array([1, 2, 3]);
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: { type: "finalized", output: mockOutput },
+        });
+      }
+
+      const result = await finishPromise;
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+        type: "finalize",
+      });
+      expect(result).toEqual(mockOutput);
+    });
+
+    it("should handle method chaining with all options", () => {
+      const encoder = WebCodecsEncoder.create()
+        .configure(chainConfig)
+        .withTotalFrames(100)
+        .onProgress(() => { /* progress callback */ })
+        .onDetailedProgress(() => { /* detailed progress callback */ })
+        .onError(() => { /* error callback */ })
+        .onData(() => { /* data callback */ })
+        .withAudioWorklet(true)
+        .withWorkerScript("/custom-worker.js");
+
+      expect(encoder).toBeInstanceOf(WebCodecsEncoder);
+      // Test that internal state was set correctly
+      expect((encoder as any).totalFrames).toBe(100);
+      expect((encoder as any).onProgressCallback).toBeDefined();
+      expect((encoder as any).onDetailedProgressCallback).toBeDefined();
+      expect((encoder as any).onErrorCallback).toBeDefined();
+      expect((encoder as any).onDataCallback).toBeDefined();
+      expect((encoder as any).configuredUseAudioWorklet).toBe(true);
+      expect((encoder as any).configuredWorkerScriptUrl).toBe("/custom-worker.js");
+    });
+  });
+
+  describe("Detailed Progress Monitoring", () => {
+    const config: EncoderConfig = {
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should call onDetailedProgress callback with comprehensive information", async () => {
+      let detailedProgress: any = null;
+      const encoder = new WebCodecsEncoder(config);
+      
+      const initPromise = encoder.initialize({
+        totalFrames: 100,
+        onDetailedProgress: (progress) => {
+          detailedProgress = progress;
+        },
+      });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Simulate progress message
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "progress",
+            processedFrames: 25,
+            totalFrames: 100,
+          },
+        });
+      }
+
+      expect(detailedProgress).toBeTruthy();
+      expect(detailedProgress.processedFrames).toBe(25);
+      expect(detailedProgress.totalFrames).toBe(100);
+      expect(detailedProgress.stage).toBe("video-encoding");
+      expect(typeof detailedProgress.elapsedTimeMs).toBe("number");
+      expect(typeof detailedProgress.processingFps).toBe("number");
+      expect(typeof detailedProgress.averageProcessingFps).toBe("number");
+      expect(typeof detailedProgress.droppedFrames).toBe("number");
+      expect(typeof detailedProgress.videoQueueSize).toBe("number");
+      expect(typeof detailedProgress.audioQueueSize).toBe("number");
+      expect(typeof detailedProgress.processedDataSize).toBe("number");
+    });
+
+    it("should handle direct detailed progress message from worker", async () => {
+      let detailedProgress: any = null;
+      const encoder = new WebCodecsEncoder(config);
+      
+      const initPromise = encoder.initialize({
+        onDetailedProgress: (progress) => {
+          detailedProgress = progress;
+        },
+      });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Simulate detailed progress message directly from worker
+      const mockDetailedProgress = {
+        processedFrames: 50,
+        totalFrames: 100,
+        stage: "audio-encoding",
+        elapsedTimeMs: 1000,
+        processingFps: 30,
+        averageProcessingFps: 25,
+        droppedFrames: 2,
+        videoQueueSize: 5,
+        audioQueueSize: 3,
+        processedDataSize: 1024,
+      };
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "detailedProgress",
+            progress: mockDetailedProgress,
+          },
+        });
+      }
+
+      expect(detailedProgress).toEqual(mockDetailedProgress);
+    });
+
+    it("should track queue sizes from worker messages", async () => {
+      const encoder = new WebCodecsEncoder(config);
+      const initPromise = encoder.initialize();
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      expect(encoder.getVideoQueueSize()).toBe(0);
+      expect(encoder.getAudioQueueSize()).toBe(0);
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "queueSize",
+            videoQueueSize: 5,
+            audioQueueSize: 3,
+          },
+        });
+      }
+
+      expect(encoder.getVideoQueueSize()).toBe(5);
+      expect(encoder.getAudioQueueSize()).toBe(3);
+    });
+  });
+
+  describe("AudioWorklet Integration", () => {
+    const config: EncoderConfig = {
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should setup AudioWorklet with custom script and MessageChannel", async () => {
+      const mockAudioContext = {
+        audioWorklet: { 
+          addModule: vi.fn(() => Promise.resolve()) 
+        },
+        close: vi.fn(),
+      };
+      const mockAudioWorkletNode = {
+        port: { postMessage: vi.fn() },
+        disconnect: vi.fn(),
+      };
+
+      globalThis.AudioContext = vi.fn(() => mockAudioContext) as any;
+      globalThis.AudioWorkletNode = vi.fn(() => mockAudioWorkletNode) as any;
+      globalThis.MessageChannel = vi.fn(() => ({
+        port1: { postMessage: vi.fn() },
+        port2: { postMessage: vi.fn() },
+      })) as any;
+
+      // Mock fetch to return a successful response for AudioWorklet script
+      (globalThis.fetch as any).mockImplementationOnce(() => 
+        Promise.resolve({ ok: true, status: 200 })
+      );
+
+      const encoder = new WebCodecsEncoder(config);
+      const initPromise = encoder.initialize({ useAudioWorklet: true });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      expect(globalThis.AudioContext).toHaveBeenCalledWith({
+        sampleRate: config.sampleRate,
+      });
+      expect(mockAudioContext.audioWorklet.addModule).toHaveBeenCalled();
+      expect(globalThis.AudioWorkletNode).toHaveBeenCalledWith(
+        mockAudioContext,
+        "encoder-audio-worklet",
+        { numberOfInputs: 1, numberOfOutputs: 0 }
+      );
+      expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "connectAudioPort" }),
+        expect.arrayContaining([expect.anything()])
+      );
+
+      expect(encoder.getAudioWorkletNode()).toBe(mockAudioWorkletNode);
+
+      // Cleanup
+      delete (globalThis as any).AudioContext;
+      delete (globalThis as any).AudioWorkletNode;
+      delete (globalThis as any).MessageChannel;
+    });
+
+    it("should handle AudioWorkletNode not defined", async () => {
+      const mockAudioContext = {
+        audioWorklet: { addModule: vi.fn(() => Promise.resolve()) },
+        close: vi.fn(),
+      };
+      globalThis.AudioContext = vi.fn(() => mockAudioContext) as any;
+      // AudioWorkletNode is deliberately not defined
+
+      const encoder = new WebCodecsEncoder(config);
+      
+      await expect(
+        encoder.initialize({ useAudioWorklet: true })
+      ).rejects.toThrow("Failed to initialize worker");
+
+      delete (globalThis as any).AudioContext;
+    });
+  });
+
+  describe("Error Handling Edge Cases", () => {
+    const config: EncoderConfig = {
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should handle unknown worker message types gracefully", async () => {
+      const consoleWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      
+      const encoder = new WebCodecsEncoder(config);
+      const initPromise = encoder.initialize();
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Send unknown message type
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: { type: "unknownMessage" } as any,
+        });
+      }
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "WebCodecsEncoder: Unknown message from worker:",
+        { type: "unknownMessage" }
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("should handle worker initialization timeout", async () => {
+      const encoder = new WebCodecsEncoder(config);
+      const onError = vi.fn();
+
+      const initPromise = encoder.initialize({ onError });
+      
+      // Don't send initialized message to simulate timeout
+      // Instead, send an error after some time
+      setTimeout(() => {
+        if (mockWorkerInstance.onmessage) {
+          mockWorkerInstance.onmessage({
+            data: {
+              type: "error",
+              errorDetail: {
+                type: EncoderErrorType.InitializationFailed,
+                message: "Initialization timeout",
+                stack: null,
+              },
+            },
+          });
+        }
+      }, 10);
+
+      await expect(initPromise).rejects.toThrow("Initialization timeout");
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: EncoderErrorType.InitializationFailed,
+          message: "Initialization timeout",
+        })
+      );
+    });
+
+    it("should handle cancel timeout gracefully", async () => {
+      vi.useFakeTimers();
+      
+      const encoder = new WebCodecsEncoder(config);
+      const initPromise = encoder.initialize();
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Cancel without worker responding
+      encoder.cancel();
+      
+      // Fast-forward time to trigger timeout
+      vi.advanceTimersByTime(6000);
+      
+      expect(mockWorkerInstance.terminate).toHaveBeenCalled();
+      
+      vi.useRealTimers();
+    });
+  });
+
+  describe("Data Processing Edge Cases", () => {
+    const config: EncoderConfig = {
+      width: 1280,
+      height: 720,
+      frameRate: 30,
+      videoBitrate: 1000000,
+      audioBitrate: 128000,
+      sampleRate: 48000,
+      channels: 2,
+    };
+
+    it("should handle data chunk processing in realtime mode", async () => {
+      const realtimeConfig = { ...config, latencyMode: "realtime" as const };
+      const onDataCallback = vi.fn();
+      
+      const encoder = new WebCodecsEncoder(realtimeConfig);
+      const initPromise = encoder.initialize({ onData: onDataCallback });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Test data chunk with container info
+      const dataChunk = new Uint8Array([1, 2, 3, 4]);
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "dataChunk",
+            chunk: dataChunk,
+            isHeader: true,
+            container: "mp4",
+          },
+        });
+      }
+
+      expect(onDataCallback).toHaveBeenCalledWith(
+        dataChunk,
+        undefined,
+        true,
+        "mp4"
+      );
+
+      // Test processed data size tracking
+      expect((encoder as any).processedDataSize).toBe(dataChunk.byteLength);
+    });
+
+    it("should ignore data chunks when not in realtime mode", async () => {
+      const onDataCallback = vi.fn();
+      
+      const encoder = new WebCodecsEncoder(config);
+      const initPromise = encoder.initialize({ onData: onDataCallback });
+
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({ data: { type: "initialized" } });
+      }
+      await initPromise;
+
+      // Send data chunk in quality mode
+      const dataChunk = new Uint8Array([1, 2, 3, 4]);
+      if (mockWorkerInstance.onmessage) {
+        mockWorkerInstance.onmessage({
+          data: {
+            type: "dataChunk",
+            chunk: dataChunk,
+            isHeader: false,
+            container: "mp4",
+          },
+        });
+      }
+
+      // onDataCallback should not be called in quality mode
+      expect(onDataCallback).not.toHaveBeenCalled();
+    });
+
+    it("should warn when receiving data chunks in realtime mode without callback", async () => {
+      const consoleWarnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const realtimeConfig = { ...config, latencyMode: "realtime" as const };
+      
+      const encoder = new WebCodecsEncoder(realtimeConfig);
+      
+      // Initialize without onData callback - this should fail at initialization
+      await expect(
+        encoder.initialize({})
+      ).rejects.toThrow("onData callback must be provided when latencyMode is 'realtime'");
+
+      consoleWarnSpy.mockRestore();
     });
   });
 });
