@@ -2,6 +2,9 @@
 
 A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers.
 
+> **⚠️ Pre-Release Notice**  
+> This library is currently in **pre-release** status (v0.1.0). While functional and tested, the API may change before reaching v1.0.0. We recommend testing thoroughly in your specific use case and pinning to the exact version until the stable release.
+
 ## Features
 
 - Encodes `VideoFrame` to H.264/AVC, VP9, or AV1 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
