@@ -967,6 +967,15 @@ variable bitrate (VBR). Starting with Chrome 119, CBR handling in the
 - Lint: `npm run lint`
 - Format: `npm run format`
 
+## Acknowledgments
+
+This library is built on top of excellent open-source libraries:
+
+- **[mp4-muxer](https://github.com/Vanilagy/mp4-muxer)** by Vanilagy - A powerful JavaScript library for creating MP4 files in the browser
+- **[webm-muxer](https://github.com/Vanilagy/webm-muxer)** by Vanilagy - A WebAssembly-based WebM muxer for browser environments
+
+Special thanks to the developers of these foundational libraries that make webcodecs-encoder possible.
+
 ## License
 
 MIT

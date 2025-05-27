@@ -1,7 +1,7 @@
 {
   "name": "webcodecs-encoder",
   "version": "0.1.0",
-  "description": "Encode video (H.264) and audio (AAC) using WebCodecs and mux into an MP4/WebM container.",
+  "description": "A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers with real-time streaming support.",
   "homepage": "https://github.com/romot-co/webcodecs-encoder",
   "repository": {
     "type": "git",
@@ -39,14 +39,21 @@
   "keywords": [
     "webcodecs",
     "mp4",
+    "webm",
     "aac",
+    "opus",
     "h264",
+    "vp9",
+    "av1",
     "encoder",
     "muxer",
     "video",
-    "audio"
+    "audio",
+    "streaming",
+    "browser",
+    "typescript"
   ],
-  "author": "",
+  "author": "Romot",
   "license": "MIT",
   "dependencies": {
     "mp4-muxer": "^2.0.2",
