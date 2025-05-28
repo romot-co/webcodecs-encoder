@@ -7,6 +7,10 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 
 ## Features
 
+- **New Function-First API**: Simplified interface with `encode()`, `encodeStream()`, and `canEncode()` functions for zero-config usage.
+- **Multiple Video Sources**: Support for Frame arrays, AsyncIterable, MediaStream, and VideoFile inputs.
+- **Quality Presets**: Simple `low`, `medium`, `high`, `lossless` presets with automatic bitrate calculation.
+- **Automatic Configuration**: Intelligent inference of resolution, frame rate, and codec settings from input.
 - Encodes `VideoFrame` to H.264/AVC, VP9, or AV1 video. Use `addCanvasFrame` to pass a `HTMLCanvasElement` or `OffscreenCanvas` directly.
 - Encodes `AudioBuffer` to AAC or Opus audio.
 - Muxes encoded video and audio into standard MP4 or WebM files.
@@ -116,6 +120,198 @@ await encoder.initialize({ workerScriptUrl: workerUrl });
 This allows your bundler to include the worker script in the build and serve it correctly without any manual steps.
 
 ## Basic Usage
+
+### New Function-First API (Recommended) ✨
+
+The new function-first API provides a simplified interface with automatic configuration and progressive enhancement. Perfect for most use cases with minimal setup.
+
+#### Core Functions
+
+- **`encode(source, options?)`** - Encode video to MP4/WebM file
+- **`encodeStream(source, options?)`** - Stream encoding with real-time chunks
+- **`canEncode(options?)`** - Check codec/configuration support
+
+#### Quick Start
+
+```typescript
+import { encode, encodeStream, canEncode } from 'webcodecs-encoder';
+
+// Simple encoding with automatic configuration
+const mp4 = await encode(frames, { quality: 'medium' });
+
+// Stream encoding for real-time applications
+for await (const chunk of encodeStream(stream, { quality: 'high' })) {
+  // Send chunk to MediaSource or server
+}
+
+// Check browser support
+const supported = await canEncode({ quality: 'high', video: { codec: 'avc' } });
+```
+
+#### Supported Video Sources
+
+The function-first API supports multiple video input types:
+
+```typescript
+// 1. Frame Array - Static video from image data
+const frames = [/* ImageData, VideoFrame, Canvas objects */];
+const mp4 = await encode(frames, { quality: 'medium' });
+
+// 2. AsyncIterable - Dynamic frame generation
+async function* generateFrames() {
+  for (let i = 0; i < 100; i++) {
+    const canvas = createAnimationFrame(i);
+    yield canvas;
+  }
+}
+const mp4 = await encode(generateFrames(), { frameRate: 30 });
+
+// 3. MediaStream - Direct camera/screen capture
+const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+const mp4 = await encode(stream, { quality: 'high', duration: 10 }); // 10 seconds
+
+// 4. VideoFile - Re-encode existing video files
+const videoFile = { file: selectedFile, type: 'video/mp4' };
+const mp4 = await encode(videoFile, { quality: 'medium', width: 1280 });
+```
+
+#### Quality Presets
+
+Use simple quality presets instead of complex bitrate calculations:
+
+```typescript
+// Quality presets with automatic bitrate calculation
+const options = {
+  quality: 'low',     // 0.05x pixel bitrate - mobile/preview
+  quality: 'medium',  // 0.1x pixel bitrate - standard web
+  quality: 'high',    // 0.2x pixel bitrate - high quality
+  quality: 'lossless' // 0.5x pixel bitrate - maximum quality
+};
+
+// Example: 1920x1080@30fps with 'high' quality = ~12.4 Mbps video
+const mp4 = await encode(frames, { quality: 'high', frameRate: 30 });
+```
+
+#### Automatic Configuration
+
+The API automatically infers settings from your content:
+
+```typescript
+// Minimal configuration - everything else is automatic
+const mp4 = await encode(frames, {
+  quality: 'medium'  // Only quality is required!
+});
+
+// Automatic inference:
+// - Resolution from first frame
+// - Frame rate from timing (AsyncIterable) or default 30fps
+// - Container format (MP4) and codecs (H.264 + AAC)
+// - Audio settings from MediaStream
+```
+
+#### Advanced Configuration
+
+Override automatic settings when needed:
+
+```typescript
+const mp4 = await encode(source, {
+  quality: 'high',
+  
+  // Video settings
+  width: 1920,
+  height: 1080,
+  frameRate: 60,
+  video: {
+    codec: 'avc',           // 'avc', 'vp9', 'av1', 'hevc'
+    bitrate: 5_000_000,     // Override quality preset
+    hardwareAcceleration: 'prefer-hardware'
+  },
+  
+  // Audio settings
+  audio: {
+    codec: 'aac',           // 'aac', 'opus'
+    bitrate: 192_000,
+    sampleRate: 48000,
+    channels: 2
+  },
+  
+  // Or disable audio
+  audio: false,
+  
+  // Container format
+  container: 'mp4',         // 'mp4', 'webm'
+  
+  // Progress monitoring
+  onProgress: (progress) => {
+    console.log(`${progress.percent.toFixed(1)}% - ${progress.stage}`);
+  }
+});
+```
+
+#### Real-time Streaming
+
+Perfect for live applications with Media Source Extensions:
+
+```typescript
+// Generate live frames
+async function* liveFrames() {
+  while (recording) {
+    yield captureFrame();
+    await waitNextFrame();
+  }
+}
+
+// Stream encoding with automatic chunking
+for await (const chunk of encodeStream(liveFrames(), {
+  quality: 'medium',
+  video: { latencyMode: 'realtime' }
+})) {
+  // Immediately append to MediaSource
+  sourceBuffer.appendBuffer(chunk);
+}
+```
+
+#### Compatibility Checking
+
+```typescript
+// Check basic support
+const basicSupport = await canEncode();
+
+// Check specific configuration
+const support = await canEncode({
+  quality: 'high',
+  video: { codec: 'av1' },
+  audio: { codec: 'opus' },
+  container: 'webm'
+});
+
+if (support) {
+  // Configuration is supported
+  const mp4 = await encode(source, options);
+}
+```
+
+#### Error Handling
+
+```typescript
+try {
+  const mp4 = await encode(source, { quality: 'high' });
+} catch (error) {
+  if (error.type === 'codec-not-supported') {
+    // Fallback to different codec
+    const mp4 = await encode(source, { 
+      quality: 'high',
+      video: { codec: 'avc' }  // More compatible codec
+    });
+  } else {
+    console.error('Encoding failed:', error.message);
+  }
+}
+```
+
+#### Complete Example
+
+See [`examples/complete-functional-api-examples.ts`](examples/complete-functional-api-examples.ts) for comprehensive usage examples covering all video source types and advanced features.
 
 ### Traditional API (Constructor-based)
 
@@ -765,6 +961,110 @@ async function advancedEncoding() {
 
 ## API
 
+### Function-First API Reference
+
+#### Core Functions
+
+- **`encode(source: VideoSource, options?: EncodeOptions): Promise<Uint8Array>`**
+  Encodes video to MP4/WebM file with automatic configuration.
+  
+  **Parameters:**
+  - `source`: Video input - Frame[], AsyncIterable<Frame>, MediaStream, or VideoFile
+  - `options`: Optional encoding configuration
+  
+  **Returns:** Promise resolving to encoded MP4/WebM data as Uint8Array
+
+- **`encodeStream(source: VideoSource, options?: EncodeOptions): AsyncIterable<Uint8Array>`**
+  Stream encoding with real-time chunk output. Perfect for live streaming with MediaSource.
+  
+  **Parameters:**
+  - `source`: Video input - same types as `encode()`
+  - `options`: Optional encoding configuration
+  
+  **Returns:** AsyncIterable yielding encoded chunks as they're produced
+
+- **`canEncode(options?: EncodeOptions): Promise<boolean>`**
+  Checks if the specified configuration is supported by the browser.
+  
+  **Parameters:**
+  - `options`: Optional configuration to test
+  
+  **Returns:** Promise resolving to true if configuration is supported
+
+#### Type Definitions
+
+**VideoSource Types:**
+```typescript
+type VideoSource = 
+  | Frame[]                           // Static frame array
+  | AsyncIterable<Frame>              // Dynamic frame generator
+  | MediaStream                       // Live camera/screen capture
+  | VideoFile;                        // Existing video file
+
+type Frame = 
+  | VideoFrame                        // WebCodecs VideoFrame
+  | ImageData                         // Canvas ImageData
+  | HTMLCanvasElement                 // Canvas element
+  | OffscreenCanvas;                  // OffscreenCanvas
+
+interface VideoFile {
+  file: File;                         // Video file from input
+  type: string;                       // MIME type
+}
+```
+
+**EncodeOptions:**
+```typescript
+interface EncodeOptions {
+  // Quality preset (recommended)
+  quality?: QualityPreset;            // 'low' | 'medium' | 'high' | 'lossless'
+  
+  // Basic settings (auto-inferred if not specified)
+  width?: number;                     // Video width (inferred from first frame)
+  height?: number;                    // Video height (inferred from first frame)
+  frameRate?: number;                 // Frame rate (30fps default)
+  duration?: number;                  // Max duration in seconds (for MediaStream)
+  
+  // Video configuration
+  video?: VideoConfig | false;        // Video settings or disable
+  
+  // Audio configuration  
+  audio?: AudioConfig | false;        // Audio settings or disable
+  
+  // Container format
+  container?: 'mp4' | 'webm';         // Output format (mp4 default)
+  
+  // Progress monitoring
+  onProgress?: (progress: ProgressInfo) => void;
+}
+
+interface VideoConfig {
+  codec?: 'avc' | 'vp9' | 'av1' | 'hevc';
+  bitrate?: number;                   // Override quality preset
+  hardwareAcceleration?: 'prefer-hardware' | 'prefer-software';
+  latencyMode?: 'quality' | 'realtime';
+}
+
+interface AudioConfig {
+  codec?: 'aac' | 'opus';
+  bitrate?: number;                   // Default: 128kbps
+  sampleRate?: number;                // Default: 48000Hz
+  channels?: number;                  // Default: 2 (stereo)
+}
+
+type QualityPreset = 'low' | 'medium' | 'high' | 'lossless';
+```
+
+**Quality Preset Bitrates:**
+- `low`: 0.05× pixel rate (mobile/preview quality)
+- `medium`: 0.1× pixel rate (standard web quality)  
+- `high`: 0.2× pixel rate (high quality)
+- `lossless`: 0.5× pixel rate (maximum quality)
+
+*Example: 1920×1080@30fps with 'high' = ~12.4 Mbps video bitrate*
+
+### Traditional API Reference
+
 - **`WebCodecsEncoder.isSupported(): boolean`**
   Checks if `VideoEncoder`, `AudioEncoder`, and `Worker` are available in the current environment.
 
@@ -956,32 +1256,131 @@ The same approach works for audio with codec strings like `mp4a.40.2` or `opus`.
 
 ## Codec Compatibility
 
-This library supports encoding to MP4 and WebM container formats with the following codecs:
+This library supports encoding to MP4 and WebM container formats with the following codec combinations:
 
-- **Video Codecs:**
-  - `avc1` (H.264/AVC): Widely supported.
-  - `vp09` (VP9): Modern, efficient codec. Good for web usage.
-  - `av01` (AV1): High efficiency but may require modern hardware acceleration.
-- **Audio Codecs:**
-  - `mp4a` (AAC): Widely supported, good quality.
-  - `opus` (Opus): Modern, efficient, and versatile audio codec. Excellent for both speech and music, and good for real-time applications.
+### Supported Container & Codec Combinations
 
-Example configuration requesting AV1:
+| **Container** | **Video Codecs** | **Audio Codecs** | **Browser Support** | **Recommended Use** |
+|---------------|------------------|------------------|---------------------|---------------------|
+| **MP4** | H.264/AVC | AAC, Opus | ✅ **Excellent** | **Primary choice** - Most compatible |
+| **MP4** | H.265/HEVC | AAC, Opus | ❌ **Limited** | Theoretical support only |
+| **MP4** | AV1 | AAC, Opus | ⚠️ **Experimental** | Limited hardware support |
+| **WebM** | VP8 | Opus | ✅ **Good** | Legacy compatibility |
+| **WebM** | VP9 | Opus | ✅ **Excellent** | **Primary choice** for WebM |
+| **WebM** | AV1 | Opus | ⚠️ **Experimental** | Future-oriented, limited support |
 
-```ts
+### Video Codecs
+
+- **`avc` (H.264/AVC)**: 
+  - **Status**: ✅ **Recommended** - Universally supported
+  - **Containers**: MP4 only
+  - **Profiles**: Automatic selection (Baseline/High) based on resolution
+  - **Hardware**: Wide hardware acceleration support
+  - **Note**: Default video codec for MP4 output
+
+- **`vp8` (VP8)**: 
+  - **Status**: ✅ **Stable** - Well supported but legacy
+  - **Containers**: WebM only
+  - **Performance**: Lower efficiency than VP9/H.264
+  - **Note**: Use for maximum WebM compatibility
+
+- **`vp9` (VP9)**: 
+  - **Status**: ✅ **Recommended** - Excellent support in modern browsers
+  - **Containers**: WebM only
+  - **Hardware**: Software encoding (libvpx) + some GPU acceleration
+  - **Note**: Default video codec for WebM output
+
+- **`hevc` (H.265/HEVC)**: 
+  - **Status**: ❌ **Not Practical** - Theoretical support only
+  - **Containers**: MP4 only
+  - **Browser Reality**: No WebCodecs encoding support in Chromium (2025)
+  - **Note**: Will cause initialization errors in most environments
+
+- **`av1` (AV1)**: 
+  - **Status**: ⚠️ **Experimental** - Limited practical use
+  - **Containers**: MP4, WebM
+  - **Performance**: Very slow software encoding, limited hardware support
+  - **Fallback**: Automatically falls back to H.264 (MP4) or VP9 (WebM)
+
+### Audio Codecs
+
+- **`aac` (AAC)**: 
+  - **Status**: ✅ **Recommended** for MP4
+  - **Containers**: MP4 only (WebM not supported)
+  - **Support**: Platform-dependent (OS codec libraries)
+  - **Fallback**: Automatically falls back to Opus if unavailable
+
+- **`opus` (Opus)**: 
+  - **Status**: ✅ **Recommended** for WebM, supported in MP4
+  - **Containers**: MP4, WebM (required for WebM)
+  - **Support**: Built into Chromium-based browsers
+  - **Note**: Default and only audio codec for WebM
+
+### Container-Specific Restrictions
+
+**MP4 Container:**
+- ✅ Supports: H.264, H.265*, AV1* + AAC, Opus
+- ❌ Rejects: VP8, VP9 video codecs
+- *Limited by browser WebCodecs support
+
+**WebM Container:**
+- ✅ Supports: VP8, VP9, AV1* + Opus only
+- ❌ Rejects: H.264, H.265 video codecs and AAC audio
+- *Limited by browser WebCodecs support
+
+### Practical Recommendations
+
+**For Maximum Compatibility:**
+```typescript
+// MP4 with H.264 + AAC (most compatible)
 const config = {
-  codec: { video: 'av1' },
-  codecString: { video: 'av01.0.04M.08' },
-  // ...other options
+  container: 'mp4',
+  codec: { video: 'avc', audio: 'aac' }
 };
 ```
 
+**For Modern Web Applications:**
+```typescript
+// WebM with VP9 + Opus (excellent quality, open standards)
+const config = {
+  container: 'webm',
+  codec: { video: 'vp9', audio: 'opus' }
+};
+```
+
+**Function-First API (Automatic Selection):**
+```typescript
+// Automatically selects best available codecs
+const mp4 = await encode(frames, { quality: 'high' }); // Uses H.264 + AAC
+const webm = await encode(frames, { 
+  quality: 'high', 
+  container: 'webm' 
+}); // Uses VP9 + Opus
+```
+
+### Automatic Fallback Behavior
+
+The library provides intelligent codec fallback when specified codecs are unsupported:
+
+1. **Video Fallback Chain**:
+   - Specified codec → H.264/AVC (if compatible with container)
+   - VP9/VP8/AV1 → VP9 → H.264 (may cause container incompatibility)
+
+2. **Audio Fallback Chain**:
+   - AAC ↔ Opus (bidirectional based on availability and container)
+   - WebM: Opus only (no fallback to AAC)
+
+3. **Validation**:
+   - Invalid combinations (e.g., VP9 in MP4, AAC in WebM) are rejected at initialization
+   - Use `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` to verify final codecs
+
 **Important Notes:**
--   Codec support depends on the browser's WebCodecs implementation. The library attempts to use the specified codec and will fall back to a default (AVC for video, AAC for audio) if the preferred one is not supported, logging a warning. If AAC is unavailable the worker will log a warning and try Opus instead. You can check `encoder.getActualVideoCodec()` and `encoder.getActualAudioCodec()` after `initialize()` to see what codecs are actually being used.
--   The worker verifies that the channel count reported by `AudioEncoder.isConfigSupported()` matches your configured `channels`. A mismatch causes initialization to fail with a `configuration-error`.
--   When using `latencyMode: 'realtime'`, ensure the chosen codecs are suitable for streaming and are supported by your target MSE implementation (e.g., `MediaSource.isTypeSupported(...)`).
--   For VP9 and Opus in MP4, browser support for playback can vary. Test thoroughly.
--   See [MDN](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use](https://caniuse.com/webcodecs) for up-to-date browser compatibility information.
+- Codec support varies by browser and platform. Test thoroughly in your target environments.
+- H.265/HEVC is listed for completeness but is not practically usable in current browsers.
+- AV1 encoding is computationally intensive and may not be suitable for real-time applications.
+- For VP9 and Opus in MP4, playback compatibility may vary across players.
+- The library prioritizes stability and will fallback to more compatible codecs when needed.
+- See [MDN WebCodecs API](https://developer.mozilla.org/docs/Web/API/WebCodecs_API) and [Can I use WebCodecs](https://caniuse.com/webcodecs) for current browser support.
 
 ## Choosing CBR or VBR for AAC
 

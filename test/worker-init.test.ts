@@ -336,7 +336,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Audio codec aac config not supported.",
+            message: "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
             type: "not-supported",
           },
         },
@@ -581,7 +581,10 @@ describe("worker", () => {
       };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Worker: Audio codec opus not supported or config invalid. Falling back to AAC.",
+        "Worker: Audio codec opus not supported or config invalid.",
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "Worker: Falling back to AAC for MP4 container.",
       );
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -658,7 +661,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: Opus audio codec is not supported after fallback.",
+            message: "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
             type: "not-supported",
           },
         },

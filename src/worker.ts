@@ -145,6 +145,28 @@ class EncoderWorker {
     return `avc1.${profileHex}00${levelHex}`;
   }
 
+  private getCodecString(
+    codecType: "avc" | "hevc" | "vp9" | "vp8" | "av1",
+    width: number,
+    height: number,
+    frameRate: number,
+  ): string {
+    switch (codecType) {
+      case "avc":
+        return this.defaultAvcCodecString(width, height, frameRate);
+      case "vp9":
+        return "vp09.00.50.08";
+      case "vp8":
+        return "vp8";
+      case "hevc":
+        return "hvc1";
+      case "av1":
+        return "av01.0.04M.08";
+      default:
+        return codecType;
+    }
+  }
+
   private avcProfileFromCodecString(
     codec: string,
   ): ("high" | "main" | "baseline") | null {
@@ -349,49 +371,109 @@ class EncoderWorker {
         console.warn(
           "Worker: Video codec " +
             videoCodec +
-            " not supported or config invalid. Falling back to AVC.",
-        );
-        videoCodec = "avc";
-
-        // ここでAVCコーデック設定を作成し直す
-        const avcCodecString = this.defaultAvcCodecString(
-          this.currentConfig.width,
-          this.currentConfig.height,
-          this.currentConfig.frameRate,
+            " not supported or config invalid. Looking for fallback...",
         );
 
-        const avcConfig: VideoEncoderConfig & {
-          hardwareAcceleration?:
-            | "prefer-hardware"
-            | "prefer-software"
-            | "no-preference";
-        } = {
-          ...videoEncoderConfig,
-          codec: avcCodecString,
-          ...(this.currentConfig.container === "mp4"
-            ? { avc: { format: "avc" as const } }
-            : {}),
-        };
+        let fallbackSuccessful = false;
 
-        const support = await this.isConfigSupportedWithHwFallback(
-          VideoEncoderCtor,
-          avcConfig,
-          "VideoEncoder",
-        );
+        // WebMコンテナの場合：VP9 → VP8 の順でフォールバック
+        if (this.currentConfig.container === "webm") {
+          const webmCodecs: ("vp9" | "vp8")[] = ["vp9", "vp8"];
+          
+          for (const fallbackCodec of webmCodecs) {
+            if (fallbackCodec === videoCodec) continue; // 既に試したコーデックはスキップ
+            
+            console.warn(`Worker: Trying fallback to ${fallbackCodec} for WebM container.`);
+            
+            const fallbackCodecString = this.getCodecString(
+              fallbackCodec,
+              this.currentConfig.width,
+              this.currentConfig.height,
+              this.currentConfig.frameRate,
+            );
 
-        if (support) {
-          finalVideoEncoderConfig = support;
+            const fallbackConfig: VideoEncoderConfig & {
+              hardwareAcceleration?:
+                | "prefer-hardware"
+                | "prefer-software"
+                | "no-preference";
+            } = {
+              ...videoEncoderConfig,
+              codec: fallbackCodecString,
+            };
+
+            const support = await this.isConfigSupportedWithHwFallback(
+              VideoEncoderCtor,
+              fallbackConfig,
+              "VideoEncoder",
+            );
+
+            if (support) {
+              console.warn(`Worker: Successfully fell back to ${fallbackCodec} for WebM.`);
+              videoCodec = fallbackCodec;
+              finalVideoEncoderConfig = support;
+              fallbackSuccessful = true;
+              break;
+            }
+          }
+
+          if (!fallbackSuccessful) {
+            this.postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message:
+                  "Worker: No compatible video codec (VP9, VP8) found for WebM container.",
+                type: EncoderErrorType.NotSupported,
+              },
+            });
+            this.cleanup();
+            return;
+          }
         } else {
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message:
-                "Worker: AVC (H.264) video codec is not supported after fallback.",
-              type: EncoderErrorType.NotSupported,
-            },
-          });
-          this.cleanup();
-          return;
+          // MP4コンテナの場合：AVC (H.264) にフォールバック
+          console.warn("Worker: Falling back to AVC for MP4 container.");
+          videoCodec = "avc";
+
+          const avcCodecString = this.defaultAvcCodecString(
+            this.currentConfig.width,
+            this.currentConfig.height,
+            this.currentConfig.frameRate,
+          );
+
+          const avcConfig: VideoEncoderConfig & {
+            hardwareAcceleration?:
+              | "prefer-hardware"
+              | "prefer-software"
+              | "no-preference";
+          } = {
+            ...videoEncoderConfig,
+            codec: avcCodecString,
+            ...(this.currentConfig.container === "mp4"
+              ? { avc: { format: "avc" as const } }
+              : {}),
+          };
+
+          const support = await this.isConfigSupportedWithHwFallback(
+            VideoEncoderCtor,
+            avcConfig,
+            "VideoEncoder",
+          );
+
+          if (support) {
+            finalVideoEncoderConfig = support;
+            fallbackSuccessful = true;
+          } else {
+            this.postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message:
+                  "Worker: AVC (H.264) video codec is not supported after fallback.",
+                type: EncoderErrorType.NotSupported,
+              },
+            });
+            this.cleanup();
+            return;
+          }
         }
       } else {
         // フォールバックの必要のない他のコーデックでテスト
@@ -542,49 +624,110 @@ class EncoderWorker {
         finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
       } else if (audioCodec === "opus") {
         console.warn(
-          `Worker: Audio codec ${audioCodec} not supported or config invalid. Falling back to AAC.`,
+          `Worker: Audio codec ${audioCodec} not supported or config invalid.`,
         );
         if (this.currentConfig.container === "webm") {
+          // WebMコンテナではOpusが必須なので、フォールバックできない
           this.postMessageToMainThread({
             type: "error",
             errorDetail: {
               message:
-                "Worker: Opus audio codec not supported for WebM container.",
+                "Worker: Opus audio codec not supported for WebM container. WebM requires Opus audio.",
               type: EncoderErrorType.NotSupported,
             },
           });
           this.cleanup();
           return;
-        }
-        audioCodec = "aac";
-        const fallbackAudioConfig = {
-          ...baseAudioConfig,
-          codec: this.currentConfig.codecString?.audio ?? "mp4a.40.2",
-        };
-        audioSupportConfig = await this.isConfigSupportedWithHwFallback(
-          AudioEncoderCtor,
-          fallbackAudioConfig,
-          "AudioEncoder",
-        );
-        if (audioSupportConfig) {
-          if (
-            audioSupportConfig.numberOfChannels !== this.currentConfig.channels
-          ) {
-            this.postMessageToMainThread({
-              type: "error",
-              errorDetail: {
-                message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
-                type: EncoderErrorType.ConfigurationError,
-              },
-            });
-            this.cleanup();
-            return;
-          }
-          finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
         } else {
-          console.warn(
-            "Worker: AAC audio codec is not supported. Falling back to Opus.",
+          // MP4コンテナの場合はAACにフォールバック
+          console.warn("Worker: Falling back to AAC for MP4 container.");
+          audioCodec = "aac";
+          const fallbackAudioConfig = {
+            ...baseAudioConfig,
+            codec: this.currentConfig.codecString?.audio ?? "mp4a.40.2",
+          };
+          audioSupportConfig = await this.isConfigSupportedWithHwFallback(
+            AudioEncoderCtor,
+            fallbackAudioConfig,
+            "AudioEncoder",
           );
+          if (audioSupportConfig) {
+            if (
+              audioSupportConfig.numberOfChannels !== this.currentConfig.channels
+            ) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
+                  type: EncoderErrorType.ConfigurationError,
+                },
+              });
+              this.cleanup();
+              return;
+            }
+            finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
+          } else {
+            // AAC もだめなら Opus に戻す（MP4でも可能）
+            console.warn(
+              "Worker: AAC audio codec is not supported. Falling back to Opus.",
+            );
+            audioCodec = "opus";
+            const opusFallback = { ...baseAudioConfig, codec: "opus" };
+            audioSupportConfig = await this.isConfigSupportedWithHwFallback(
+              AudioEncoderCtor,
+              opusFallback,
+              "AudioEncoder",
+            );
+            if (audioSupportConfig) {
+              if (
+                audioSupportConfig.numberOfChannels !==
+                this.currentConfig.channels
+              ) {
+                this.postMessageToMainThread({
+                  type: "error",
+                  errorDetail: {
+                    message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
+                    type: EncoderErrorType.ConfigurationError,
+                  },
+                });
+                this.cleanup();
+                return;
+              }
+              finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
+            } else {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message:
+                    "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
+                  type: EncoderErrorType.NotSupported,
+                },
+              });
+              this.cleanup();
+              return;
+            }
+          }
+        }
+      } else if (audioCodec === "aac") {
+        // AACが失敗した場合の処理
+        console.warn(
+          `Worker: Audio codec ${audioCodec} not supported or config invalid.`,
+        );
+        if (this.currentConfig.container === "webm") {
+          // WebMではAACは使えないのでOpusを試すが、これは既に初期チェックで弾かれているはず
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message:
+                "Worker: AAC audio codec not supported. WebM container requires Opus.",
+              type: EncoderErrorType.NotSupported,
+            },
+          });
+          this.cleanup();
+          return;
+        } else {
+          // MP4コンテナの場合はOpusにフォールバック
+          console.warn("Worker: Falling back to Opus for MP4 container.");
           audioCodec = "opus";
           const opusFallback = { ...baseAudioConfig, codec: "opus" };
           audioSupportConfig = await this.isConfigSupportedWithHwFallback(
@@ -613,7 +756,7 @@ class EncoderWorker {
               type: "error",
               errorDetail: {
                 message:
-                  "Worker: Opus audio codec is not supported after fallback.",
+                  "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
                 type: EncoderErrorType.NotSupported,
               },
             });
@@ -621,16 +764,6 @@ class EncoderWorker {
             return;
           }
         }
-      } else {
-        this.postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message: `Worker: Audio codec ${audioCodec} config not supported.`,
-            type: EncoderErrorType.NotSupported,
-          },
-        });
-        this.cleanup();
-        return;
       }
 
       try {
@@ -653,7 +786,19 @@ class EncoderWorker {
           },
         });
         if (this.audioEncoder) {
-          this.audioEncoder.configure(finalAudioEncoderConfig);
+          if (finalAudioEncoderConfig) {
+            this.audioEncoder.configure(finalAudioEncoderConfig);
+          } else {
+            this.postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message: "Worker: Final audio encoder config is null.",
+                type: EncoderErrorType.InitializationFailed,
+              },
+            });
+            this.cleanup();
+            return;
+          }
         } else {
           this.postMessageToMainThread({
             type: "error",
