@@ -47,7 +47,7 @@ describe("EncoderAudioWorkletProcessor", () => {
   beforeAll(async () => {
     try {
       // @ts-ignore - Suppressing import path extension error for now
-      await import("../src/audio-worklet-processor.ts");
+      await import("../src/worker/audio-worklet.ts");
     } catch (e) {
       console.error("beforeAll: Failed to import module during test setup:", e); // Keep this one for critical errors
       throw e;

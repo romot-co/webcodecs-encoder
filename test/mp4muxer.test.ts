@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 // import type { Mock } from "vitest"; // 一旦 any を使うためコメントアウト
-import { Mp4MuxerWrapper } from "../src/mp4muxer";
+import { Mp4MuxerWrapper } from "../src/muxers/mp4muxer";
 import type { EncoderConfig } from "../src/types";
 
 // `vi.mock` はファイルのトップに巻き上げられます。

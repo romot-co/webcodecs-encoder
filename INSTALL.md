@@ -15,41 +15,67 @@ pnpm add github:romot-co/webcodecs-encoder
 
 ## 使用例
 
+### 基本的な使用法
+
 ```typescript
-import { WebCodecsEncoder } from 'webcodecs-encoder';
+import { encode, encodeStream, canEncode } from 'webcodecs-encoder';
 
 // WebCodecs対応チェック
-if (!WebCodecsEncoder.isSupported()) {
+const isSupported = await canEncode({
+  video: { codec: 'avc1.42001f' }, // H.264
+  audio: { codec: 'mp4a.40.2' }    // AAC
+});
+
+if (!isSupported) {
   console.error('WebCodecsがサポートされていません');
   return;
 }
 
-// エンコーダー設定
-const config = {
+// フレーム配列をエンコード（MP4形式）
+const frames = [canvas1, canvas2, canvas3]; // Canvas要素の配列
+const mp4Data = await encode(frames, {
   width: 1280,
   height: 720,
-  frameRate: 30,
-  videoBitrate: 2_000_000,
-  audioBitrate: 128_000,
-  sampleRate: 48000,
-  channels: 2,
-};
+  quality: 'medium',
+  container: 'mp4',
+  frameRate: 30
+});
 
-// エンコーダー初期化と使用
-const encoder = new WebCodecsEncoder(config);
-await encoder.initialize();
+// エンコード結果をファイルとして保存
+const blob = new Blob([mp4Data], { type: 'video/mp4' });
+const url = URL.createObjectURL(blob);
+```
 
-// フレーム追加やエンコード処理
+### ストリーミングエンコード
+
+```typescript
+import { encodeStream } from 'webcodecs-encoder';
+
+// ストリーミング形式でエンコード（WebM形式）
+const stream = await encodeStream({
+  width: 1280,
+  height: 720,
+  quality: 'high',
+  container: 'webm',
+  frameRate: 30
+});
+
+// フレームを順次追加
+stream.addFrame(canvas1);
+stream.addFrame(canvas2);
 // ...
 
-const result = await encoder.finalize();
+// エンコード完了
+const webmData = await stream.finalize();
 ```
 
 ## 動作要件
 
-- Node.js 18.0.0以上
-- WebCodecs API対応ブラウザ
-- Web Workers対応
+- **ブラウザ環境**: Chrome 94+, Edge 94+, Firefox (実験的サポート)
+- **WebCodecs API対応ブラウザ**
+- **Web Workers対応**
+
+> **注意**: WebCodecs APIはブラウザ専用技術です。Node.js環境では動作しません。
 
 ## ライセンス
 

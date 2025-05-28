@@ -1,87 +1,161 @@
-import { WebCodecsEncoder, WebCodecsEncoderInitializeOptions } from "./encoder";
-import type { EncoderConfig } from "./types";
+import type { EncodeOptions, ProgressInfo } from "./types";
+import { EncodeError } from "./types";
+import { WorkerCommunicator } from "./worker/worker-communicator";
+import { inferAndBuildConfig } from "./utils/config-parser";
+
+export interface MediaStreamRecorderOptions extends EncodeOptions {
+  /** 最初のタイムスタンプの処理方法 */
+  firstTimestampBehavior?: "offset" | "strict";
+  /** AudioWorkletを使用するかどうか */
+  useAudioWorklet?: boolean;
+}
 
 export class MediaStreamRecorder {
-  private encoder: WebCodecsEncoder;
+  private communicator: WorkerCommunicator | null = null;
   private videoReader?: ReadableStreamDefaultReader<VideoFrame>;
   private audioReader?: ReadableStreamDefaultReader<AudioData>;
   private videoTrack?: MediaStreamTrack;
   private audioTrack?: MediaStreamTrack;
   private audioSource?: MediaStreamAudioSourceNode;
   private recording = false;
-  private onErrorCallback?: (error: any) => void;
-
-  constructor(
-    private config: EncoderConfig & {
-      firstTimestampBehavior?: "offset" | "strict";
-    },
-  ) {
-    this.encoder = new WebCodecsEncoder(config);
+  private onErrorCallback?: (error: EncodeError) => void;
+  private onProgressCallback?: (progress: ProgressInfo) => void;
+  private config: any = null;
+  
+  constructor(private options: MediaStreamRecorderOptions = {}) {
+    // 新しいAPIでは設定はstartRecording時に決定
   }
 
   static isSupported(): boolean {
     return (
       typeof MediaStreamTrackProcessor !== "undefined" &&
-      WebCodecsEncoder.isSupported()
+      typeof VideoEncoder !== "undefined" &&
+      typeof AudioEncoder !== "undefined" &&
+      typeof Worker !== "undefined"
     );
   }
 
   async startRecording(
     stream: MediaStream,
-    options?: WebCodecsEncoderInitializeOptions,
+    additionalOptions?: Partial<MediaStreamRecorderOptions>,
   ): Promise<void> {
     if (this.recording) {
-      throw new Error("MediaStreamRecorder: already recording.");
+      throw new EncodeError("invalid-input", "MediaStreamRecorder: already recording.");
     }
 
-    this.onErrorCallback = options?.onError;
-    const initializeOptions = {
-      ...(this.config.firstTimestampBehavior && {
-        firstTimestampBehavior: this.config.firstTimestampBehavior,
-      }),
-      ...(options ?? {}),
-    };
-    await this.encoder.initialize(initializeOptions);
-    this.recording = true;
+    // オプションをマージ
+    const mergedOptions = { ...this.options, ...additionalOptions };
+    this.onErrorCallback = mergedOptions.onError;
+    this.onProgressCallback = mergedOptions.onProgress;
 
-    const [vTrack] = stream.getVideoTracks();
-    const [aTrack] = stream.getAudioTracks();
+    try {
+      // 設定の推定と正規化（MediaStreamベース）
+      this.config = await inferAndBuildConfig(stream, mergedOptions);
+      
+      // ワーカーとの通信を開始
+      this.communicator = new WorkerCommunicator();
+      
+      // ワーカーの初期化
+      await this.initializeWorker();
+      
+      this.recording = true;
 
-    if (vTrack) {
-      this.videoTrack = vTrack;
-      const processor = new MediaStreamTrackProcessor({
-        track: vTrack,
-      });
-      this.videoReader =
-        processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
-      this.processVideo();
-    }
+      const [vTrack] = stream.getVideoTracks();
+      const [aTrack] = stream.getAudioTracks();
 
-    if (aTrack) {
-      this.audioTrack = aTrack;
-      if (options?.useAudioWorklet) {
-        const node = this.encoder.getAudioWorkletNode();
-        if (!node) {
-          throw new Error(
-            "MediaStreamRecorder: AudioWorkletNode not available from encoder.",
-          );
-        }
-        const ctx = node.context as AudioContext;
-        this.audioSource = ctx.createMediaStreamSource(stream);
-        this.audioSource.connect(node);
-      } else {
+      if (vTrack) {
+        this.videoTrack = vTrack;
         const processor = new MediaStreamTrackProcessor({
-          track: aTrack,
+          track: vTrack,
         });
-        this.audioReader =
-          processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
-        this.processAudio();
+        this.videoReader =
+          processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
+        this.processVideo();
       }
+
+      if (aTrack) {
+        this.audioTrack = aTrack;
+        if (mergedOptions.useAudioWorklet) {
+          await this.setupAudioWorklet(stream);
+        } else {
+          const processor = new MediaStreamTrackProcessor({
+            track: aTrack,
+          });
+          this.audioReader =
+            processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
+          this.processAudio();
+        }
+      }
+    } catch (error) {
+      this.cleanup();
+      const encodeError = error instanceof EncodeError 
+        ? error 
+        : new EncodeError(
+            'initialization-failed',
+            `Failed to start recording: ${error instanceof Error ? error.message : String(error)}`,
+            error
+          );
+      if (this.onErrorCallback) {
+        this.onErrorCallback(encodeError);
+      }
+      throw encodeError;
     }
   }
 
+  private async initializeWorker(): Promise<void> {
+    if (!this.communicator) {
+      throw new EncodeError('initialization-failed', 'Worker communicator not available');
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      if (!this.communicator) {
+        reject(new EncodeError('initialization-failed', 'Worker communicator not available'));
+        return;
+      }
+
+      // ワーカーからのメッセージを処理
+      this.communicator.on('initialized', () => {
+        resolve();
+      });
+
+      this.communicator.on('progress', (data: { processedFrames: number; totalFrames?: number }) => {
+        if (this.onProgressCallback) {
+          const progressInfo: ProgressInfo = {
+            percent: data.totalFrames ? (data.processedFrames / data.totalFrames) * 100 : 0,
+            processedFrames: data.processedFrames,
+            totalFrames: data.totalFrames,
+            fps: 0, // リアルタイムでは計算が複雑
+            stage: 'encoding',
+          };
+          this.onProgressCallback(progressInfo);
+        }
+      });
+
+      this.communicator.on('error', (data: { errorDetail: any }) => {
+        const error = new EncodeError(
+          data.errorDetail.type || 'encoding-failed',
+          data.errorDetail.message || 'Worker error',
+          data.errorDetail
+        );
+        if (this.onErrorCallback) {
+          this.onErrorCallback(error);
+        }
+        reject(error);
+      });
+
+      // ワーカーを初期化
+      this.communicator.send('initialize', { config: this.config });
+    });
+  }
+
+  private async setupAudioWorklet(_stream: MediaStream): Promise<void> {
+    // AudioWorkletのセットアップは複雑なため、基本実装のみ
+    // 実際の実装では AudioContext と AudioWorkletNode が必要
+    throw new EncodeError('not-supported', 'AudioWorklet setup not yet implemented for new API');
+  }
+
   private async processVideo(): Promise<void> {
-    if (!this.videoReader) return;
+    if (!this.videoReader || !this.communicator) return;
     const reader = this.videoReader;
     try {
       while (this.recording) {
@@ -93,17 +167,28 @@ export class MediaStreamRecorder {
           break;
         }
         try {
-          await this.encoder.addVideoFrame(value);
+          // 新しいAPIを使用してフレームを送信
+          this.communicator.send('addVideoFrame', {
+            frame: value,
+            timestamp: value.timestamp || 0
+          });
         } finally {
           value.close();
         }
       }
     } catch (err) {
       this.cancel();
+      const error = err instanceof EncodeError 
+        ? err 
+        : new EncodeError(
+            'video-encoding-error',
+            `Video processing error: ${err instanceof Error ? err.message : String(err)}`,
+            err
+          );
       if (this.onErrorCallback) {
-        this.onErrorCallback(err);
+        this.onErrorCallback(error);
       } else {
-        throw err;
+        throw error;
       }
     } finally {
       reader.cancel();
@@ -112,7 +197,7 @@ export class MediaStreamRecorder {
   }
 
   private async processAudio(): Promise<void> {
-    if (!this.audioReader) return;
+    if (!this.audioReader || !this.communicator) return;
     const reader = this.audioReader;
     try {
       while (this.recording) {
@@ -124,17 +209,32 @@ export class MediaStreamRecorder {
           break;
         }
         try {
-          await this.encoder.addAudioData(value);
+          // 新しいAPIを使用してオーディオデータを送信
+          this.communicator.send('addAudioData', {
+            audio: value,
+            timestamp: value.timestamp || 0,
+            format: "f32",
+            sampleRate: value.sampleRate,
+            numberOfFrames: value.numberOfFrames,
+            numberOfChannels: value.numberOfChannels,
+          });
         } finally {
           value.close();
         }
       }
     } catch (err) {
       this.cancel();
+      const error = err instanceof EncodeError 
+        ? err 
+        : new EncodeError(
+            'audio-encoding-error',
+            `Audio processing error: ${err instanceof Error ? err.message : String(err)}`,
+            err
+          );
       if (this.onErrorCallback) {
-        this.onErrorCallback(err);
+        this.onErrorCallback(error);
       } else {
-        throw err;
+        throw error;
       }
     } finally {
       reader.cancel();
@@ -144,25 +244,54 @@ export class MediaStreamRecorder {
 
   async stopRecording(): Promise<Uint8Array | null> {
     if (!this.recording) {
-      throw new Error("MediaStreamRecorder: not recording.");
+      throw new EncodeError("invalid-input", "MediaStreamRecorder: not recording.");
     }
+    
     this.recording = false;
-    this.videoReader?.cancel();
-    this.audioReader?.cancel();
-    this.audioSource?.disconnect();
-    this.videoTrack?.stop();
-    this.audioTrack?.stop();
-    this.videoReader = undefined;
-    this.audioReader = undefined;
-    this.audioSource = undefined;
-    this.videoTrack = undefined;
-    this.audioTrack = undefined;
-    return await this.encoder.finalize();
+    this.cleanup();
+
+    if (!this.communicator) {
+      return null;
+    }
+
+    return new Promise<Uint8Array | null>((resolve, reject) => {
+      if (!this.communicator) {
+        resolve(null);
+        return;
+      }
+
+      this.communicator.on('finalized', (data: { output: Uint8Array | null }) => {
+        resolve(data.output);
+        this.communicator?.terminate();
+        this.communicator = null;
+      });
+
+      this.communicator.on('error', (data: { errorDetail: any }) => {
+        const error = new EncodeError(
+          data.errorDetail.type || 'encoding-failed',
+          data.errorDetail.message || 'Finalization error',
+          data.errorDetail
+        );
+        reject(error);
+        this.communicator?.terminate();
+        this.communicator = null;
+      });
+
+      this.communicator.send('finalize');
+    });
   }
 
   cancel(): void {
     if (!this.recording) return;
     this.recording = false;
+    this.cleanup();
+    if (this.communicator) {
+      this.communicator.terminate();
+      this.communicator = null;
+    }
+  }
+
+  private cleanup(): void {
     this.videoReader?.cancel();
     this.audioReader?.cancel();
     this.audioSource?.disconnect();
@@ -173,14 +302,16 @@ export class MediaStreamRecorder {
     this.audioSource = undefined;
     this.videoTrack = undefined;
     this.audioTrack = undefined;
-    this.encoder.cancel();
   }
 
+  // 古いAPIとの互換性のため、仮の実装を提供
   getActualVideoCodec(): string | null {
-    return this.encoder.getActualVideoCodec();
+    // 新しいAPIでは設定情報から推定
+    return this.config?.codec?.video || null;
   }
 
   getActualAudioCodec(): string | null {
-    return this.encoder.getActualAudioCodec();
+    // 新しいAPIでは設定情報から推定
+    return this.config?.codec?.audio || null;
   }
 }

@@ -3,8 +3,8 @@ import type {
   EncoderConfig,
   MainThreadMessage,
   WorkerDataChunkMessage,
-} from "./types";
-import { EncoderErrorType } from "./types";
+} from "../types";
+import { EncoderErrorType } from "../types";
 
 class CallbackWritableStream {
   private position = 0;

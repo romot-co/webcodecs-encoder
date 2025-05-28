@@ -81,8 +81,9 @@ npm install webcodecs-encoder
 
 2. 基本動作テスト
 ```typescript
-import { WebCodecsEncoder } from 'webcodecs-encoder';
-console.log(WebCodecsEncoder.isSupported());
+import { canEncode } from 'webcodecs-encoder';
+const isSupported = await canEncode();
+console.log('WebCodecs support:', isSupported);
 ```
 
 3. TypeScript型定義確認

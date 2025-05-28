@@ -1,3 +1,105 @@
+// 新しい関数ファーストAPI用の型定義
+
+// 基本的なフレーム型
+export type Frame = VideoFrame | HTMLCanvasElement | OffscreenCanvas | ImageBitmap | ImageData;
+
+// ビデオファイル型
+export interface VideoFile {
+  file: File | Blob;
+  type: string;
+}
+
+// ビデオソース型（すべての入力形式）
+export type VideoSource = 
+  | Frame[]                    // 静的フレーム配列
+  | AsyncIterable<Frame>       // ストリーミングフレーム
+  | MediaStream               // カメラ/画面共有
+  | VideoFile;                // 既存の動画ファイル
+
+// 品質プリセット
+export type QualityPreset = 'low' | 'medium' | 'high' | 'lossless';
+
+// ビデオ設定
+export interface VideoConfig {
+  codec?: 'avc' | 'hevc' | 'vp9' | 'vp8' | 'av1';
+  bitrate?: number;
+  hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software';
+  latencyMode?: 'quality' | 'realtime';
+  keyFrameInterval?: number;
+}
+
+// オーディオ設定
+export interface AudioConfig {
+  codec?: 'aac' | 'opus';
+  bitrate?: number;
+  sampleRate?: number;
+  channels?: number;
+  bitrateMode?: 'constant' | 'variable';
+}
+
+// プログレス情報
+export interface ProgressInfo {
+  percent: number;
+  processedFrames: number;
+  totalFrames?: number;
+  fps: number;
+  stage: string;
+  estimatedRemainingMs?: number;
+}
+
+// エンコードオプション
+export interface EncodeOptions {
+  // 基本設定（自動検出可能）
+  width?: number;
+  height?: number;
+  frameRate?: number;
+
+  // 品質プリセット
+  quality?: QualityPreset;
+
+  // 詳細設定（オプショナル）
+  video?: VideoConfig;
+  audio?: AudioConfig | false; // falseでオーディオ無効化
+  container?: 'mp4' | 'webm';
+
+  // コールバック
+  onProgress?: (progress: ProgressInfo) => void;
+  onError?: (error: EncodeError) => void;
+}
+
+// エラータイプ
+export type EncodeErrorType =
+  | 'not-supported'
+  | 'initialization-failed'
+  | 'configuration-error'
+  | 'invalid-input' // 入力ソースやフレームデータが不正
+  | 'encoding-failed'
+  | 'video-encoding-error'
+  | 'audio-encoding-error'
+  | 'muxing-failed'
+  | 'cancelled'
+  | 'timeout'
+  | 'worker-error'
+  | 'filesystem-error' // VideoFileアクセス時など
+  | 'unknown';
+
+// カスタムエラークラス
+export class EncodeError extends Error {
+  type: EncodeErrorType;
+  cause?: unknown;
+
+  constructor(type: EncodeErrorType, message: string, cause?: unknown) {
+    super(message);
+    this.name = 'EncodeError';
+    this.type = type;
+    this.cause = cause;
+    Object.setPrototypeOf(this, EncodeError.prototype);
+  }
+}
+
+// --- 内部実装用の型定義（ワーカー通信など） ---
+
+// ワーカー通信用の基本設定型（内部実装用）
 export interface EncoderConfig {
   width: number;
   height: number;
@@ -51,57 +153,7 @@ export interface EncoderConfig {
   audioEncoderConfig?: Partial<AudioEncoderConfig>;
 }
 
-export interface DetailedProgressInfo {
-  /** 処理済みフレーム数 */
-  processedFrames: number;
-  /** 総フレーム数（不明の場合はundefined） */
-  totalFrames?: number;
-  /** 現在の処理ステージ */
-  stage: ProcessingStage;
-  /** 処理開始からの経過時間（ミリ秒） */
-  elapsedTimeMs: number;
-  /** 推定残り時間（ミリ秒、不明の場合はundefined） */
-  estimatedRemainingMs?: number;
-  /** フレーム/秒の処理速度 */
-  processingFps: number;
-  /** 平均処理速度（フレーム/秒） */
-  averageProcessingFps: number;
-  /** ドロップされたフレーム数 */
-  droppedFrames: number;
-  /** ビデオエンコーダーのキュー深度 */
-  videoQueueSize: number;
-  /** オーディオエンコーダーのキュー深度 */
-  audioQueueSize: number;
-  /** 処理済みデータサイズ（バイト） */
-  processedDataSize?: number;
-}
-
-export type ProgressCallback = (
-  processedFrames: number,
-  totalFrames?: number,
-) => void;
-
-export type DetailedProgressCallback = (progress: DetailedProgressInfo) => void;
-
-// --- Helper Types for environment-dependent constructors ---
-export type VideoEncoderConstructor = typeof VideoEncoder;
-export type AudioEncoderConstructor = typeof AudioEncoder;
-export type AudioDataConstructor = typeof AudioData;
-
-export type VideoEncoderGetter = () => VideoEncoderConstructor | undefined;
-export type AudioEncoderGetter = () => AudioEncoderConstructor | undefined;
-export type AudioDataGetter = () => AudioDataConstructor | undefined;
-
-// --- Encoder State Management ---
-export enum EncoderState {
-  Idle = "idle",
-  Initializing = "initializing",
-  Encoding = "encoding",
-  Finalizing = "finalizing",
-  Disposed = "disposed",
-  Error = "error",
-}
-
+// 処理ステージの定義
 export enum ProcessingStage {
   Initializing = "initializing",
   VideoEncoding = "video-encoding",
@@ -110,7 +162,7 @@ export enum ProcessingStage {
   Finalizing = "finalizing",
 }
 
-// --- Custom Error for the library ---
+// エンコーダーのエラータイプ（内部実装用）
 export enum EncoderErrorType {
   NotSupported = "not-supported",
   InitializationFailed = "initialization-failed",
@@ -126,20 +178,7 @@ export enum EncoderErrorType {
   ValidationError = "validation-error",
 }
 
-export class WebCodecsEncoderError extends Error {
-  constructor(
-    public type: EncoderErrorType,
-    message: string,
-    public cause?: unknown,
-  ) {
-    super(message);
-    this.name = "WebCodecsEncoderError";
-    // Ensure the prototype chain is correct for custom errors
-    Object.setPrototypeOf(this, WebCodecsEncoderError.prototype);
-  }
-}
-
-// --- Message types for communication between main thread and worker ---
+// --- ワーカー通信用のメッセージ型 ---
 
 // Messages TO the Worker
 export interface InitializeWorkerMessage {
@@ -196,29 +235,10 @@ export interface WorkerInitializedMessage {
   actualAudioCodec?: string;
 }
 
-export interface VideoChunkMessage {
-  // Primarily for internal use or advanced scenarios
-  type: "videoChunk";
-  chunk: EncodedVideoChunk;
-  meta?: EncodedVideoChunkMetadata;
-}
-
-export interface AudioChunkMessage {
-  // Primarily for internal use or advanced scenarios
-  type: "audioChunk";
-  chunk: EncodedAudioChunk;
-  meta?: EncodedAudioChunkMetadata;
-}
-
 export interface ProgressMessage {
   type: "progress";
   processedFrames: number;
   totalFrames?: number;
-}
-
-export interface DetailedProgressMessage {
-  type: "detailedProgress";
-  progress: DetailedProgressInfo;
 }
 
 export interface WorkerFinalizedMessage {
@@ -243,7 +263,6 @@ export interface WorkerDataChunkMessage {
 export interface WorkerErrorMessage {
   type: "error";
   errorDetail: {
-    // Renamed from 'error' to avoid conflict with global Error
     message: string;
     type: EncoderErrorType;
     stack?: string;
@@ -256,12 +275,18 @@ export interface WorkerCancelledMessage {
 
 export type MainThreadMessage =
   | WorkerInitializedMessage
-  // | VideoChunkMessage // These are handled internally by the muxer in the worker
-  // | AudioChunkMessage // These are handled internally by the muxer in the worker
   | ProgressMessage
-  | DetailedProgressMessage
   | WorkerFinalizedMessage
   | QueueSizeMessage
   | WorkerDataChunkMessage
   | WorkerErrorMessage
   | WorkerCancelledMessage;
+
+// --- Helper Types for environment-dependent constructors ---
+export type VideoEncoderConstructor = typeof VideoEncoder;
+export type AudioEncoderConstructor = typeof AudioEncoder;
+export type AudioDataConstructor = typeof AudioData;
+
+export type VideoEncoderGetter = () => VideoEncoderConstructor | undefined;
+export type AudioEncoderGetter = () => AudioEncoderConstructor | undefined;
+export type AudioDataGetter = () => AudioDataConstructor | undefined;

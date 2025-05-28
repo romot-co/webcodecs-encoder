@@ -7,10 +7,10 @@ export const mockMuxerInstanceForWorker = {
   finalize: vi.fn<() => Uint8Array | null>(() => new Uint8Array([1, 2, 3, 4])),
 };
 
-vi.mock("../../src/mp4muxer", () => ({
+vi.mock("../../src/muxers/mp4muxer", () => ({
   Mp4MuxerWrapper: vi.fn(() => mockMuxerInstanceForWorker),
 }));
-vi.mock("../../src/webmmuxer", () => ({
+vi.mock("../../src/muxers/webmmuxer", () => ({
   WebMMuxerWrapper: vi.fn(() => mockMuxerInstanceForWorker),
 }));
 
@@ -25,7 +25,7 @@ export const mockSelf = {
 } as any;
 
 export async function importWorker() {
-  await import("../../src/worker");
+  await import("../../src/worker/encoder-worker");
 }
 
 export function setupGlobals() {

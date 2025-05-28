@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WebMMuxerWrapper } from "../src/webmmuxer";
+import { WebMMuxerWrapper } from "../src/muxers/webmmuxer";
 import type { EncoderConfig } from "../src/types";
 import { EncoderErrorType } from "../src/types";
 

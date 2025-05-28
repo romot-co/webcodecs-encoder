@@ -1,73 +1,58 @@
-import { WebCodecsEncoder } from 'webcodecs-encoder';
+import { encode, canEncode } from 'webcodecs-encoder';
 
-async function encodeVideoToFile() {
-  if (!WebCodecsEncoder.isSupported()) {
-    console.error('WebCodecs or Workers not supported.');
-    return;
-  }
-
-  const config = {
-    width: 1280,
-    height: 720,
-    frameRate: 30,
-    videoBitrate: 2_000_000, // 2 Mbps
-    audioBitrate: 128_000,   // 128 kbps
-    sampleRate: 48000,       // Recommended: 48000 for Opus
-    channels: 2,
-  };
-
-  const encoder = new WebCodecsEncoder(config);
-
-  try {
-    await encoder.initialize({
-      onProgress: (processedFrames, totalFrames) => {
-        console.log(`Progress (File): ${processedFrames}/${totalFrames}`);
-      },
-      totalFrames: 300 // Optional: for progress calculation
-    });
-
-    const canvas = document.createElement('canvas');
-    canvas.width = config.width;
-    canvas.height = config.height;
-    const ctx = canvas.getContext('2d');
-
-    // Example: Encode 300 frames
-    for (let i = 0; i < 300; i++) {
-      ctx.fillStyle = `hsl(${(i * 5) % 360}, 100%, 50%)`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'white';
-      ctx.font = '50px Arial';
-      ctx.fillText(`Frame ${i + 1}`, 50, 100);
-
-      await encoder.addCanvasFrame(canvas);
-    }
-
-    // Example: Create a silent audio track
-    const audioContext = new AudioContext({ sampleRate: config.sampleRate });
-    const silentAudioBuffer = audioContext.createBuffer(
-      config.channels,
-      audioContext.sampleRate * (300 / config.frameRate), // duration matching video
-      audioContext.sampleRate
-    );
-    await encoder.addAudioBuffer(silentAudioBuffer);
-
-    const uint8Array = await encoder.finalize();
-    console.log('Encoding finished! MP4 size:', uint8Array.byteLength);
-
-    // Download the MP4
-    const blob = new Blob([uint8Array], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'encoded_video.mp4';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-  } catch (error) {
-    console.error('Encoding failed:', error);
-  }
+// WebCodecs対応チェック
+const isSupported = await canEncode();
+if (!isSupported) {
+  console.error('WebCodecs not supported');
+  throw new Error('WebCodecs not supported in this browser');
 }
 
-encodeVideoToFile();
+// Canvas要素でフレームを生成
+async function generateFrames() {
+  const frames: ImageBitmap[] = [];
+  const canvas = new OffscreenCanvas(1280, 720);
+  const ctx = canvas.getContext('2d')!;
+
+  // サンプルアニメーション（120フレーム = 4秒間）
+  for (let i = 0; i < 120; i++) {
+    ctx.fillStyle = `hsl(${(i * 3) % 360}, 70%, 50%)`;
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.fillStyle = 'white';
+    ctx.font = '48px Arial';
+    ctx.fillText(`Frame ${i + 1}`, 50, 100);
+    
+    frames.push(canvas.transferToImageBitmap());
+  }
+
+  return frames;
+}
+
+// フレーム生成
+const frames = await generateFrames();
+
+// エンコード実行
+const mp4Data = await encode(frames, {
+  width: 1280,
+  height: 720,
+  frameRate: 30,
+  quality: 'medium',
+  container: 'mp4',
+  onProgress: (progress) => {
+    console.log(`エンコード進捗: ${progress.percent.toFixed(1)}%`);
+  }
+});
+
+// ブラウザでファイルをダウンロード
+const blob = new Blob([mp4Data], { type: 'video/mp4' });
+const url = URL.createObjectURL(blob);
+
+const a = document.createElement('a');
+a.href = url;
+a.download = 'encoded-video.mp4';
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+
+URL.revokeObjectURL(url);
+
+console.log('エンコード完了: encoded-video.mp4 をダウンロードしました');

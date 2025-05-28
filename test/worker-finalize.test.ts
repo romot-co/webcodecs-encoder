@@ -12,7 +12,7 @@ import {
   mockSelf,
   mockMuxerInstanceForWorker,
 } from "./helpers/worker-test-utils";
-import { Mp4MuxerWrapper as ActualMp4MuxerWrapper } from "../src/mp4muxer";
+import { Mp4MuxerWrapper as ActualMp4MuxerWrapper } from "../src/muxers/mp4muxer";
 
 let config: EncoderConfig;
 let Mp4MuxerWrapperMock: ReturnType<typeof vi.mocked<typeof ActualMp4MuxerWrapper>>;
@@ -21,7 +21,7 @@ beforeEach(async () => {
   vi.resetModules();
   setupGlobals();
   resetMocks();
-  const mp4muxerModule = await import("../src/mp4muxer");
+  const mp4muxerModule = await import("../src/muxers/mp4muxer");
   Mp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
   Mp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
   await importWorker();
@@ -100,7 +100,7 @@ describe("handleFinalize", () => {
     }
     if (typeof mockSelf.AudioEncoder === 'function') mockAudioEncoderInstance = (mockSelf.AudioEncoder as any)();
 
-    const mp4muxerModule = await import("../src/mp4muxer");
+    const mp4muxerModule = await import("../src/muxers/mp4muxer");
     const currentMp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
     currentMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
     mockMuxerInstanceForWorker.addVideoChunk.mockClear();
@@ -146,7 +146,7 @@ describe("handleFinalize", () => {
   it("should post error if muxer construction fails during initialization", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
     const muxerConstructionError = new Error("Muxer init failed for test");
-    const specificTestMp4MuxerWrapperMock = vi.mocked((await import("../src/mp4muxer")).Mp4MuxerWrapper);
+    const specificTestMp4MuxerWrapperMock = vi.mocked((await import("../src/muxers/mp4muxer")).Mp4MuxerWrapper);
     specificTestMp4MuxerWrapperMock.mockImplementationOnce(() => {
       throw muxerConstructionError;
     });
@@ -205,7 +205,7 @@ describe("handleFinalize", () => {
     const realtimeConfig = { ...config, latencyMode: "realtime" as const };
     const initRealtimeMessage: InitializeWorkerMessage = { type: "initialize", config: realtimeConfig };
 
-    const mp4muxerModule = await import("../src/mp4muxer");
+    const mp4muxerModule = await import("../src/muxers/mp4muxer");
     const currentMp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
     currentMp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
     mockMuxerInstanceForWorker.finalize = vi.fn<() => Uint8Array | null>(() => null);

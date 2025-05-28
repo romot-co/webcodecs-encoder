@@ -3,8 +3,8 @@ import type {
   EncoderConfig,
   MainThreadMessage,
   WorkerDataChunkMessage,
-} from "./types";
-import { EncoderErrorType } from "./types";
+} from "../types";
+import { EncoderErrorType } from "../types";
 
 // MuxerOptions がエクスポートされていないため、ConstructorParameters を使用して型を推論し、
 // fastStart プロパティを明示的に追加します。

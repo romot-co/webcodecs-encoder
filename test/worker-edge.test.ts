@@ -12,7 +12,7 @@ import {
   mockSelf,
   mockMuxerInstanceForWorker,
 } from "./helpers/worker-test-utils";
-import { Mp4MuxerWrapper as ActualMp4MuxerWrapper } from "../src/mp4muxer";
+import { Mp4MuxerWrapper as ActualMp4MuxerWrapper } from "../src/muxers/mp4muxer";
 
 let config: EncoderConfig;
 let Mp4MuxerWrapperMock: ReturnType<typeof vi.mocked<typeof ActualMp4MuxerWrapper>>;
@@ -21,7 +21,7 @@ beforeEach(async () => {
   vi.resetModules();
   setupGlobals();
   resetMocks();
-  const mp4muxerModule = await import("../src/mp4muxer");
+  const mp4muxerModule = await import("../src/muxers/mp4muxer");
   Mp4MuxerWrapperMock = vi.mocked(mp4muxerModule.Mp4MuxerWrapper);
   Mp4MuxerWrapperMock.mockImplementation(() => mockMuxerInstanceForWorker as any);
   await importWorker();

@@ -1,21 +1,16 @@
-export { WebCodecsEncoder } from "./encoder";
+// メイン関数ファーストAPI
+export { encode } from "./core/encode";
+export { encodeStream } from "./stream/encode-stream";
+export { canEncode } from "./utils/can-encode";
+
+// 高度な使用向け：カスタムエンコーダーファクトリ
+export { createEncoder, encoders, examples } from "./factory/encoder";
+export type { EncoderFactory } from "./factory/encoder";
+
+// レガシーサポート：既存のクラスベースAPI（非推奨）
 export { MediaStreamRecorder } from "./mediastream-recorder";
 
-// 新しい関数ファーストAPI
-export { encode, encodeStream, canEncode } from "./functional-api";
-
-export type {
-  EncoderConfig,
-  ProgressCallback,
-  WebCodecsEncoderError,
-  EncoderErrorType,
-} from "./types";
-export type {
-  RealtimeDataCallback,
-  WebCodecsEncoderInitializeOptions,
-} from "./encoder";
-
-// 新しいAPI用の型定義
+// 型定義
 export type {
   VideoSource,
   Frame,
@@ -23,4 +18,21 @@ export type {
   QualityPreset,
   VideoConfig,
   AudioConfig,
-} from "./functional-types";
+  ProgressInfo,
+  EncodeErrorType,
+  VideoFile,
+} from "./types";
+
+export { EncodeError } from './types';
+
+// 内部実装用（高度な使用のみ）
+export type {
+  EncoderConfig,
+  ProcessingStage,
+  EncoderErrorType,
+  WorkerMessage,
+  MainThreadMessage,
+  VideoEncoderGetter,
+  AudioEncoderGetter,
+  AudioDataGetter,
+} from './types';

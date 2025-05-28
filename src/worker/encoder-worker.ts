@@ -1,5 +1,5 @@
-import { Mp4MuxerWrapper } from "./mp4muxer";
-import { WebMMuxerWrapper } from "./webmmuxer";
+import { Mp4MuxerWrapper } from "../muxers/mp4muxer";
+import { WebMMuxerWrapper } from "../muxers/webmmuxer";
 import type {
   EncoderConfig,
   WorkerMessage,
@@ -12,9 +12,8 @@ import type {
   VideoEncoderGetter,
   AudioEncoderGetter,
   AudioDataGetter,
-} from "./types";
-import { EncoderErrorType } from "./types";
-import logger from "./logger";
+} from "../types";
+import { EncoderErrorType } from "../types";
 
 // グローバルなエラーハンドラ (主に同期的なエラーや、Promise外の非同期エラー用)
 if (
@@ -379,12 +378,14 @@ class EncoderWorker {
         // WebMコンテナの場合：VP9 → VP8 の順でフォールバック
         if (this.currentConfig.container === "webm") {
           const webmCodecs: ("vp9" | "vp8")[] = ["vp9", "vp8"];
-          
+
           for (const fallbackCodec of webmCodecs) {
             if (fallbackCodec === videoCodec) continue; // 既に試したコーデックはスキップ
-            
-            console.warn(`Worker: Trying fallback to ${fallbackCodec} for WebM container.`);
-            
+
+            console.warn(
+              `Worker: Trying fallback to ${fallbackCodec} for WebM container.`,
+            );
+
             const fallbackCodecString = this.getCodecString(
               fallbackCodec,
               this.currentConfig.width,
@@ -409,7 +410,9 @@ class EncoderWorker {
             );
 
             if (support) {
-              console.warn(`Worker: Successfully fell back to ${fallbackCodec} for WebM.`);
+              console.warn(
+                `Worker: Successfully fell back to ${fallbackCodec} for WebM.`,
+              );
               videoCodec = fallbackCodec;
               finalVideoEncoderConfig = support;
               fallbackSuccessful = true;
@@ -653,7 +656,8 @@ class EncoderWorker {
           );
           if (audioSupportConfig) {
             if (
-              audioSupportConfig.numberOfChannels !== this.currentConfig.channels
+              audioSupportConfig.numberOfChannels !==
+              this.currentConfig.channels
             ) {
               this.postMessageToMainThread({
                 type: "error",
@@ -693,7 +697,8 @@ class EncoderWorker {
                 this.cleanup();
                 return;
               }
-              finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
+              finalAudioEncoderConfig =
+                audioSupportConfig as AudioEncoderConfig;
             } else {
               this.postMessageToMainThread({
                 type: "error",
@@ -830,7 +835,7 @@ class EncoderWorker {
       actualAudioCodec: audioDisabled ? null : finalAudioEncoderConfig?.codec,
     } as MainThreadMessage);
 
-    logger.log("Worker: Initialized successfully");
+    console.warn("Worker: Initialized successfully");
   }
 
   async handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
@@ -849,7 +854,7 @@ class EncoderWorker {
       try {
         frame.close();
       } catch (closeErr) {
-        logger.warn("Worker: Ignored error closing VideoFrame", closeErr);
+        console.warn("Worker: Ignored error closing VideoFrame", closeErr);
       }
       this.videoFrameCount++;
       this.processedFrames++;
@@ -1020,7 +1025,7 @@ class EncoderWorker {
   handleCancel(_message: CancelWorkerMessage): void {
     if (this.isCancelled) return;
     this.isCancelled = true;
-    logger.log("Worker: Received cancel signal.");
+    console.warn("Worker: Received cancel signal.");
 
     // Ensure the main thread is notified even if cleanup throws
     this.postMessageToMainThread({ type: "cancelled" } as MainThreadMessage);
@@ -1034,7 +1039,7 @@ class EncoderWorker {
   }
 
   cleanup(resetCancelled: boolean = true): void {
-    logger.log("Worker: Cleaning up resources.");
+    console.warn("Worker: Cleaning up resources.");
     if (this.videoEncoder && this.videoEncoder.state !== "closed")
       this.videoEncoder.close();
     if (this.audioEncoder && this.audioEncoder.state !== "closed")
