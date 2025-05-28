@@ -105,7 +105,6 @@ class EncoderWorker {
   private processedFrames: number = 0;
   private videoFrameCount: number = 0;
   private isCancelled: boolean = false;
-  private audioWorkletPort: MessagePort | null = null;
 
   constructor() {
     // コンストラクタで依存性を注入することも可能
@@ -1051,11 +1050,6 @@ class EncoderWorker {
     this.totalFramesToProcess = undefined;
     this.processedFrames = 0;
     this.videoFrameCount = 0;
-    if (this.audioWorkletPort) {
-      this.audioWorkletPort.onmessage = null;
-      this.audioWorkletPort.close();
-      this.audioWorkletPort = null;
-    }
     if (resetCancelled) {
       this.isCancelled = false;
     }
@@ -1079,15 +1073,6 @@ class EncoderWorker {
           this.isCancelled = false;
           this.cleanup();
           await this.initializeEncoders(eventData);
-          break;
-        case "connectAudioPort":
-          this.audioWorkletPort = eventData.port;
-          this.audioWorkletPort.onmessage = async (
-            e: MessageEvent<AddAudioDataMessage>,
-          ) => {
-            if (this.isCancelled) return;
-            await this.handleAddAudioData(e.data);
-          };
           break;
         case "addVideoFrame":
           await this.handleAddVideoFrame(eventData);

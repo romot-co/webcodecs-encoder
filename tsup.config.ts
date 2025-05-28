@@ -9,14 +9,6 @@ export default defineConfig([
     sourcemap: true,
     outDir: 'dist',
   },
-  // Audio Worklet Processor
-  {
-    entry: ['src/worker/audio-worklet.ts'],
-    format: ['esm', 'cjs'],
-    dts: true,
-    sourcemap: true,
-    outDir: 'dist',
-  },
   // ストリーミング機能
   {
     entry: { 'stream/encode-stream': 'src/stream/encode-stream.ts' },

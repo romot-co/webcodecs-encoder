@@ -215,18 +215,12 @@ export interface CancelWorkerMessage {
   type: "cancel";
 }
 
-export interface ConnectAudioPortMessage {
-  type: "connectAudioPort";
-  port: MessagePort;
-}
-
 export type WorkerMessage =
   | InitializeWorkerMessage
   | AddVideoFrameMessage
   | AddAudioDataMessage
   | FinalizeWorkerMessage
-  | CancelWorkerMessage
-  | ConnectAudioPortMessage;
+  | CancelWorkerMessage;
 
 // Messages FROM the Worker
 export interface WorkerInitializedMessage {

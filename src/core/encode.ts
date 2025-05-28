@@ -8,6 +8,7 @@ import {
   EncodeError,
   Frame,
   ProgressInfo,
+  VideoFile,
 } from "../types";
 import { inferAndBuildConfig } from "../utils/config-parser";
 import { WorkerCommunicator } from "../worker/worker-communicator";
@@ -163,11 +164,8 @@ async function processVideoSource(
     // AsyncIterableの処理
     await processAsyncIterable(communicator, source);
   } else {
-    // VideoFileの処理（今回は基本実装）
-    throw new EncodeError(
-      "invalid-input",
-      "VideoFile processing not yet implemented",
-    );
+    // VideoFileの処理
+    await processVideoFile(communicator, source as VideoFile, config);
   }
 }
 
@@ -421,4 +419,89 @@ async function convertToVideoFrame(
     "invalid-input",
     `Unsupported frame type: ${typeof frame}. Frame must be VideoFrame, HTMLCanvasElement, OffscreenCanvas, ImageBitmap, or ImageData.`,
   );
+}
+
+/**
+ * VideoFileを処理してフレームを抽出
+ */
+async function processVideoFile(
+  communicator: WorkerCommunicator,
+  videoFile: VideoFile,
+  config: any,
+): Promise<void> {
+  try {
+    // HTML5 Video要素を作成してファイルを読み込み
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "metadata";
+
+    // ファイルをオブジェクトURLとして設定
+    const objectUrl = URL.createObjectURL(videoFile.file);
+    video.src = objectUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Failed to load video file"));
+    });
+
+    // 動画の情報を取得
+    const { duration, videoWidth, videoHeight } = video;
+    const frameRate = config.frameRate || 30;
+    const totalFrames = Math.floor(duration * frameRate);
+
+    // Canvasを作成してフレームを抽出
+    const canvas = document.createElement("canvas");
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new EncodeError(
+        "initialization-failed",
+        "Failed to get canvas context",
+      );
+    }
+
+    // 動画の各フレームを処理
+    for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+      const timestamp = frameIndex / frameRate;
+
+      // 動画の指定時間にシーク
+      video.currentTime = timestamp;
+
+      await new Promise<void>((resolve) => {
+        video.onseeked = () => resolve();
+        // タイムアウト処理を追加してデッドロックを防止
+        setTimeout(() => resolve(), 100);
+      });
+
+      // Canvasに現在のフレームを描画
+      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+      // VideoFrameを作成
+      const videoFrame = new VideoFrame(canvas, {
+        timestamp: frameIndex * (1000000 / frameRate), // マイクロ秒
+      });
+
+      // ワーカーに送信
+      await addFrameToWorker(
+        communicator,
+        videoFrame,
+        frameIndex * (1000000 / frameRate),
+      );
+
+      // フレームをクローズしてメモリリークを防止
+      videoFrame.close();
+    }
+
+    // リソースをクリーンアップ
+    URL.revokeObjectURL(objectUrl);
+    video.remove();
+  } catch (error) {
+    throw new EncodeError(
+      "invalid-input",
+      `VideoFile processing failed: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
 }

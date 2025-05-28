@@ -2,8 +2,8 @@
 
 A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers with a simple, function-first design.
 
-> **🎉 v1.0.0 Release**  
-> This is the stable release with the new function-first API. The API is now simplified and production-ready with automatic configuration, quality presets, and progressive enhancement.
+> **🎉 v0.2.1 Release**  
+> This release includes VideoFile support and improved API stability. The function-first API is production-ready with automatic configuration, quality presets, and progressive enhancement.
 
 ## Features
 

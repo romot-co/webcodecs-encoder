@@ -6,8 +6,6 @@ import { inferAndBuildConfig } from "./utils/config-parser";
 export interface MediaStreamRecorderOptions extends EncodeOptions {
   /** 最初のタイムスタンプの処理方法 */
   firstTimestampBehavior?: "offset" | "strict";
-  /** AudioWorkletを使用するかどうか */
-  useAudioWorklet?: boolean;
 }
 
 export class MediaStreamRecorder {
@@ -75,16 +73,12 @@ export class MediaStreamRecorder {
 
       if (aTrack) {
         this.audioTrack = aTrack;
-        if (mergedOptions.useAudioWorklet) {
-          await this.setupAudioWorklet(stream);
-        } else {
-          const processor = new MediaStreamTrackProcessor({
-            track: aTrack,
-          });
-          this.audioReader =
-            processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
-          this.processAudio();
-        }
+        const processor = new MediaStreamTrackProcessor({
+          track: aTrack,
+        });
+        this.audioReader =
+          processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
+        this.processAudio();
       }
     } catch (error) {
       this.cleanup();
@@ -146,12 +140,6 @@ export class MediaStreamRecorder {
       // ワーカーを初期化
       this.communicator.send('initialize', { config: this.config });
     });
-  }
-
-  private async setupAudioWorklet(_stream: MediaStream): Promise<void> {
-    // AudioWorkletのセットアップは複雑なため、基本実装のみ
-    // 実際の実装では AudioContext と AudioWorkletNode が必要
-    throw new EncodeError('not-supported', 'AudioWorklet setup not yet implemented for new API');
   }
 
   private async processVideo(): Promise<void> {

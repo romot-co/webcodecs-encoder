@@ -271,47 +271,6 @@ describe('MediaStreamRecorder', () => {
     });
   });
 
-  describe('AudioWorklet処理', () => {
-    it('AudioWorkletを使用する場合は未実装エラー', async () => {
-      // エラーハンドリング追加
-      const onError = vi.fn();
-      const recorder = new MediaStreamRecorder({ 
-        useAudioWorklet: true,
-        onError 
-      });
-      
-      const videoTrack = createMockVideoTrack();
-      const audioTrack = createMockAudioTrack();
-      const stream = createMockMediaStream([videoTrack], [audioTrack]);
-
-      mockWorkerCommunicator.on.mockImplementation((event: string, handler: EventHandler) => {
-        if (event === 'initialized') {
-          handler({});
-        }
-      });
-
-      await expect(recorder.startRecording(stream))
-        .rejects.toThrow('AudioWorklet setup not yet implemented');
-    });
-
-    it('AudioWorkletなしでオーディオを処理', async () => {
-      const recorder = new MediaStreamRecorder({ useAudioWorklet: false });
-      const videoTrack = createMockVideoTrack();
-      const audioTrack = createMockAudioTrack();
-      const stream = createMockMediaStream([videoTrack], [audioTrack]);
-
-      mockWorkerCommunicator.on.mockImplementation((event: string, handler: EventHandler) => {
-        if (event === 'initialized') {
-          handler({});
-        }
-      });
-
-      await recorder.startRecording(stream);
-      
-      expect((global as any).MediaStreamTrackProcessor).toHaveBeenCalledWith({ track: audioTrack });
-    });
-  });
-
   describe('プログレス処理', () => {
     it('プログレスコールバックが呼ばれる', async () => {
       const onProgress = vi.fn();

@@ -4,7 +4,6 @@ import {
   InitializeWorkerMessage,
   FinalizeWorkerMessage,
   CancelWorkerMessage,
-  AddAudioDataMessage,
 } from "../src/types";
 import {
   setupGlobals,
@@ -90,33 +89,6 @@ describe("worker", () => {
     );
     // The transferred ArrayBuffer should be the .buffer of the msg.output Uint8Array
     expect(transferredObject).toBe(expectedOutputArray.buffer);
-  });
-
-  it("connects audio port and handles messages", async () => {
-    if (!global.self.onmessage)
-      throw new Error("Worker onmessage handler not set up");
-    const port: any = { postMessage: vi.fn(), onmessage: null, close: vi.fn() };
-    const initMessage: InitializeWorkerMessage = { type: "initialize", config };
-    await global.self.onmessage({ data: initMessage } as MessageEvent);
-    const connectMsg = { type: "connectAudioPort", port } as any;
-    await global.self.onmessage({ data: connectMsg } as MessageEvent);
-    expect(port.onmessage).toBeTypeOf("function");
-    mockSelf.AudioEncoder.mock.results[0].value.encode.mockClear();
-
-    const addAudioMsg: AddAudioDataMessage = {
-      type: "addAudioData",
-      audioData: [new Float32Array(1), new Float32Array(1)],
-      timestamp: 0,
-      format: "f32-planar",
-      sampleRate: config.sampleRate,
-      numberOfFrames: 1,
-      numberOfChannels: 2,
-    };
-    if (port.onmessage)
-      await port.onmessage({ data: addAudioMsg } as MessageEvent);
-    expect(
-      mockSelf.AudioEncoder.mock.results[0].value.encode,
-    ).toHaveBeenCalled();
   });
 
   it("handles cancel message", async () => {
