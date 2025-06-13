@@ -239,16 +239,125 @@ async function processAsyncIterable(
  * MediaStreamをリアルタイム処理
  */
 async function processMediaStreamRealtime(
-  _communicator: WorkerCommunicator,
-  _stream: MediaStream,
+  communicator: WorkerCommunicator,
+  stream: MediaStream,
+  config: any,
+): Promise<void> {
+  const videoTracks = stream.getVideoTracks();
+  const audioTracks = stream.getAudioTracks();
+
+  const readers: ReadableStreamDefaultReader<any>[] = [];
+  const processingPromises: Promise<void>[] = [];
+
+  try {
+    // ビデオトラックの処理
+    if (videoTracks.length > 0) {
+      const videoTrack = videoTracks[0];
+      const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+      const reader =
+        processor.readable.getReader() as ReadableStreamDefaultReader<VideoFrame>;
+      readers.push(reader);
+
+      processingPromises.push(
+        processVideoTrackRealtime(communicator, reader, config),
+      );
+    }
+
+    // オーディオトラックの処理
+    if (audioTracks.length > 0) {
+      const audioTrack = audioTracks[0];
+      const processor = new MediaStreamTrackProcessor({ track: audioTrack });
+      const reader =
+        processor.readable.getReader() as ReadableStreamDefaultReader<AudioData>;
+      readers.push(reader);
+
+      processingPromises.push(processAudioTrackRealtime(communicator, reader));
+    }
+
+    // すべての処理が完了するまで待機
+    await Promise.all(processingPromises);
+  } finally {
+    // リーダーをクリーンアップ
+    for (const reader of readers) {
+      try {
+        reader.cancel();
+      } catch (e) {
+        // エラーは無視（既にキャンセル済みの可能性）
+      }
+    }
+
+    // トラックを停止
+    for (const track of [...videoTracks, ...audioTracks]) {
+      track.stop();
+    }
+  }
+}
+
+/**
+ * VideoTrackをリアルタイム処理
+ */
+async function processVideoTrackRealtime(
+  communicator: WorkerCommunicator,
+  reader: ReadableStreamDefaultReader<VideoFrame>,
   _config: any,
 ): Promise<void> {
-  // MediaStreamRecorderの機能を活用したリアルタイム処理
-  // 実装の詳細は複雑なため、プレースホルダー
-  throw new EncodeError(
-    "invalid-input",
-    "Real-time MediaStream processing requires more complex implementation",
-  );
+  // フレームドロップ機能は将来実装予定
+  // const maxQueueDepth = config.maxQueueDepth || 10;
+
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done || !value) break;
+
+      try {
+        await addFrameToWorker(communicator, value, value.timestamp || 0);
+      } finally {
+        value.close();
+      }
+    }
+  } catch (error) {
+    throw new EncodeError(
+      "video-encoding-error",
+      `Real-time video stream processing error: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
+}
+
+/**
+ * AudioTrackをリアルタイム処理
+ */
+async function processAudioTrackRealtime(
+  communicator: WorkerCommunicator,
+  reader: ReadableStreamDefaultReader<AudioData>,
+): Promise<void> {
+  try {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done || !value) break;
+
+      try {
+        communicator.send("addAudioData", {
+          audio: value,
+          timestamp: value.timestamp || 0,
+          format: "f32",
+          sampleRate: value.sampleRate,
+          numberOfFrames: value.numberOfFrames,
+          numberOfChannels: value.numberOfChannels,
+        });
+      } finally {
+        value.close();
+      }
+    }
+  } catch (error) {
+    throw new EncodeError(
+      "audio-encoding-error",
+      `Real-time audio stream processing error: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
 }
 
 /**

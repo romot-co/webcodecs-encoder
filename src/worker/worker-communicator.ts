@@ -246,7 +246,30 @@ export class WorkerCommunicator {
    * ワーカーにメッセージを送信
    */
   send(type: string, data: any = {}): void {
-    this.worker.postMessage({ type, ...data });
+    // Transferableオブジェクトを検出して最適化
+    const transferables: Transferable[] = [];
+
+    // VideoFrameが含まれている場合
+    if (data.frame && typeof data.frame === "object" && "close" in data.frame) {
+      transferables.push(data.frame);
+    }
+
+    // AudioDataが含まれている場合
+    if (data.audio && typeof data.audio === "object" && "close" in data.audio) {
+      transferables.push(data.audio);
+    }
+
+    // ArrayBufferが含まれている場合
+    if (data.buffer instanceof ArrayBuffer) {
+      transferables.push(data.buffer);
+    }
+
+    // Transferableオブジェクトがある場合は最適化された転送を使用
+    if (transferables.length > 0) {
+      this.worker.postMessage({ type, ...data }, transferables);
+    } else {
+      this.worker.postMessage({ type, ...data });
+    }
   }
 
   /**

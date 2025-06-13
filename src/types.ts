@@ -58,7 +58,7 @@ export interface EncodeOptions {
   quality?: QualityPreset;
 
   // 詳細設定（オプショナル）
-  video?: VideoConfig;
+  video?: VideoConfig | false; // falseでビデオ無効化
   audio?: AudioConfig | false; // falseでオーディオ無効化
   container?: 'mp4' | 'webm';
 

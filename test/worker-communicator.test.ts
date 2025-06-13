@@ -53,6 +53,82 @@ describe('WorkerCommunicator', () => {
       });
     });
 
+    it('VideoFrameのTransferableオブジェクト最適化が動作する (v0.2.2)', () => {
+      const communicator = new WorkerCommunicator();
+      
+      // モックVideoFrame
+      const mockVideoFrame = {
+        close: vi.fn(),
+        timestamp: 0,
+        displayWidth: 640,
+        displayHeight: 480,
+      };
+      
+      communicator.send('addVideoFrame', { 
+        frame: mockVideoFrame,
+        timestamp: 0 
+      });
+      
+      // Transferableオブジェクトとして送信されることを確認
+      expect(mockWorker.postMessage).toHaveBeenCalledWith({
+        type: 'addVideoFrame',
+        frame: mockVideoFrame,
+        timestamp: 0
+      }, [mockVideoFrame]);
+    });
+
+    it('AudioDataのTransferableオブジェクト最適化が動作する (v0.2.2)', () => {
+      const communicator = new WorkerCommunicator();
+      
+      // モックAudioData
+      const mockAudioData = {
+        close: vi.fn(),
+        timestamp: 0,
+        sampleRate: 48000,
+        numberOfChannels: 2,
+      };
+      
+      communicator.send('addAudioData', { 
+        audio: mockAudioData,
+        timestamp: 0 
+      });
+      
+      // Transferableオブジェクトとして送信されることを確認
+      expect(mockWorker.postMessage).toHaveBeenCalledWith({
+        type: 'addAudioData',
+        audio: mockAudioData,
+        timestamp: 0
+      }, [mockAudioData]);
+    });
+
+    it('ArrayBufferのTransferableオブジェクト最適化が動作する (v0.2.2)', () => {
+      const communicator = new WorkerCommunicator();
+      
+      const mockArrayBuffer = new ArrayBuffer(1024);
+      
+      communicator.send('data', { 
+        buffer: mockArrayBuffer
+      });
+      
+      // Transferableオブジェクトとして送信されることを確認
+      expect(mockWorker.postMessage).toHaveBeenCalledWith({
+        type: 'data',
+        buffer: mockArrayBuffer
+      }, [mockArrayBuffer]);
+    });
+
+    it('Transferableオブジェクトがない場合は通常送信される', () => {
+      const communicator = new WorkerCommunicator();
+      
+      communicator.send('normal', { data: 'test' });
+      
+      // 通常のpostMessage（第二引数なし）
+      expect(mockWorker.postMessage).toHaveBeenCalledWith({
+        type: 'normal',
+        data: 'test'
+      });
+    });
+
     it('イベントハンドラーの登録と削除が動作する', () => {
       const communicator = new WorkerCommunicator();
       const handler = vi.fn();

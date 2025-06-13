@@ -135,17 +135,28 @@ async function testVideoCodecSupport(
       codec: codecString,
       width: options?.width || 640,
       height: options?.height || 480,
-      bitrate: options?.video?.bitrate || 1_000_000,
+      bitrate:
+        options?.video === false
+          ? 0
+          : (options?.video as any)?.bitrate || 1_000_000,
       framerate: options?.frameRate || 30,
     };
 
     // オプションの詳細設定を追加
-    if (options?.video?.hardwareAcceleration) {
-      config.hardwareAcceleration = options.video.hardwareAcceleration;
+    if (
+      options &&
+      options.video !== false &&
+      (options.video as any)?.hardwareAcceleration
+    ) {
+      config.hardwareAcceleration = (options.video as any).hardwareAcceleration;
     }
 
-    if (options?.video?.latencyMode) {
-      config.latencyMode = options.video.latencyMode;
+    if (
+      options &&
+      options.video !== false &&
+      (options.video as any)?.latencyMode
+    ) {
+      config.latencyMode = (options.video as any).latencyMode;
     }
 
     const support = await VideoEncoder.isConfigSupported(config);

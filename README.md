@@ -2,8 +2,8 @@
 
 A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers with a simple, function-first design.
 
-> **🎉 v0.2.1 Release**  
-> This release includes VideoFile support and improved API stability. The function-first API is production-ready with automatic configuration, quality presets, and progressive enhancement.
+> **🎉 v0.2.2 Release**  
+> Major updates: Real-time streaming support, audio-only encoding, VideoFile audio processing, and optimized transferable objects. See [CHANGELOG](#changelog) for details.
 
 ## Features
 
@@ -17,6 +17,9 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 - **📦 Optimized Bundle Size**: Import only what you need
 - **🛡️ Type Safety**: Full TypeScript support with comprehensive types
 - **🎵 Audio Support**: AAC and Opus encoding with automatic configuration
+- **🎤 Audio-Only Encoding**: Support for `video: false` option (v0.2.2)
+- **📹 VideoFile Audio**: Extract and encode audio from video files (v0.2.2)  
+- **⚡ Performance Optimized**: Transferable objects for faster data transfer (v0.2.2)
 
 ## Installation
 
@@ -369,6 +372,38 @@ if (!supported) {
 3. **Use streaming** for large videos: `encodeStream()` instead of `encode()`
 4. **Optimize frame rate** for your use case (30fps is usually sufficient)
 5. **Consider container format**: MP4 for compatibility, WebM for smaller files
+
+## Changelog
+
+### v0.2.2 (2025-01-14)
+
+**🚀 Major Features**
+- **Real-time streaming**: Fixed `encodeStream()` MediaStream processing - no longer throws errors
+- **Audio-only encoding**: Added `video: false` option support for pure audio encoding
+- **VideoFile audio extraction**: Automatic audio track processing from video files using AudioContext
+- **Transferable objects optimization**: Improved performance with optimized VideoFrame/AudioData transfer
+
+**🔧 Improvements**
+- Enhanced MediaStream track detection for audio-only streams
+- Better error handling for AudioContext unavailability
+- Optimized worker communication with transferable objects
+- Extended type definitions for `video: false` configurations
+
+**🐛 Bug Fixes**
+- Fixed real-time MediaStream processing in `encodeStream()`
+- Resolved audio processing issues in VideoFile inputs
+- Improved configuration inference for audio-only scenarios
+
+**📝 Documentation**
+- Added comprehensive examples for new features
+- Updated API documentation with v0.2.2 features
+- Added performance optimization guidelines
+
+### v0.2.1 (2025-01-13)
+- Added VideoFile support and removed AudioWorklet feature
+- Updated MediaStreamRecorder to use MediaStreamTrackProcessor
+- Improved build configuration and exports
+- Enhanced test coverage and documentation
 
 ## License
 

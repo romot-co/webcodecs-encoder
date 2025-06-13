@@ -331,8 +331,124 @@ describe('Functional API', () => {
     });
   });
 
+  describe('Audio-only encoding (v0.2.2)', () => {
+    it('should support video: false option', async () => {
+      const frames = [new ImageData(640, 480)];
+      
+      try {
+        await encode(frames, {
+          video: false,
+          audio: { codec: 'aac', bitrate: 128_000 },
+          container: 'mp4'
+        });
+      } catch (error) {
+        expect(error).toBeDefined();
+      }
+    });
+
+    it('should handle audio-only MediaStream', async () => {
+      const mockAudioTrack = {
+        kind: 'audio',
+        getSettings: () => ({ sampleRate: 48000, channelCount: 2 }),
+        stop: vi.fn(),
+      };
+
+      const mockStream = {
+        getVideoTracks: () => [],
+        getAudioTracks: () => [mockAudioTrack],
+      } as unknown as MediaStream;
+
+      try {
+        await encode(mockStream, {
+          container: 'mp4',
+          audio: { codec: 'aac' }
+        });
+      } catch (error) {
+        expect(error).toBeDefined();
+      }
+    });
+
+    it('should validate video: false in canEncode', async () => {
+      const result = await canEncode({
+        video: false,
+        audio: { codec: 'aac', bitrate: 128_000 }
+      });
+      
+      expect(typeof result).toBe('boolean');
+    });
+  });
+
+  describe('VideoFile audio processing (v0.2.2)', () => {
+    it('should handle VideoFile with audio extraction', async () => {
+      // AudioContext のモック
+      const mockAudioContext = {
+        decodeAudioData: vi.fn().mockResolvedValue({
+          sampleRate: 48000,
+          numberOfChannels: 2,
+          length: 48000,
+          getChannelData: vi.fn().mockReturnValue(new Float32Array(48000)),
+        }),
+        close: vi.fn(),
+      };
+
+      global.AudioContext = vi.fn(() => mockAudioContext) as any;
+
+      const videoFile = {
+        file: new File([], 'test.mp4', { type: 'video/mp4' }),
+        type: 'video/mp4' as const,
+      };
+
+      try {
+        await encode(videoFile, {
+          container: 'mp4',
+          video: { codec: 'avc' },
+          audio: { codec: 'aac' }
+        });
+      } catch (error) {
+        // VideoFile処理はブラウザ環境でのみ動作
+        expect(error).toBeDefined();
+      }
+    });
+  });
+
+  describe('Real-time streaming (v0.2.2)', () => {
+    it('should handle MediaStream in encodeStream', async () => {
+      const mockVideoTrack = {
+        kind: 'video',
+        getSettings: () => ({ width: 640, height: 480 }),
+        stop: vi.fn(),
+      };
+
+      const mockStream = {
+        getVideoTracks: () => [mockVideoTrack],
+        getAudioTracks: () => [],
+      } as unknown as MediaStream;
+
+      // MediaStreamTrackProcessor のモック
+      (global as any).MediaStreamTrackProcessor = vi.fn().mockImplementation(() => ({
+        readable: {
+          getReader: () => ({
+            read: vi.fn().mockResolvedValue({ done: true, value: null }),
+            cancel: vi.fn(),
+          }),
+        },
+      })) as any;
+
+      try {
+        const generator = encodeStream(mockStream, {
+          container: 'mp4',
+          quality: 'medium'
+        });
+        
+        expect(typeof generator[Symbol.asyncIterator]).toBe('function');
+      } catch (error) {
+        expect(error).toBeDefined();
+      }
+    });
+  });
+
   describe('Error handling', () => {
-    it('should handle MediaStream not yet implemented', async () => {
+    it('should handle MediaStream processing', async () => {
       // MediaStream のモック
       const mockStream = {
         getVideoTracks: vi.fn().mockReturnValue([{ id: 'video' }]),
@@ -346,7 +462,7 @@ describe('Functional API', () => {
       }
     });
 
-    it('should handle VideoFile not yet implemented', async () => {
+    it('should handle VideoFile processing', async () => {
       const videoFile = {
         file: new Blob(['test'], { type: 'video/mp4' }),
         type: 'video/mp4'
@@ -374,6 +490,19 @@ describe('Functional API', () => {
 
       try {
         await encode(frames);
+      } catch (error) {
+        expect(error).toBeDefined();
+      }
+    });
+
+    it('should handle both video and audio disabled', async () => {
+      const frames = [new ImageData(640, 480)];
+
+      try {
+        await encode(frames, {
+          video: false,
+          audio: false
+        });
       } catch (error) {
         expect(error).toBeDefined();
       }

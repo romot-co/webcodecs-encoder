@@ -449,6 +449,31 @@ async function processVideoFile(
     const frameRate = config.frameRate || 30;
     const totalFrames = Math.floor(duration * frameRate);
 
+    // 音声処理の準備（設定で音声が有効な場合）
+    let audioContext: AudioContext | null = null;
+    let audioBuffer: AudioBuffer | null = null;
+
+    if (config.audioBitrate > 0 && typeof AudioContext !== "undefined") {
+      try {
+        audioContext = new AudioContext();
+
+        // ファイルから音声データを読み込み
+        const arrayBuffer = await videoFile.file.arrayBuffer();
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        // 音声データを分割して送信
+        await processAudioFromFile(
+          communicator,
+          audioBuffer,
+          duration,
+          frameRate,
+        );
+      } catch (audioError) {
+        // 音声処理に失敗した場合はログを出して続行
+        console.warn("Failed to process audio from VideoFile:", audioError);
+      }
+    }
+
     // Canvasを作成してフレームを抽出
     const canvas = document.createElement("canvas");
     canvas.width = videoWidth;
@@ -497,11 +522,83 @@ async function processVideoFile(
     // リソースをクリーンアップ
     URL.revokeObjectURL(objectUrl);
     video.remove();
+
+    if (audioContext) {
+      audioContext.close();
+    }
   } catch (error) {
     throw new EncodeError(
       "invalid-input",
       `VideoFile processing failed: ${error instanceof Error ? error.message : String(error)}`,
       error,
     );
+  }
+}
+
+/**
+ * AudioBufferから音声データを処理してワーカーに送信
+ */
+async function processAudioFromFile(
+  communicator: WorkerCommunicator,
+  audioBuffer: AudioBuffer,
+  duration: number,
+  frameRate: number,
+): Promise<void> {
+  const sampleRate = audioBuffer.sampleRate;
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  const totalSamples = audioBuffer.length;
+
+  // 音声データを適切なチャンクサイズに分割
+  const chunkDurationMs = 1000 / frameRate; // フレームレートに合わせる
+  const samplesPerChunk = Math.floor((sampleRate * chunkDurationMs) / 1000);
+
+  for (let offset = 0; offset < totalSamples; offset += samplesPerChunk) {
+    const remainingSamples = Math.min(samplesPerChunk, totalSamples - offset);
+    const timestamp = (offset / sampleRate) * 1000000; // マイクロ秒
+
+    // チャンネルデータを取得
+    const channelData: Float32Array[] = [];
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const sourceData = audioBuffer.getChannelData(channel);
+      const chunkData = new Float32Array(remainingSamples);
+      chunkData.set(sourceData.subarray(offset, offset + remainingSamples));
+      channelData.push(chunkData);
+    }
+
+    try {
+      // AudioDataを作成してワーカーに送信
+      // インターリーブ形式に変換
+      const interleavedData = new Float32Array(
+        remainingSamples * numberOfChannels,
+      );
+      for (let frame = 0; frame < remainingSamples; frame++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          interleavedData[frame * numberOfChannels + channel] =
+            channelData[channel][frame];
+        }
+      }
+
+      const audioData = new AudioData({
+        format: "f32",
+        sampleRate,
+        numberOfFrames: remainingSamples,
+        numberOfChannels,
+        timestamp,
+        data: interleavedData,
+      });
+
+      communicator.send("addAudioData", {
+        audio: audioData,
+        timestamp,
+        format: "f32",
+        sampleRate,
+        numberOfFrames: remainingSamples,
+        numberOfChannels,
+      });
+
+      audioData.close();
+    } catch (error) {
+      console.warn("Failed to create AudioData chunk:", error);
+    }
   }
 }

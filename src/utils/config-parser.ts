@@ -50,9 +50,16 @@ async function inferConfigFromSource(
       config.height = dimensions.height;
     }
 
-    // MediaStreamの場合はオーディオトラックの有無も確認
+    // MediaStreamの場合はビデオ・オーディオトラックの有無も確認
     if (source instanceof MediaStream) {
+      const videoTracks = source.getVideoTracks();
       const audioTracks = source.getAudioTracks();
+
+      // ビデオトラックがない場合
+      if (videoTracks.length === 0) {
+        config.video = false; // ビデオなし
+      }
+
       if (audioTracks.length === 0) {
         config.audio = false; // オーディオなし
       } else {
@@ -143,10 +150,13 @@ function applyQualityPreset(
 
   return {
     ...config,
-    video: {
-      ...config.video,
-      bitrate: config.video?.bitrate || videoBitrate,
-    },
+    video:
+      config.video === false
+        ? false
+        : {
+            ...(config.video as any),
+            bitrate: (config.video as any)?.bitrate || videoBitrate,
+          },
     audio:
       config.audio === false
         ? false
@@ -162,10 +172,13 @@ function applyQualityPreset(
  */
 function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
   const config: EncoderConfig = {
-    width: options.width || 640,
-    height: options.height || 480,
+    width: options.video === false ? 0 : options.width || 640,
+    height: options.video === false ? 0 : options.height || 480,
     frameRate: options.frameRate || 30,
-    videoBitrate: options.video?.bitrate || 1_000_000,
+    videoBitrate:
+      options.video === false
+        ? 0
+        : (options.video as any)?.bitrate || 1_000_000,
     audioBitrate:
       options.audio === false ? 0 : (options.audio as any)?.bitrate || 128_000,
     sampleRate:
@@ -174,16 +187,27 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
       options.audio === false ? 0 : (options.audio as any)?.channels || 2,
     container: options.container || "mp4",
     codec: {
-      video: options.video?.codec || "avc",
+      video:
+        options.video === false
+          ? undefined
+          : (options.video as any)?.codec || "avc",
       audio:
         options.audio === false
           ? undefined
           : (options.audio as any)?.codec || "aac",
     },
-    latencyMode: options.video?.latencyMode || "quality",
+    latencyMode:
+      options.video === false
+        ? "quality"
+        : (options.video as any)?.latencyMode || "quality",
     hardwareAcceleration:
-      options.video?.hardwareAcceleration || "no-preference",
-    keyFrameInterval: options.video?.keyFrameInterval,
+      options.video === false
+        ? "no-preference"
+        : (options.video as any)?.hardwareAcceleration || "no-preference",
+    keyFrameInterval:
+      options.video === false
+        ? undefined
+        : (options.video as any)?.keyFrameInterval,
     audioBitrateMode:
       options.audio === false
         ? undefined
