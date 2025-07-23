@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-// 新しいAPIのインポート
+// Import new API
 import { encode, canEncode } from "../src/index";
 import { EncodeError } from "../src/types";
 
@@ -126,7 +126,7 @@ describe("New Functional API", () => {
       } as any;
     }
 
-    // ImageDataのモックを追加
+    // Add ImageData mock
     if (typeof globalThis.ImageData === "undefined") {
       globalThis.ImageData = class ImageDataMock {
         width: number;
@@ -195,7 +195,7 @@ describe("New Functional API", () => {
       frameRate: 30,
         });
       } catch (error) {
-        // Worker実装が未完成のため、エラーは想定内
+        // Error is expected due to incomplete Worker implementation
         expect(error).toBeDefined();
       }
     });
@@ -216,7 +216,7 @@ describe("New Functional API", () => {
           audio: false
         });
       } catch (error) {
-        // Worker実装が未完成のため、エラーは想定内
+        // Error is expected due to incomplete Worker implementation
         expect(error).toBeDefined();
       }
     });
@@ -231,7 +231,7 @@ describe("New Functional API", () => {
           onProgress
         });
       } catch (error) {
-        // Worker実装が未完成のため、エラーは想定内
+        // Error is expected due to incomplete Worker implementation
         expect(error).toBeDefined();
       }
     });

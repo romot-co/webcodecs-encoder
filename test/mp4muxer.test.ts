@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-// import type { Mock } from "vitest"; // 一旦 any を使うためコメントアウト
+// import type { Mock } from "vitest"; // Commented out to use any for now
 import { Mp4MuxerWrapper } from "../src/muxers/mp4muxer";
 import type { EncoderConfig } from "../src/types";
 
-// `vi.mock` はファイルのトップに巻き上げられます。
-// モックしたい対象のモック実装をファクトリ関数内で定義します。
+// `vi.mock` is hoisted to the top of the file.
+// Define mock implementations for the target to be mocked within the factory function.
 vi.mock("mp4-muxer", () => {
   const mockMuxerMethodsInFactory = {
     addVideoChunk: vi.fn(),
@@ -22,14 +22,14 @@ vi.mock("mp4-muxer", () => {
     return mockMuxerMethodsInFactory;
   });
 
-  // ArrayBufferTarget のモック
+  // Mock ArrayBufferTarget
   const ArrayBufferTargetMockInFactory = vi.fn(function (this: {
     buffer: ArrayBuffer;
   }) {
     this.buffer = new ArrayBuffer(1024); // default buffer
   });
 
-  // StreamTarget のモック
+  // Mock StreamTarget
   const StreamTargetMockInFactory = vi.fn(function (
     this: any,
     options?: { onData?: (chunk: Uint8Array, position: number) => void },
@@ -42,10 +42,10 @@ vi.mock("mp4-muxer", () => {
   return {
     Muxer: MuxerMockInFactory,
     ArrayBufferTarget: ArrayBufferTargetMockInFactory,
-    StreamTarget: StreamTargetMockInFactory, // StreamTarget をエクスポート
+    StreamTarget: StreamTargetMockInFactory, // Export StreamTarget
     _mockMuxerMethods: mockMuxerMethodsInFactory,
-    _getCapturedStreamTargetOnData: () => capturedStreamTargetOnData, // onData を取得するヘルパー
-    // capturedStreamTargetOnData をリセットするためのヘルパーも追加できるとより良い
+    _getCapturedStreamTargetOnData: () => capturedStreamTargetOnData, // Helper to get onData
+    // It would be better to add a helper to reset capturedStreamTargetOnData
     _resetCapturedStreamTargetOnData: () => {
       capturedStreamTargetOnData = null;
     },
@@ -57,7 +57,7 @@ vi.mock("mp4-muxer", () => {
   };
 });
 
-// vi.mock のファクトリ関数の戻り値の型を反映するインターフェースを更新
+// Update interface to reflect the return type of vi.mock factory function
 interface MockedMp4Muxer {
   Muxer: any;
   ArrayBufferTarget: any;
@@ -163,12 +163,12 @@ describe("Mp4MuxerWrapper", () => {
 
   it("finalizes and returns Uint8Array in non-realtime mode", async () => {
     const expectedBufferContent = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    // const expectedBuffer = expectedBufferContent.buffer; // 未使用のため削除しました
+    // const expectedBuffer = expectedBufferContent.buffer; // Removed because unused
 
     mockMuxerMethods.finalize.mockImplementationOnce(() => {
       const target = getLastMuxerTargetInstance();
       if (target) {
-        // target.buffer を期待される内容のバッファそのものに置き換える
+        // Replace target.buffer with the expected content buffer itself
         target.buffer = expectedBufferContent.buffer;
       }
     });
@@ -185,7 +185,7 @@ describe("Mp4MuxerWrapper", () => {
     expect(output).toBeInstanceOf(Uint8Array);
     expect(output).toEqual(expectedBufferContent);
     if (output) {
-      // outputがnullでないことを確認し、バッファの同一性もチェック
+      // Verify output is not null and check buffer identity
       expect(output.buffer).toBe(expectedBufferContent.buffer);
     }
   });
@@ -466,7 +466,7 @@ describe("Mp4MuxerWrapper", () => {
         expect.objectContaining({
           type: "error",
           errorDetail: expect.objectContaining({
-            type: "internal-error",
+            type: "unknown",
           }),
         }),
       );

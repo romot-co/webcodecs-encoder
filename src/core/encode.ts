@@ -1,5 +1,5 @@
 /**
- * コアエンコード関数の実装
+ * Core encode function implementation
  */
 
 import {
@@ -12,13 +12,14 @@ import {
 } from "../types";
 import { inferAndBuildConfig } from "../utils/config-parser";
 import { WorkerCommunicator } from "../worker/worker-communicator";
+import { convertToVideoFrame } from "../utils/video-frame-converter";
 
 /**
- * ビデオエンコードのメイン関数
+ * Main video encoding function
  *
- * @param source エンコードするビデオソース
- * @param options エンコードオプション
- * @returns エンコードされたバイナリデータ
+ * @param source Video source to encode
+ * @param options Encoding options
+ * @returns Encoded binary data
  */
 export async function encode(
   source: VideoSource,
@@ -27,18 +28,18 @@ export async function encode(
   let communicator: WorkerCommunicator | null = null;
 
   try {
-    // 設定の推定と正規化
+    // Configuration inference and normalization
     const config = await inferAndBuildConfig(source, options);
 
-    // ワーカーとの通信を開始
+    // Start communication with worker
     communicator = new WorkerCommunicator();
 
-    // エンコード処理の実行
+    // Execute encoding process
     const result = await performEncoding(communicator, source, config, options);
 
     return result;
   } catch (error) {
-    // エラーの統一的な処理
+    // Unified error handling
     const encodeError =
       error instanceof EncodeError
         ? error
@@ -54,7 +55,7 @@ export async function encode(
 
     throw encodeError;
   } finally {
-    // リソースのクリーンアップ
+    // Resource cleanup
     if (communicator) {
       communicator.terminate();
     }
@@ -62,7 +63,7 @@ export async function encode(
 }
 
 /**
- * 実際のエンコード処理を実行
+ * Execute the actual encoding process
  */
 async function performEncoding(
   communicator: WorkerCommunicator,
@@ -75,7 +76,16 @@ async function performEncoding(
     let totalFrames: number | undefined;
     const startTime = Date.now();
 
-    // プログレス情報の更新
+    // Calculate totalFrames upfront for progress tracking
+    calculateTotalFrames(source, config)
+      .then((frames) => {
+        totalFrames = frames;
+      })
+      .catch((error) => {
+        console.warn("Failed to calculate total frames:", error);
+      });
+
+    // Update progress information
     const updateProgress = (stage: string) => {
       if (options?.onProgress) {
         const elapsed = Date.now() - startTime;
@@ -100,10 +110,10 @@ async function performEncoding(
       }
     };
 
-    // ワーカーからのメッセージを処理
+    // Handle messages from worker
     communicator.on("initialized", () => {
       updateProgress("encoding");
-      // フレーム処理を開始
+      // Start frame processing
       processVideoSource(communicator, source, config)
         .then(() => {
           updateProgress("finalizing");
@@ -141,13 +151,13 @@ async function performEncoding(
       reject(error);
     });
 
-    // エンコード開始
-    communicator.send("initialize", { config });
+    // Start encoding
+    communicator.send("initialize", { config, totalFrames });
   });
 }
 
 /**
- * VideoSourceを処理してワーカーに送信
+ * Process VideoSource and send to worker
  */
 async function processVideoSource(
   communicator: WorkerCommunicator,
@@ -155,60 +165,64 @@ async function processVideoSource(
   config: any,
 ): Promise<void> {
   if (Array.isArray(source)) {
-    // 静的フレーム配列の処理
-    await processFrameArray(communicator, source);
+    // Process static frame array
+    await processFrameArray(communicator, source, config);
   } else if (source instanceof MediaStream) {
-    // MediaStreamの処理
+    // Process MediaStream
     await processMediaStream(communicator, source, config);
   } else if (Symbol.asyncIterator in source) {
-    // AsyncIterableの処理
-    await processAsyncIterable(communicator, source);
+    // Process AsyncIterable
+    await processAsyncIterable(communicator, source, config);
   } else {
-    // VideoFileの処理
+    // Process VideoFile
     await processVideoFile(communicator, source as VideoFile, config);
   }
 }
 
 /**
- * フレーム配列を処理
+ * Process frame array
  */
 async function processFrameArray(
   communicator: WorkerCommunicator,
   frames: Frame[],
+  config?: any,
 ): Promise<void> {
+  const frameRate = config?.frameRate || 30;
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
-    const timestamp = (i * 1000000) / 30; // 30fpsを仮定してマイクロ秒で計算
+    const timestamp = (i * 1000000) / frameRate; // Use frameRate from config
 
     await addFrameToWorker(communicator, frame, timestamp);
   }
 }
 
 /**
- * AsyncIterableを処理
+ * Process AsyncIterable
  */
 async function processAsyncIterable(
   communicator: WorkerCommunicator,
   source: AsyncIterable<Frame>,
+  config?: any,
 ): Promise<void> {
   let frameIndex = 0;
+  const frameRate = config?.frameRate || 30;
 
   for await (const frame of source) {
-    const timestamp = (frameIndex * 1000000) / 30; // 30fpsを仮定
+    const timestamp = (frameIndex * 1000000) / frameRate; // Use frameRate from config
     await addFrameToWorker(communicator, frame, timestamp);
     frameIndex++;
   }
 }
 
 /**
- * MediaStreamを処理
+ * Process MediaStream
  */
 async function processMediaStream(
   communicator: WorkerCommunicator,
   stream: MediaStream,
   _config: any,
 ): Promise<void> {
-  // MediaStreamの処理は複雑なため、MediaStreamTrackProcessorを使用
+  // MediaStream processing is complex, so use MediaStreamTrackProcessor
   const videoTracks = stream.getVideoTracks();
   const audioTracks = stream.getAudioTracks();
 
@@ -216,7 +230,7 @@ async function processMediaStream(
   const processingPromises: Promise<void>[] = [];
 
   try {
-    // ビデオトラックの処理
+    // Process video tracks
     if (videoTracks.length > 0) {
       const videoTrack = videoTracks[0];
       const processor = new MediaStreamTrackProcessor({ track: videoTrack });
@@ -227,7 +241,7 @@ async function processMediaStream(
       processingPromises.push(processVideoReader(communicator, reader));
     }
 
-    // オーディオトラックの処理
+    // Process audio tracks
     if (audioTracks.length > 0) {
       const audioTrack = audioTracks[0];
       const processor = new MediaStreamTrackProcessor({ track: audioTrack });
@@ -238,19 +252,19 @@ async function processMediaStream(
       processingPromises.push(processAudioReader(communicator, reader));
     }
 
-    // すべての処理が完了するまで待機
+    // Wait for all processing to complete
     await Promise.all(processingPromises);
   } finally {
-    // リーダーをクリーンアップ
+    // Clean up readers
     for (const reader of readers) {
       try {
         reader.cancel();
       } catch (e) {
-        // エラーは無視（既にキャンセル済みの可能性）
+        // Ignore errors (may already be cancelled)
       }
     }
 
-    // トラックを停止
+    // Stop tracks
     for (const track of [...videoTracks, ...audioTracks]) {
       track.stop();
     }
@@ -258,7 +272,7 @@ async function processMediaStream(
 }
 
 /**
- * VideoFrameリーダーを処理
+ * Process VideoFrame reader
  */
 async function processVideoReader(
   communicator: WorkerCommunicator,
@@ -286,7 +300,7 @@ async function processVideoReader(
 }
 
 /**
- * AudioDataリーダーを処理
+ * Process AudioData reader
  */
 async function processAudioReader(
   communicator: WorkerCommunicator,
@@ -321,14 +335,14 @@ async function processAudioReader(
 }
 
 /**
- * フレームをワーカーに送信
+ * Send frame to worker
  */
 async function addFrameToWorker(
   communicator: WorkerCommunicator,
   frame: Frame,
   timestamp: number,
 ): Promise<void> {
-  // フレームをVideoFrameに変換
+  // Convert frame to VideoFrame
   const videoFrame = await convertToVideoFrame(frame, timestamp);
 
   try {
@@ -337,92 +351,13 @@ async function addFrameToWorker(
       timestamp,
     });
   } finally {
-    // VideoFrameのリソースを解放
-    if (videoFrame !== frame) {
-      videoFrame.close();
-    }
+    // convertToVideoFrame always returns a new VideoFrame that we own
+    videoFrame.close();
   }
 }
 
 /**
- * FrameをVideoFrameに変換
- */
-async function convertToVideoFrame(
-  frame: Frame,
-  timestamp: number,
-): Promise<VideoFrame> {
-  if (frame instanceof VideoFrame) {
-    return frame;
-  }
-
-  // 他のFrame型をVideoFrameに変換
-  if (frame instanceof HTMLCanvasElement) {
-    return new VideoFrame(frame, { timestamp });
-  }
-
-  if (frame instanceof OffscreenCanvas) {
-    return new VideoFrame(frame, { timestamp });
-  }
-
-  if (frame instanceof ImageBitmap) {
-    return new VideoFrame(frame, { timestamp });
-  }
-
-  if (frame instanceof ImageData) {
-    // ImageDataの場合、BufferInitを使用
-    return new VideoFrame(frame.data, {
-      format: "RGBA",
-      codedWidth: frame.width,
-      codedHeight: frame.height,
-      timestamp,
-    });
-  }
-
-  // テスト環境でのモックオブジェクトの場合、プロパティベースで判定
-  if (frame && typeof frame === "object") {
-    // ImageDataに似たオブジェクト
-    if ("width" in frame && "height" in frame && "data" in frame) {
-      const imageDataLike = frame as {
-        width: number;
-        height: number;
-        data: Uint8ClampedArray;
-      };
-      return new VideoFrame(imageDataLike.data, {
-        format: "RGBA",
-        codedWidth: imageDataLike.width,
-        codedHeight: imageDataLike.height,
-        timestamp,
-      });
-    }
-
-    // Canvasに似たオブジェクト
-    if (
-      "width" in frame &&
-      "height" in frame &&
-      ("getContext" in frame || "transferToImageBitmap" in frame)
-    ) {
-      return new VideoFrame(frame as any, { timestamp });
-    }
-
-    // ImageBitmapに似たオブジェクト
-    if (
-      "width" in frame &&
-      "height" in frame &&
-      "close" in frame &&
-      typeof (frame as any).close === "function"
-    ) {
-      return new VideoFrame(frame as any, { timestamp });
-    }
-  }
-
-  throw new EncodeError(
-    "invalid-input",
-    `Unsupported frame type: ${typeof frame}. Frame must be VideoFrame, HTMLCanvasElement, OffscreenCanvas, ImageBitmap, or ImageData.`,
-  );
-}
-
-/**
- * VideoFileを処理してフレームを抽出
+ * Process VideoFile and extract frames
  */
 async function processVideoFile(
   communicator: WorkerCommunicator,
@@ -430,12 +365,12 @@ async function processVideoFile(
   config: any,
 ): Promise<void> {
   try {
-    // HTML5 Video要素を作成してファイルを読み込み
+    // Create HTML5 Video element and load file
     const video = document.createElement("video");
     video.muted = true;
     video.preload = "metadata";
 
-    // ファイルをオブジェクトURLとして設定
+    // Set file as object URL
     const objectUrl = URL.createObjectURL(videoFile.file);
     video.src = objectUrl;
 
@@ -444,12 +379,12 @@ async function processVideoFile(
       video.onerror = () => reject(new Error("Failed to load video file"));
     });
 
-    // 動画の情報を取得
+    // Get video information
     const { duration, videoWidth, videoHeight } = video;
     const frameRate = config.frameRate || 30;
     const totalFrames = Math.floor(duration * frameRate);
 
-    // 音声処理の準備（設定で音声が有効な場合）
+    // Prepare audio processing (if audio is enabled in config)
     let audioContext: AudioContext | null = null;
     let audioBuffer: AudioBuffer | null = null;
 
@@ -457,11 +392,11 @@ async function processVideoFile(
       try {
         audioContext = new AudioContext();
 
-        // ファイルから音声データを読み込み
+        // Load audio data from file
         const arrayBuffer = await videoFile.file.arrayBuffer();
         audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        // 音声データを分割して送信
+        // Split and send audio data
         await processAudioFromFile(
           communicator,
           audioBuffer,
@@ -469,12 +404,12 @@ async function processVideoFile(
           frameRate,
         );
       } catch (audioError) {
-        // 音声処理に失敗した場合はログを出して続行
+        // Log and continue if audio processing fails
         console.warn("Failed to process audio from VideoFile:", audioError);
       }
     }
 
-    // Canvasを作成してフレームを抽出
+    // Create canvas to extract frames
     const canvas = document.createElement("canvas");
     canvas.width = videoWidth;
     canvas.height = videoHeight;
@@ -487,39 +422,50 @@ async function processVideoFile(
       );
     }
 
-    // 動画の各フレームを処理
+    // Process each frame of the video
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-      const timestamp = frameIndex / frameRate;
+      try {
+        const timestamp = frameIndex / frameRate;
 
-      // 動画の指定時間にシーク
-      video.currentTime = timestamp;
+        // Seek to specified time in video
+        video.currentTime = timestamp;
 
-      await new Promise<void>((resolve) => {
-        video.onseeked = () => resolve();
-        // タイムアウト処理を追加してデッドロックを防止
-        setTimeout(() => resolve(), 100);
-      });
+        await new Promise<void>((resolve, reject) => {
+          const onSeeked = () => {
+            video.removeEventListener("seeked", onSeeked);
+            resolve();
+          };
+          video.addEventListener("seeked", onSeeked, { once: true });
+          video.onerror = () => reject(new Error("Video seek failed"));
+        });
 
-      // Canvasに現在のフレームを描画
-      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+        // Draw current frame to canvas
+        ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
 
-      // VideoFrameを作成
-      const videoFrame = new VideoFrame(canvas, {
-        timestamp: frameIndex * (1000000 / frameRate), // マイクロ秒
-      });
+        // Create VideoFrame
+        const videoFrame = new VideoFrame(canvas, {
+          timestamp: frameIndex * (1000000 / frameRate), // microseconds
+        });
 
-      // ワーカーに送信
-      await addFrameToWorker(
-        communicator,
-        videoFrame,
-        frameIndex * (1000000 / frameRate),
-      );
+        // Send to worker
+        await addFrameToWorker(
+          communicator,
+          videoFrame,
+          frameIndex * (1000000 / frameRate),
+        );
 
-      // フレームをクローズしてメモリリークを防止
-      videoFrame.close();
+        // Close frame to prevent memory leaks
+        videoFrame.close();
+      } catch (frameError) {
+        throw new EncodeError(
+          "video-encoding-error",
+          `Failed to process frame ${frameIndex}: ${frameError instanceof Error ? frameError.message : String(frameError)}`,
+          frameError,
+        );
+      }
     }
 
-    // リソースをクリーンアップ
+    // Clean up resources
     URL.revokeObjectURL(objectUrl);
     video.remove();
 
@@ -536,7 +482,7 @@ async function processVideoFile(
 }
 
 /**
- * AudioBufferから音声データを処理してワーカーに送信
+ * Process audio data from AudioBuffer and send to worker
  */
 async function processAudioFromFile(
   communicator: WorkerCommunicator,
@@ -548,15 +494,16 @@ async function processAudioFromFile(
   const numberOfChannels = audioBuffer.numberOfChannels;
   const totalSamples = audioBuffer.length;
 
-  // 音声データを適切なチャンクサイズに分割
-  const chunkDurationMs = 1000 / frameRate; // フレームレートに合わせる
+  // Split audio data into appropriate chunk sizes
+  // Use smaller chunk sizes for better memory efficiency
+  const chunkDurationMs = Math.min(20, 1000 / frameRate); // 20ms or frame duration, whichever is smaller
   const samplesPerChunk = Math.floor((sampleRate * chunkDurationMs) / 1000);
 
   for (let offset = 0; offset < totalSamples; offset += samplesPerChunk) {
     const remainingSamples = Math.min(samplesPerChunk, totalSamples - offset);
-    const timestamp = (offset / sampleRate) * 1000000; // マイクロ秒
+    const timestamp = (offset / sampleRate) * 1000000; // microseconds
 
-    // チャンネルデータを取得
+    // Get channel data
     const channelData: Float32Array[] = [];
     for (let channel = 0; channel < numberOfChannels; channel++) {
       const sourceData = audioBuffer.getChannelData(channel);
@@ -566,8 +513,8 @@ async function processAudioFromFile(
     }
 
     try {
-      // AudioDataを作成してワーカーに送信
-      // インターリーブ形式に変換
+      // Create AudioData and send to worker
+      // Convert to interleaved format
       const interleavedData = new Float32Array(
         remainingSamples * numberOfChannels,
       );
@@ -597,8 +544,61 @@ async function processAudioFromFile(
       });
 
       audioData.close();
+
+      // Release channel data for memory efficiency
+      channelData.length = 0;
     } catch (error) {
       console.warn("Failed to create AudioData chunk:", error);
     }
+  }
+}
+
+/**
+ * Calculate total frames for different video sources
+ */
+async function calculateTotalFrames(
+  source: VideoSource,
+  config: any,
+): Promise<number | undefined> {
+  try {
+    if (Array.isArray(source)) {
+      // Static frame array
+      return source.length;
+    } else if (source instanceof MediaStream) {
+      // MediaStream - cannot predict total frames
+      return undefined;
+    } else if (Symbol.asyncIterator in source) {
+      // AsyncIterable - cannot predict total frames
+      return undefined;
+    } else {
+      // VideoFile - calculate from duration and frame rate
+      const videoFile = source as VideoFile;
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "metadata";
+
+      const objectUrl = URL.createObjectURL(videoFile.file);
+      video.src = objectUrl;
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          video.onloadedmetadata = () => resolve();
+          video.onerror = () =>
+            reject(new Error("Failed to load video metadata"));
+        });
+
+        const frameRate = config.frameRate || 30;
+        const totalFrames = Math.floor(video.duration * frameRate);
+
+        URL.revokeObjectURL(objectUrl);
+        return totalFrames;
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to calculate total frames:", error);
+    return undefined;
   }
 }

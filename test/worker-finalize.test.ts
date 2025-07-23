@@ -249,7 +249,7 @@ describe("handleFinalize", () => {
   it("should post error if muxer does not exist when attempting to finalize", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
     
-    // ワーカーをリセットして、muxerを初期化せずに finalize を呼び出す
+    // Reset worker and call finalize without initializing muxer
     vi.resetModules();
     setupGlobals();
     resetMocks();

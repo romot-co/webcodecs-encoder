@@ -199,7 +199,9 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
     latencyMode:
       options.video === false
         ? "quality"
-        : (options.video as any)?.latencyMode || "quality",
+        : options.latencyMode ||
+          (options.video as any)?.latencyMode ||
+          "quality",
     hardwareAcceleration:
       options.video === false
         ? "no-preference"
@@ -212,6 +214,10 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
       options.audio === false
         ? undefined
         : (options.audio as any)?.bitrateMode || "variable",
+    firstTimestampBehavior: options.firstTimestampBehavior || "strict",
+    maxVideoQueueSize: options.maxVideoQueueSize || 30,
+    maxAudioQueueSize: options.maxAudioQueueSize || 30,
+    backpressureStrategy: options.backpressureStrategy || "drop",
   };
 
   return config;

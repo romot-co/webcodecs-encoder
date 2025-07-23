@@ -3,7 +3,7 @@ import { MediaStreamRecorder } from '../src/mediastream-recorder';
 import { EncodeError } from '../src/types';
 import { WorkerCommunicator } from '../src/worker/worker-communicator';
 
-// WorkerCommunicatorをモック
+// Mock WorkerCommunicator
 vi.mock('../src/worker/worker-communicator', () => ({
   WorkerCommunicator: vi.fn().mockImplementation(() => ({
     on: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock('../src/worker/worker-communicator', () => ({
   })),
 }));
 
-// MediaStreamTrackProcessorをモック
+// Mock MediaStreamTrackProcessor
 const mockReadableStreamReader = {
   read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
   releaseLock: vi.fn(),
@@ -24,7 +24,7 @@ const mockReadableStream = {
   getReader: vi.fn().mockReturnValue(mockReadableStreamReader),
 };
 
-// WebCodecs APIをモック
+// Mock WebCodecs API
 global.VideoFrame = class VideoFrame {
   constructor() {}
   close() {}
@@ -48,7 +48,7 @@ global.Worker = class Worker {} as any;
   readable: mockReadableStream,
 }));
 
-// config-parserをモック
+// Mock config-parser
 vi.mock('../src/utils/config-parser', () => ({
   inferAndBuildConfig: vi.fn().mockResolvedValue({
     width: 640,
@@ -68,7 +68,7 @@ describe('MediaStreamRecorder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // 各テストで新しいモックインスタンスを作成
+    // Create new mock instance for each test
     mockWorkerCommunicator = {
       on: vi.fn(),
       off: vi.fn(),
@@ -78,7 +78,7 @@ describe('MediaStreamRecorder', () => {
     
     (WorkerCommunicator as any).mockImplementation(() => mockWorkerCommunicator);
     
-    // リーダーのモックをリセット
+    // Reset reader mock
     mockReadableStreamReader.read.mockResolvedValue({ done: true, value: undefined });
   });
 
@@ -108,13 +108,13 @@ describe('MediaStreamRecorder', () => {
     removeEventListener: vi.fn(),
   }) as any;
 
-  describe('コンストラクタと基本機能', () => {
-    it('デフォルトオプションでインスタンスを作成', () => {
+  describe('Constructor and basic functionality', () => {
+    it('creates instance with default options', () => {
       const recorder = new MediaStreamRecorder();
       expect(recorder).toBeInstanceOf(MediaStreamRecorder);
     });
 
-    it('カスタム設定でインスタンスを作成', () => {
+    it('creates instance with custom settings', () => {
       const options = {
         width: 1920,
         height: 1080,
@@ -126,33 +126,33 @@ describe('MediaStreamRecorder', () => {
       expect(recorder).toBeInstanceOf(MediaStreamRecorder);
     });
 
-    it('ブラウザサポートの確認', () => {
-      // WebCodecs APIがモックされているため、trueを返すはず
+    it('checks browser support', () => {
+      // Should return true since WebCodecs API is mocked
       expect(MediaStreamRecorder.isSupported()).toBe(true);
     });
 
-    it('WebCodecs APIが利用できない場合はfalseを返す', () => {
-      // 一時的にVideoEncoderを未定義にする
+    it('returns false when WebCodecs API is not available', () => {
+      // Temporarily set VideoEncoder to undefined
       const originalVideoEncoder = global.VideoEncoder;
       global.VideoEncoder = undefined as any;
       
       expect(MediaStreamRecorder.isSupported()).toBe(false);
       
-      // 元に戻す
+      // Restore original
       global.VideoEncoder = originalVideoEncoder;
     });
   });
 
-  describe('録画開始と初期化', () => {
-    it('ビデオトラックのみで録画を開始', async () => {
+  describe('Recording start and initialization', () => {
+    it('starts recording with video track only', async () => {
       const recorder = new MediaStreamRecorder();
       const videoTrack = createMockVideoTrack();
       const stream = createMockMediaStream([videoTrack]);
 
-      // initialized イベントで即座に解決
+      // Resolve immediately on initialized event
       mockWorkerCommunicator.on.mockImplementation((event: string, handler: EventHandler) => {
         if (event === 'initialized') {
-          // 即座に呼び出す
+          // Call immediately
           handler({});
         }
       });
@@ -163,7 +163,7 @@ describe('MediaStreamRecorder', () => {
       expect((global as any).MediaStreamTrackProcessor).toHaveBeenCalledWith({ track: videoTrack });
     });
 
-    it('ビデオとオーディオトラックで録画を開始', async () => {
+    it('starts recording with video and audio tracks', async () => {
       const recorder = new MediaStreamRecorder();
       const videoTrack = createMockVideoTrack();
       const audioTrack = createMockAudioTrack();
@@ -182,8 +182,8 @@ describe('MediaStreamRecorder', () => {
       expect((global as any).MediaStreamTrackProcessor).toHaveBeenCalledWith({ track: audioTrack });
     });
 
-    it('既に録画中の場合はエラーを投げる', async () => {
-      // 実装の複雑さを考慮し、基本的な動作確認のみ
+    it('throws error when already recording', async () => {
+      // Only perform basic functionality check due to implementation complexity
       const recorder = new MediaStreamRecorder();
       const stream = createMockMediaStream([createMockVideoTrack()]);
 
@@ -196,13 +196,13 @@ describe('MediaStreamRecorder', () => {
 
       await recorder.startRecording(stream);
       
-      // 基本機能の確認
+      // Check basic functionality
       expect(typeof recorder.startRecording).toBe('function');
       expect(typeof recorder.stopRecording).toBe('function');
       expect(typeof recorder.cancel).toBe('function');
     });
 
-    it('ワーカー初期化エラーを処理', async () => {
+    it('handles worker initialization error', async () => {
       const recorder = new MediaStreamRecorder();
       const stream = createMockMediaStream([createMockVideoTrack()]);
 
@@ -222,57 +222,57 @@ describe('MediaStreamRecorder', () => {
     });
   });
 
-  describe('録画停止と最終化', () => {
-    it('録画を正常に停止してデータを返す', async () => {
-      // 実装の複雑さを考慮し、基本的な動作確認のみ
+  describe('Recording stop and finalization', () => {
+    it('stops recording normally and returns data', async () => {
+      // Only perform basic functionality check due to implementation complexity
       const recorder = new MediaStreamRecorder();
       
-      // 録画していない状態では stopRecording でエラーになることを確認
+      // Verify that stopRecording throws error when not recording
       await expect(recorder.stopRecording())
         .rejects.toThrow('MediaStreamRecorder: not recording.');
         
-      // 実際の停止機能は実装が複雑なため、基本的な機能確認のみ
+      // Only perform basic functionality check since actual stop functionality is complex
       expect(typeof recorder.stopRecording).toBe('function');
     });
 
-    it('録画していない時の停止でエラーを投げる', async () => {
+    it('throws error when stopping without recording', async () => {
       const recorder = new MediaStreamRecorder();
 
       await expect(recorder.stopRecording())
         .rejects.toThrow('MediaStreamRecorder: not recording.');
     });
 
-    it('最終化エラーを処理', async () => {
-      // 実装の複雑さを考慮し、基本的な動作確認のみ
+    it('handles finalization error', async () => {
+      // Only perform basic functionality check due to implementation complexity
       const recorder = new MediaStreamRecorder();
       
-      // 基本機能の確認
+      // Check basic functionality
       expect(typeof recorder.stopRecording).toBe('function');
       expect(typeof recorder.cancel).toBe('function');
     });
   });
 
-  describe('録画キャンセル', () => {
-    it('録画をキャンセル', async () => {
-      // 実装の複雑さを考慮し、基本的な動作確認のみ
+  describe('Recording cancellation', () => {
+    it('cancels recording', async () => {
+      // Only perform basic functionality check due to implementation complexity
       const recorder = new MediaStreamRecorder();
       
-      // cancel機能の基本確認
+      // Basic check of cancel functionality
       expect(() => recorder.cancel()).not.toThrow();
       expect(typeof recorder.cancel).toBe('function');
     });
 
-    it('録画していない時のキャンセルは何もしない', () => {
+    it('does nothing when canceling without recording', () => {
       const recorder = new MediaStreamRecorder();
       
       expect(() => recorder.cancel()).not.toThrow();
-      // 録画していない場合、terminateは呼ばれない
+      // terminate is not called when not recording
       expect(mockWorkerCommunicator.terminate).not.toHaveBeenCalled();
     });
   });
 
-  describe('プログレス処理', () => {
-    it('プログレスコールバックが呼ばれる', async () => {
+  describe('Progress processing', () => {
+    it('calls progress callback', async () => {
       const onProgress = vi.fn();
       const recorder = new MediaStreamRecorder({ onProgress });
       const stream = createMockMediaStream([createMockVideoTrack()]);
@@ -288,7 +288,7 @@ describe('MediaStreamRecorder', () => {
 
       await recorder.startRecording(stream);
 
-      // プログレスイベントを手動で発火
+      // Manually trigger progress event
       if (progressHandler) {
         progressHandler({ processedFrames: 10, totalFrames: 100 });
       }
@@ -303,8 +303,8 @@ describe('MediaStreamRecorder', () => {
     });
   });
 
-  describe('エラー処理', () => {
-    it('エラーコールバックが呼ばれる', async () => {
+  describe('Error handling', () => {
+    it('calls error callback', async () => {
       const onError = vi.fn();
       const recorder = new MediaStreamRecorder({ onError });
       const stream = createMockMediaStream([createMockVideoTrack()]);
@@ -327,37 +327,37 @@ describe('MediaStreamRecorder', () => {
     });
   });
 
-  describe('レガシーAPI互換性', () => {
-    it('設定なしの場合はnullを返す', () => {
+  describe('Legacy API compatibility', () => {
+    it('returns null when no configuration is set', () => {
       const recorder = new MediaStreamRecorder();
 
       expect(recorder.getActualVideoCodec()).toBeNull();
       expect(recorder.getActualAudioCodec()).toBeNull();
     });
 
-    it('実装の現在の動作を確認（実際はオプションから直接取得）', () => {
-      // 実装では options.video?.codec || null を返している
+    it('verifies current implementation behavior (actually gets directly from options)', () => {
+      // Implementation returns options.video?.codec || null
       const recorder = new MediaStreamRecorder();
 
-      // 実装通りの結果を期待
+      // Expect result as implemented
       expect(recorder.getActualVideoCodec()).toBeNull();
       expect(recorder.getActualAudioCodec()).toBeNull();
     });
   });
 
-  describe('リソース管理', () => {
-    it('リソースが正常にクリーンアップされる', async () => {
-      // 実装の複雑さを考慮し、基本的な動作確認のみ
+  describe('Resource management', () => {
+    it('cleans up resources properly', async () => {
+      // Only perform basic functionality check due to implementation complexity
       const recorder = new MediaStreamRecorder();
       const videoTrack = createMockVideoTrack();
       const audioTrack = createMockAudioTrack();
       
-      // 基本機能の確認
+      // Check basic functionality
       expect(typeof recorder.startRecording).toBe('function');
       expect(typeof recorder.stopRecording).toBe('function');
       expect(typeof recorder.cancel).toBe('function');
       
-      // トラックオブジェクトのモック機能確認
+      // Check mock functionality of track objects
       expect(typeof videoTrack.stop).toBe('function');
       expect(typeof audioTrack.stop).toBe('function');
     });

@@ -2,13 +2,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { encode, encodeStream, canEncode } from '../src/index';
 import { EncodeError } from '../src/types';
 
-// 実際のモックワーカーをセットアップ
+// Setup actual mock worker
 const createMockWorker = () => {
   let messageHandler: ((event: MessageEvent) => void) | null = null;
   
   const worker = {
     postMessage: vi.fn((data) => {
-      // メッセージに応じてレスポンスをシミュレート
+      // Simulate response based on message
       setTimeout(() => {
         if (messageHandler) {
           switch (data.type) {
@@ -46,7 +46,7 @@ const createMockWorker = () => {
   return worker;
 };
 
-// より高度なWebCodecsモック
+// More advanced WebCodecs mocks
 const setupWebCodecsMocks = () => {
   const mockVideoEncoder = vi.fn().mockImplementation(() => ({
     configure: vi.fn(),
@@ -58,7 +58,7 @@ const setupWebCodecsMocks = () => {
   }));
   
   (mockVideoEncoder as any).isConfigSupported = vi.fn().mockImplementation(async (config: VideoEncoderConfig) => {
-    // より現実的な対応チェック
+    // More realistic support check
     if (config.codec?.includes('avc')) {
       return { supported: true, config };
     }
@@ -106,7 +106,7 @@ const setupWebCodecsMocks = () => {
     duration: 21333,
   }));
 
-  // ImageData のモック - プロトタイプチェーンを正しく設定
+  // Mock ImageData - properly set up prototype chain
   const MockImageData = function(this: any, width: number, height: number) {
     this.width = width || 640;
     this.height = height || 480;
@@ -121,7 +121,7 @@ const setupWebCodecsMocks = () => {
   
   global.ImageData = MockImageData;
 
-  // OffscreenCanvas のモック
+  // Mock OffscreenCanvas
   const MockOffscreenCanvas = function(this: any, width: number, height: number) {
     this.width = width || 640;
     this.height = height || 480;
@@ -148,7 +148,7 @@ const setupWebCodecsMocks = () => {
   
   global.OffscreenCanvas = MockOffscreenCanvas;
 
-  // ImageBitmap のモック
+  // Mock ImageBitmap
   const MockImageBitmap = function(this: any) {
     this.width = 640;
     this.height = 480;
@@ -162,7 +162,7 @@ const setupWebCodecsMocks = () => {
   
   global.ImageBitmap = MockImageBitmap;
 
-  // HTMLCanvasElement のモック
+  // Mock HTMLCanvasElement
   const MockHTMLCanvasElement = function(this: any) {
     this.width = 640;
     this.height = 480;
@@ -180,10 +180,10 @@ const setupWebCodecsMocks = () => {
   
   global.HTMLCanvasElement = MockHTMLCanvasElement;
 
-  // Worker のモック
+  // Mock Worker
   global.Worker = vi.fn().mockImplementation(() => createMockWorker());
   
-  // Blob とURL のモック
+  // Mock Blob and URL
   global.Blob = vi.fn().mockImplementation((parts: BlobPart[], options?: BlobPropertyBag) => ({
     size: parts.reduce((acc: number, part: BlobPart) => {
       if (typeof part === 'string') {
@@ -214,7 +214,7 @@ describe('Functional API Integration Tests', () => {
       expect(avcSupported).toBe(true);
 
       const hevcSupported = await canEncode({ video: { codec: 'hevc' } });
-      expect(hevcSupported).toBe(false); // モックでは対応していない
+      expect(hevcSupported).toBe(false); // Not supported in mock
     });
 
     it('should handle resolution and performance constraints', async () => {
@@ -232,7 +232,7 @@ describe('Functional API Integration Tests', () => {
         video: false as any,
         audio: { codec: 'aac' }
       });
-      // このケースのハンドリングを確認
+      // Verify handling of this case
       expect(typeof audioOnlySupported).toBe('boolean');
     });
   });
@@ -299,7 +299,7 @@ describe('Functional API Integration Tests', () => {
     });
 
     it('should handle error conditions gracefully', async () => {
-      // より現実的なテスト - EncodeErrorが正しく作成されることを確認
+      // More realistic test - verify EncodeError is created correctly
       const error = new EncodeError('encoding-failed', 'Test encoding error');
       
       expect(error).toBeInstanceOf(EncodeError);
@@ -311,17 +311,17 @@ describe('Functional API Integration Tests', () => {
 
   describe('encodeStream - Streaming Tests', () => {
     it('should create a proper async generator', async () => {
-      // ストリーミングテストを簡単にして実際に動作させる
+      // Simplify streaming test to make it actually work
       const frames = [new (global.ImageData as any)(640, 480)];
       
-      // シンプルなモックを使用
+      // Use simple mock
       setupWebCodecsMocks();
       
       const stream = encodeStream(frames, { quality: 'low' });
       expect(stream).toBeDefined();
       expect(typeof stream[Symbol.asyncIterator]).toBe('function');
       
-      // ジェネレーターが作成されることを確認（実際の反復はスキップ）
+      // Verify generator is created (skip actual iteration)
       const iterator = stream[Symbol.asyncIterator]();
       expect(iterator).toBeDefined();
       expect(typeof iterator.next).toBe('function');
@@ -340,7 +340,7 @@ describe('Functional API Integration Tests', () => {
     });
 
     it('should handle network errors gracefully', async () => {
-      // より現実的なテスト - canEncodeの境界ケース
+      // More realistic test - boundary case of canEncode
       const unsupportedConfig = await canEncode({
         video: { codec: 'unsupported-codec' as any }
       });
@@ -414,20 +414,20 @@ describe('Functional API Integration Tests', () => {
 
   describe('Resource Management Tests', () => {
     it('should properly clean up resources on completion', async () => {
-      // より簡単なテスト - モックが正しく設定されていることを確認
+      // Simpler test - verify mocks are set up correctly
       const frames = [new (global.ImageData as any)(640, 480)];
       
-      // 基本モックを再設定
+      // Reset basic mocks
       setupWebCodecsMocks();
       
       const result = await encode(frames, { quality: 'low' });
       
-      // 結果が正常に返されることを確認
+      // Verify result is returned normally
       expect(result).toBeInstanceOf(Uint8Array);
       expect(result.length).toBeGreaterThan(0);
       
-      // Worker.terminateの呼び出しはWebCodecsEncoderの内部実装に依存するため、
-      // ここでは結果の正常性のみをテスト
+      // Worker.terminate call depends on WebCodecsEncoder internal implementation,
+      // so only test result validity here
     });
 
     it('should clean up resources on error', async () => {
@@ -450,7 +450,7 @@ describe('Functional API Integration Tests', () => {
       try {
         await encode(frames, { quality: 'medium' });
       } catch (error) {
-        // エラーが発生してもterminateが呼ばれることを確認
+        // Verify terminate is called even when error occurs
         expect(worker.terminate).toHaveBeenCalled();
       }
     });

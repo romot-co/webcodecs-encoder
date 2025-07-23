@@ -39,6 +39,7 @@ export class Mp4MuxerWrapper {
   private audioConfigured: boolean = false;
   private firstAudioTimestamp: number | null = null;
   private firstVideoTimestamp: number | null = null;
+  private firstTimestamp: number | null = null;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -159,33 +160,33 @@ export class Mp4MuxerWrapper {
       ) {
         if (this.firstVideoTimestamp === null) {
           this.firstVideoTimestamp = chunk.timestamp;
-          // For the very first frame, use its original timestamp or 0 if it's the offset base
-          // However, mp4-muxer expects the first chunk to be 0 if offset is applied.
-          // So, if this is the first frame and we are offsetting, its timestamp should become 0.
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedVideoChunk({
-            type: chunk.type,
-            timestamp: 0, // First frame becomes 0
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
-        } else {
-          const newTimestamp = Math.max(
-            0,
-            chunk.timestamp - this.firstVideoTimestamp,
-          );
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedVideoChunk({
-            type: chunk.type,
-            timestamp: newTimestamp,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
+          // Update shared firstTimestamp if not set
+          if (this.firstTimestamp === null) {
+            this.firstTimestamp = chunk.timestamp;
+          } else {
+            // Use the minimum of audio and video timestamps
+            this.firstTimestamp = Math.min(
+              this.firstTimestamp,
+              chunk.timestamp,
+            );
+          }
         }
+
+        // Always use the shared firstTimestamp for offset calculation
+        const newTimestamp = Math.max(
+          0,
+          chunk.timestamp - (this.firstTimestamp || 0),
+        );
+
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data.buffer);
+        (chunk as any).close?.();
+        adjustedChunk = new EncodedVideoChunk({
+          type: chunk.type,
+          timestamp: newTimestamp,
+          duration: chunk.duration ?? undefined,
+          data: data.buffer,
+        });
       } else if (
         typeof chunk.timestamp !== "number" &&
         this.config.firstTimestampBehavior === "offset"
@@ -225,31 +226,33 @@ export class Mp4MuxerWrapper {
       ) {
         if (this.firstAudioTimestamp === null) {
           this.firstAudioTimestamp = chunk.timestamp;
-          // As with video, if this is the first audio chunk and offset is applied, its timestamp becomes 0.
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedAudioChunk({
-            type: chunk.type,
-            timestamp: 0, // First audio frame becomes 0
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
-        } else {
-          const newTimestamp = Math.max(
-            0,
-            chunk.timestamp - this.firstAudioTimestamp,
-          );
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedAudioChunk({
-            type: chunk.type,
-            timestamp: newTimestamp,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
+          // Update shared firstTimestamp if not set
+          if (this.firstTimestamp === null) {
+            this.firstTimestamp = chunk.timestamp;
+          } else {
+            // Use the minimum of audio and video timestamps
+            this.firstTimestamp = Math.min(
+              this.firstTimestamp,
+              chunk.timestamp,
+            );
+          }
         }
+
+        // Always use the shared firstTimestamp for offset calculation
+        const newTimestamp = Math.max(
+          0,
+          chunk.timestamp - (this.firstTimestamp || 0),
+        );
+
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data.buffer);
+        (chunk as any).close?.();
+        adjustedChunk = new EncodedAudioChunk({
+          type: chunk.type,
+          timestamp: newTimestamp,
+          duration: chunk.duration ?? undefined,
+          data: data.buffer,
+        });
       } else if (
         typeof chunk.timestamp !== "number" &&
         this.config.firstTimestampBehavior === "offset"
@@ -296,7 +299,7 @@ export class Mp4MuxerWrapper {
         errorDetail: {
           message:
             "MP4: Muxer target is not ArrayBufferTarget in non-realtime mode.",
-          type: EncoderErrorType.InternalError,
+          type: EncoderErrorType.Unknown,
         },
       });
       return null;

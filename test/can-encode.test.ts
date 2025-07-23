@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { canEncode } from '../src/utils/can-encode';
 
-// WebCodecs APIをモック
+// Mock WebCodecs API
 const mockVideoEncoder = {
   isConfigSupported: vi.fn(),
   configure: vi.fn(),
@@ -22,7 +22,7 @@ describe('canEncode utility', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     
-    // WebCodecs API全体をモック
+    // Mock entire WebCodecs API
     global.VideoEncoder = {
       isConfigSupported: mockVideoEncoder.isConfigSupported
     } as any;
@@ -31,7 +31,7 @@ describe('canEncode utility', () => {
       isConfigSupported: mockAudioEncoder.isConfigSupported
     } as any;
     
-    // isWebCodecsSupported()が必要とするその他のAPIもモック
+    // Mock other APIs required by isWebCodecsSupported()
     global.VideoFrame = class VideoFrame {} as any;
     global.AudioData = class AudioData {} as any;
   });
@@ -260,7 +260,7 @@ describe('canEncode utility', () => {
     });
 
     it('should return false when VideoEncoder API is not available', async () => {
-      // VideoEncoderを未定義にする
+      // Set VideoEncoder to undefined
       global.VideoEncoder = undefined as any;
 
       const result = await canEncode({
@@ -271,7 +271,7 @@ describe('canEncode utility', () => {
     });
 
     it('should return false when AudioEncoder API is not available', async () => {
-      // AudioEncoderを未定義にする
+      // Set AudioEncoder to undefined
       global.AudioEncoder = undefined as any;
 
       const result = await canEncode({
@@ -282,7 +282,7 @@ describe('canEncode utility', () => {
     });
 
     it('should handle partial API support gracefully', async () => {
-      // VideoEncoderは利用可能だがAudioEncoderは未定義
+      // VideoEncoder is available but AudioEncoder is undefined
       global.AudioEncoder = undefined as any;
       mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
@@ -349,14 +349,14 @@ describe('canEncode utility', () => {
       mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: false });
 
       const result = await canEncode({
-        video: { codec: 'av1' as any } // 仮想的な未サポートコーデック
+        video: { codec: 'av1' as any } // Hypothetical unsupported codec
       });
 
       expect(result).toBe(false);
     });
 
     it('should handle mixed support scenarios', async () => {
-      // 最初のチェックは失敗、2回目は成功（フォールバック処理のテスト）
+      // First check fails, second check succeeds (testing fallback processing)
       mockVideoEncoder.isConfigSupported
         .mockResolvedValueOnce({ supported: false })
         .mockResolvedValueOnce({ supported: true });
@@ -365,7 +365,7 @@ describe('canEncode utility', () => {
         video: { codec: 'vp9' }
       });
 
-      // 結果は最初のチェック（false）に基づく
+      // Result is based on the first check (false)
       expect(result).toBe(false);
     });
 
@@ -379,7 +379,7 @@ describe('canEncode utility', () => {
         }
       });
 
-      // 設定がエンコーダーに渡されることを確認
+      // Verify that configuration is passed to encoder
       expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalledWith({
         codec: 'avc1.42001f',
         width: 640,

@@ -1,25 +1,25 @@
-// 新しい関数ファーストAPI用の型定義
+// Type definitions for new function-first API
 
-// 基本的なフレーム型
+// Basic frame type
 export type Frame = VideoFrame | HTMLCanvasElement | OffscreenCanvas | ImageBitmap | ImageData;
 
-// ビデオファイル型
+// Video file type
 export interface VideoFile {
   file: File | Blob;
   type: string;
 }
 
-// ビデオソース型（すべての入力形式）
+// Video source type (all input formats)
 export type VideoSource = 
-  | Frame[]                    // 静的フレーム配列
-  | AsyncIterable<Frame>       // ストリーミングフレーム
-  | MediaStream               // カメラ/画面共有
-  | VideoFile;                // 既存の動画ファイル
+  | Frame[]                    // Static frame array
+  | AsyncIterable<Frame>       // Streaming frames
+  | MediaStream               // Camera/screen sharing
+  | VideoFile;                // Existing video file
 
-// 品質プリセット
+// Quality presets
 export type QualityPreset = 'low' | 'medium' | 'high' | 'lossless';
 
-// ビデオ設定
+// Video configuration
 export interface VideoConfig {
   codec?: 'avc' | 'hevc' | 'vp9' | 'vp8' | 'av1';
   bitrate?: number;
@@ -28,7 +28,7 @@ export interface VideoConfig {
   keyFrameInterval?: number;
 }
 
-// オーディオ設定
+// Audio configuration
 export interface AudioConfig {
   codec?: 'aac' | 'opus';
   bitrate?: number;
@@ -37,7 +37,7 @@ export interface AudioConfig {
   bitrateMode?: 'constant' | 'variable';
 }
 
-// プログレス情報
+// Progress information
 export interface ProgressInfo {
   percent: number;
   processedFrames: number;
@@ -47,32 +47,43 @@ export interface ProgressInfo {
   estimatedRemainingMs?: number;
 }
 
-// エンコードオプション
+// Encode options
 export interface EncodeOptions {
-  // 基本設定（自動検出可能）
+  // Basic settings (auto-detectable)
   width?: number;
   height?: number;
   frameRate?: number;
 
-  // 品質プリセット
+  // Quality preset
   quality?: QualityPreset;
 
-  // 詳細設定（オプショナル）
-  video?: VideoConfig | false; // falseでビデオ無効化
-  audio?: AudioConfig | false; // falseでオーディオ無効化
+  // Detailed settings (optional)
+  video?: VideoConfig | false; // false to disable video
+  audio?: AudioConfig | false; // false to disable audio
   container?: 'mp4' | 'webm';
 
-  // コールバック
+  // Timestamp handling
+  firstTimestampBehavior?: "offset" | "strict";
+
+  // Latency mode (top level)
+  latencyMode?: "quality" | "realtime";
+
+  // Backpressure control
+  maxVideoQueueSize?: number; // Default: 30 frames
+  maxAudioQueueSize?: number; // Default: 30 chunks
+  backpressureStrategy?: "drop" | "wait"; // Default: "drop"
+
+  // Callbacks
   onProgress?: (progress: ProgressInfo) => void;
   onError?: (error: EncodeError) => void;
 }
 
-// エラータイプ
+// Error types
 export type EncodeErrorType =
   | 'not-supported'
   | 'initialization-failed'
   | 'configuration-error'
-  | 'invalid-input' // 入力ソースやフレームデータが不正
+  | 'invalid-input' // Input source or frame data is invalid
   | 'encoding-failed'
   | 'video-encoding-error'
   | 'audio-encoding-error'
@@ -80,10 +91,10 @@ export type EncodeErrorType =
   | 'cancelled'
   | 'timeout'
   | 'worker-error'
-  | 'filesystem-error' // VideoFileアクセス時など
+  | 'filesystem-error' // VideoFile access errors
   | 'unknown';
 
-// カスタムエラークラス
+// Custom error class
 export class EncodeError extends Error {
   type: EncodeErrorType;
   cause?: unknown;
@@ -97,9 +108,9 @@ export class EncodeError extends Error {
   }
 }
 
-// --- 内部実装用の型定義（ワーカー通信など） ---
+// --- Internal implementation type definitions (worker communication, etc.) ---
 
-// ワーカー通信用の基本設定型（内部実装用）
+// Basic configuration type for worker communication (internal implementation)
 export interface EncoderConfig {
   width: number;
   height: number;
@@ -147,13 +158,19 @@ export interface EncoderConfig {
    * 'strict': Requires the first timestamp to be 0 (default).
    */
   firstTimestampBehavior?: "offset" | "strict";
+  /** Backpressure control for video queue */
+  maxVideoQueueSize?: number;
+  /** Backpressure control for audio queue */
+  maxAudioQueueSize?: number;
+  /** Backpressure strategy: drop frames or wait */
+  backpressureStrategy?: "drop" | "wait";
   /** Additional VideoEncoder configuration overrides. */
   videoEncoderConfig?: Partial<VideoEncoderConfig>;
   /** Additional AudioEncoder configuration overrides. */
   audioEncoderConfig?: Partial<AudioEncoderConfig>;
 }
 
-// 処理ステージの定義
+// Processing stage definitions
 export enum ProcessingStage {
   Initializing = "initializing",
   VideoEncoding = "video-encoding",
@@ -162,23 +179,24 @@ export enum ProcessingStage {
   Finalizing = "finalizing",
 }
 
-// エンコーダーのエラータイプ（内部実装用）
+// Encoder error types (internal implementation)
 export enum EncoderErrorType {
   NotSupported = "not-supported",
   InitializationFailed = "initialization-failed",
   ConfigurationError = "configuration-error",
+  InvalidInput = "invalid-input", // Input source or frame data is invalid
   EncodingFailed = "encoding-failed", // Generic encoding error
   VideoEncodingError = "video-encoding-error", // Specific video encoding error
   AudioEncodingError = "audio-encoding-error", // Specific audio encoding error
   MuxingFailed = "muxing-failed",
   Cancelled = "cancelled",
   Timeout = "timeout",
-  InternalError = "internal-error",
   WorkerError = "worker-error",
-  ValidationError = "validation-error",
+  FilesystemError = "filesystem-error", // VideoFile access errors
+  Unknown = "unknown",
 }
 
-// --- ワーカー通信用のメッセージ型 ---
+// --- Worker communication message types ---
 
 // Messages TO the Worker
 export interface InitializeWorkerMessage {

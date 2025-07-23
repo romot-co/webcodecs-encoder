@@ -52,45 +52,45 @@ describe("handleAddAudioData", () => {
 
   beforeEach(async () => {
     audioEncoderErrorCallback = null;
-    // mockAudioDataInstance = { // 削除
-    //   close: vi.fn(), // 削除
-    //   format: "f32-planar", // 削除
-    //   sampleRate: 48000, // 削除
-    //   numberOfFrames: 1024, // 削除
-    //   numberOfChannels: 1, // 削除
-    //   timestamp: 0, // 削除
-    //   duration: 21333, // 削除
-    // }; // 削除
-    // mockAudioEncoderInstance = { // 削除
-    //   configure: vi.fn(), // 削除
-    //   encode: vi.fn(), // 削除
-    //   flush: vi.fn().mockResolvedValue(undefined), // 削除
-    //   close: vi.fn(), // 削除
-    //   state: "configured", // 削除
-    //   encodeQueueSize: 0, // 削除
-    // }; // 削除
-    // mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => { // 削除
-    //   audioEncoderErrorCallback = options.error; // 削除
-    //   return mockAudioEncoderInstance; // 削除
-    // }) as any; // 削除
-    // mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => // 削除
-    //   Promise.resolve({ // 削除
-    //     supported: true, // 削除
-    //     config: { codec: "mp4a.40.2", numberOfChannels: config.channels }, // 削除
-    //   }), // 削除
-    // ); // 削除
-    // globalThis.AudioEncoder = mockSelf.AudioEncoder; // 削除
-    // globalThis.AudioData = vi.fn(() => mockAudioDataInstance) as any; // 削除
+    // mockAudioDataInstance = { // Removed
+    //   close: vi.fn(), // Removed
+    //   format: "f32-planar", // Removed
+    //   sampleRate: 48000, // Removed
+    //   numberOfFrames: 1024, // Removed
+    //   numberOfChannels: 1, // Removed
+    //   timestamp: 0, // Removed
+    //   duration: 21333, // Removed
+    // }; // Removed
+    // mockAudioEncoderInstance = { // Removed
+    //   configure: vi.fn(), // Removed
+    //   encode: vi.fn(), // Removed
+    //   flush: vi.fn().mockResolvedValue(undefined), // Removed
+    //   close: vi.fn(), // Removed
+    //   state: "configured", // Removed
+    //   encodeQueueSize: 0, // Removed
+    // }; // Removed
+    // mockSelf.AudioEncoder = vi.fn((options: { error: (e: any) => void }) => { // Removed
+    //   audioEncoderErrorCallback = options.error; // Removed
+    //   return mockAudioEncoderInstance; // Removed
+    // }) as any; // Removed
+    // mockSelf.AudioEncoder.isConfigSupported = vi.fn(() => // Removed
+    //   Promise.resolve({ // Removed
+    //     supported: true, // Removed
+    //     config: { codec: "mp4a.40.2", numberOfChannels: config.channels }, // Removed
+    //   }), // Removed
+    // ); // Removed
+    // globalThis.AudioEncoder = mockSelf.AudioEncoder; // Removed
+    // globalThis.AudioData = vi.fn(() => mockAudioDataInstance) as any; // Removed
 
-    // mockSelf.AudioEncoder は setupGlobals でモックコンストラクタとして設定される。
-    // そのコンストラクタが返すインスタンスの error コールバックをキャプチャする。
+    // mockSelf.AudioEncoder is set up as a mock constructor in setupGlobals.
+    // Capture the error callback of the instance returned by that constructor.
     const aeMock = mockSelf.AudioEncoder as ReturnType<typeof vi.fn>;
     if (aeMock && aeMock.getMockImplementation()) {
         const originalImpl = aeMock.getMockImplementation();
         aeMock.mockImplementation((options: { error: (e: any) => void }) => {
-            audioEncoderErrorCallback = options.error; // ここでコールバックを保存
+            audioEncoderErrorCallback = options.error; // Save callback here
             mockAudioEncoderInstance = originalImpl ? originalImpl(options) : {};
-            // setupGlobalsのデフォルト実装をベースにテスト固有のモックをマージ
+            // Merge test-specific mocks based on setupGlobals default implementation
             Object.assign(mockAudioEncoderInstance, {
                 configure: vi.fn(),
                 encode: vi.fn(),
@@ -102,19 +102,19 @@ describe("handleAddAudioData", () => {
             return mockAudioEncoderInstance;
         });
     }
-     // このテストスイート用にインスタンスを生成しておく (error callback 設定のため)
+     // Generate instance for this test suite (for error callback setup)
     if (typeof mockSelf.AudioEncoder === 'function') {
         mockAudioEncoderInstance = (mockSelf.AudioEncoder as any)({ error: (e:any) => { audioEncoderErrorCallback = e;} });
     }
 
-    // AudioData のモックインスタンスの準備
-    // globalThis.AudioData は setupGlobals でモックコンストラクタ (スパイ) として設定される。
-    // そのプロトタイプの close がスパイになっている。
-    // ここで特定のインスタンス mockAudioDataInstance を固定するのではなく、
-    // テストケース内で AudioDataMock.prototype.close が呼ばれたかをチェックするように変更する。
-    mockAudioDataInstance = { // ダミーのプレースホルダーとして
+    // Prepare AudioData mock instance
+    // globalThis.AudioData is set up as a mock constructor (spy) in setupGlobals.
+    // Its prototype's close is a spy.
+    // Instead of fixing a specific instance mockAudioDataInstance here,
+    // change to check if AudioDataMock.prototype.close was called within test cases.
+    mockAudioDataInstance = { // As dummy placeholder
         close: globalThis.AudioData ? (globalThis.AudioData as any).prototype.close : vi.fn(),
-        // 他のプロパティはテストケースに応じてモックされるか、実際のモックインスタンスのものが使われる
+        // Other properties are mocked according to test cases or use actual mock instance ones
         format: "f32-planar",
         sampleRate: 48000,
         numberOfFrames: 1024,

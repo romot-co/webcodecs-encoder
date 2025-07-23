@@ -175,19 +175,19 @@ class EncoderWorker {
   }
 
   private async isConfigSupportedWithHwFallback<
-    T extends (VideoEncoderConfig | AudioEncoderConfig) & {
-      hardwareAcceleration?:
-        | "prefer-hardware"
-        | "prefer-software"
-        | "no-preference";
-    },
+    T extends VideoEncoderConfig | AudioEncoderConfig,
   >(
     Ctor: {
       isConfigSupported(
         config: T,
       ): Promise<{ supported?: boolean; config?: T }>;
     },
-    config: T,
+    config: T & {
+      hardwareAcceleration?:
+        | "prefer-hardware"
+        | "prefer-software"
+        | "no-preference";
+    },
     label: string,
   ): Promise<T | null> {
     // オリジナルの設定で試行
@@ -293,6 +293,12 @@ class EncoderWorker {
       this.cleanup();
       return;
     }
+
+    // Check if video is disabled (audio-only encoding)
+    const videoDisabled =
+      this.currentConfig.width === 0 ||
+      this.currentConfig.height === 0 ||
+      this.currentConfig.videoBitrate === 0;
 
     let videoCodec =
       this.currentConfig.codec?.video ??
@@ -501,62 +507,66 @@ class EncoderWorker {
       }
     }
 
-    try {
-      this.videoEncoder = new VideoEncoderCtor({
-        output: (chunk: any, meta: any) => {
-          if (this.isCancelled || !this.muxer) return;
-          this.muxer.addVideoChunk(chunk, meta);
-        },
-        error: (error: any) => {
-          if (this.isCancelled) return;
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message: `VideoEncoder error: ${error.message}`,
-              type: EncoderErrorType.VideoEncodingError,
-              stack: error.stack,
-            },
-          });
-          this.cleanup();
-        },
-      });
-      if (finalVideoEncoderConfig) {
-        if (this.videoEncoder) {
-          this.videoEncoder.configure(finalVideoEncoderConfig);
+    // Only initialize video encoder if video is enabled
+    if (!videoDisabled) {
+      try {
+        this.videoEncoder = new VideoEncoderCtor({
+          output: (chunk: any, meta: any) => {
+            if (this.isCancelled || !this.muxer) return;
+            this.muxer.addVideoChunk(chunk, meta);
+          },
+          error: (error: any) => {
+            if (this.isCancelled) return;
+            this.postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message: `VideoEncoder error: ${error.message}`,
+                type: EncoderErrorType.VideoEncodingError,
+                stack: error.stack,
+              },
+            });
+            this.cleanup();
+          },
+        });
+        if (finalVideoEncoderConfig) {
+          if (this.videoEncoder) {
+            this.videoEncoder.configure(finalVideoEncoderConfig);
+          } else {
+            this.postMessageToMainThread({
+              type: "error",
+              errorDetail: {
+                message:
+                  "Worker: VideoEncoder instance is null after creation.",
+                type: EncoderErrorType.InitializationFailed,
+              },
+            });
+            this.cleanup();
+            return;
+          }
         } else {
           this.postMessageToMainThread({
             type: "error",
             errorDetail: {
-              message: "Worker: VideoEncoder instance is null after creation.",
-              type: EncoderErrorType.InitializationFailed,
+              message: `Worker: VideoEncoder: Failed to find a supported hardware acceleration configuration for codec ${resolvedVideoCodecString}`,
+              type: EncoderErrorType.NotSupported,
             },
           });
           this.cleanup();
           return;
         }
-      } else {
+      } catch (e: any) {
         this.postMessageToMainThread({
           type: "error",
           errorDetail: {
-            message: `Worker: VideoEncoder: Failed to find a supported hardware acceleration configuration for codec ${resolvedVideoCodecString}`,
-            type: EncoderErrorType.NotSupported,
+            message: `Worker: Failed to initialize VideoEncoder: ${e.message}`,
+            type: EncoderErrorType.InitializationFailed,
+            stack: e.stack,
           },
         });
         this.cleanup();
         return;
       }
-    } catch (e: any) {
-      this.postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message: `Worker: Failed to initialize VideoEncoder: ${e.message}`,
-          type: EncoderErrorType.InitializationFailed,
-          stack: e.stack,
-        },
-      });
-      this.cleanup();
-      return;
-    }
+    } // End of video encoder initialization
 
     let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
     let audioCodec =
@@ -623,6 +633,20 @@ class EncoderWorker {
           this.cleanup();
           return;
         }
+        if (
+          audioSupportConfig.sampleRate !== undefined &&
+          audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
+        ) {
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
+              type: EncoderErrorType.ConfigurationError,
+            },
+          });
+          this.cleanup();
+          return;
+        }
         finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
       } else if (audioCodec === "opus") {
         console.warn(
@@ -668,6 +692,20 @@ class EncoderWorker {
               this.cleanup();
               return;
             }
+            if (
+              audioSupportConfig.sampleRate !== undefined &&
+              audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
+            ) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
+                  type: EncoderErrorType.ConfigurationError,
+                },
+              });
+              this.cleanup();
+              return;
+            }
             finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
           } else {
             // AAC もだめなら Opus に戻す（MP4でも可能）
@@ -690,6 +728,19 @@ class EncoderWorker {
                   type: "error",
                   errorDetail: {
                     message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
+                    type: EncoderErrorType.ConfigurationError,
+                  },
+                });
+                this.cleanup();
+                return;
+              }
+              if (
+                audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
+              ) {
+                this.postMessageToMainThread({
+                  type: "error",
+                  errorDetail: {
+                    message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
                     type: EncoderErrorType.ConfigurationError,
                   },
                 });
@@ -748,6 +799,20 @@ class EncoderWorker {
                 type: "error",
                 errorDetail: {
                   message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
+                  type: EncoderErrorType.ConfigurationError,
+                },
+              });
+              this.cleanup();
+              return;
+            }
+            if (
+              audioSupportConfig.sampleRate !== undefined &&
+              audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
+            ) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
                   type: EncoderErrorType.ConfigurationError,
                 },
               });
@@ -839,8 +904,62 @@ class EncoderWorker {
 
   async handleAddVideoFrame(data: AddVideoFrameMessage): Promise<void> {
     if (this.isCancelled || !this.videoEncoder || !this.currentConfig) return;
+
     try {
       const frame = data.frame;
+      const currentQueueSize = this.videoEncoder.encodeQueueSize;
+      const maxQueueSize = this.currentConfig.maxVideoQueueSize || 30;
+      const strategy = this.currentConfig.backpressureStrategy || "drop";
+
+      // Backpressure control
+      if (currentQueueSize >= maxQueueSize) {
+        if (strategy === "drop") {
+          // Drop this frame
+          console.warn(
+            `Video queue full (${currentQueueSize}/${maxQueueSize}), dropping frame`,
+          );
+          try {
+            frame.close();
+          } catch (closeErr) {
+            console.warn(
+              "Worker: Ignored error closing dropped VideoFrame",
+              closeErr,
+            );
+          }
+          return;
+        } else if (strategy === "wait") {
+          // Wait for queue to drain with exponential backoff
+          let waitTime = 10; // Start with 10ms
+          const maxWaitTime = 100; // Cap at 100ms
+          const maxRetries = 5; // Reduce number of retries
+          let attempts = 0;
+
+          while (
+            this.videoEncoder.encodeQueueSize >= maxQueueSize &&
+            attempts < maxRetries
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, waitTime));
+            waitTime = Math.min(waitTime * 1.5, maxWaitTime); // Exponential backoff
+            attempts++;
+          }
+          // If still full after waiting, drop the frame
+          if (this.videoEncoder.encodeQueueSize >= maxQueueSize) {
+            console.warn(
+              `Video queue still full after waiting, dropping frame`,
+            );
+            try {
+              frame.close();
+            } catch (closeErr) {
+              console.warn(
+                "Worker: Ignored error closing waited VideoFrame",
+                closeErr,
+              );
+            }
+            return;
+          }
+        }
+      }
+
       const interval = this.currentConfig.keyFrameInterval;
       const opts =
         interval && this.videoFrameCount % interval === 0
@@ -884,6 +1003,59 @@ class EncoderWorker {
 
     if (data.audio) {
       try {
+        const currentQueueSize = this.audioEncoder.encodeQueueSize;
+        const maxQueueSize = this.currentConfig.maxAudioQueueSize || 30;
+        const strategy = this.currentConfig.backpressureStrategy || "drop";
+
+        // Backpressure control
+        if (currentQueueSize >= maxQueueSize) {
+          if (strategy === "drop") {
+            // Drop this audio data
+            console.warn(
+              `Audio queue full (${currentQueueSize}/${maxQueueSize}), dropping audio data`,
+            );
+            try {
+              data.audio.close();
+            } catch (closeErr) {
+              console.warn(
+                "Worker: Ignored error closing dropped AudioData",
+                closeErr,
+              );
+            }
+            return;
+          } else if (strategy === "wait") {
+            // Wait for queue to drain with exponential backoff
+            let waitTime = 10; // Start with 10ms
+            const maxWaitTime = 100; // Cap at 100ms
+            const maxRetries = 5; // Reduce number of retries
+            let attempts = 0;
+
+            while (
+              this.audioEncoder.encodeQueueSize >= maxQueueSize &&
+              attempts < maxRetries
+            ) {
+              await new Promise((resolve) => setTimeout(resolve, waitTime));
+              waitTime = Math.min(waitTime * 1.5, maxWaitTime); // Exponential backoff
+              attempts++;
+            }
+            // If still full after waiting, drop the audio data
+            if (this.audioEncoder.encodeQueueSize >= maxQueueSize) {
+              console.warn(
+                `Audio queue still full after waiting, dropping audio data`,
+              );
+              try {
+                data.audio.close();
+              } catch (closeErr) {
+                console.warn(
+                  "Worker: Ignored error closing waited AudioData",
+                  closeErr,
+                );
+              }
+              return;
+            }
+          }
+        }
+
         this.audioEncoder.encode(data.audio);
         this.postQueueSize();
       } catch (error: any) {
@@ -934,7 +1106,7 @@ class EncoderWorker {
           return new Float32Array(0);
         }
         const numChannels = planarArrays.length;
-        const numFrames = planarArrays[0].length;
+        const numFrames = Math.min(...planarArrays.map((arr) => arr.length));
         const interleaved = new Float32Array(numFrames * numChannels);
         for (let i = 0; i < numFrames; i++) {
           for (let ch = 0; ch < numChannels; ch++) {
@@ -1034,10 +1206,10 @@ class EncoderWorker {
 
     // Cleanup without resetting the cancelled state so that any queued
     // messages after this point are ignored.
-    this.cleanup(false);
+    this.cleanup();
   }
 
-  cleanup(resetCancelled: boolean = true): void {
+  cleanup(): void {
     console.warn("Worker: Cleaning up resources.");
     if (this.videoEncoder && this.videoEncoder.state !== "closed")
       this.videoEncoder.close();
@@ -1050,9 +1222,6 @@ class EncoderWorker {
     this.totalFramesToProcess = undefined;
     this.processedFrames = 0;
     this.videoFrameCount = 0;
-    if (resetCancelled) {
-      this.isCancelled = false;
-    }
   }
 
   async handleMessage(eventData: WorkerMessage): Promise<void> {
@@ -1097,7 +1266,7 @@ class EncoderWorker {
         type: "error",
         errorDetail: {
           message: `Unhandled error in worker onmessage: ${error.message}`,
-          type: EncoderErrorType.InternalError,
+          type: EncoderErrorType.Unknown,
           stack: error.stack,
         },
       } as MainThreadMessage);

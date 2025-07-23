@@ -90,24 +90,24 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
     await global.self.onmessage({ data: { type: "initialize", config } } as MessageEvent);
     mockSelf.postMessage.mockClear();
     
-    // モックconsole.warnを作成してスパイする
+    // Create mock console.warn to spy on it
     const originalConsoleWarn = console.warn;
     console.warn = vi.fn();
     
     try {
-      // 存在しないメッセージタイプを送信
+      // Send non-existent message type
       await global.self.onmessage({ data: { type: "unknownMessageType" } } as any);
       
-      // 警告が出力されたか確認
+      // Verify warning was output
       expect(console.warn).toHaveBeenCalledWith(
         "Worker received unknown message type:",
         "unknownMessageType"
       );
       
-      // postMessageは呼ばれないことを確認
+      // Verify postMessage is not called
       expect(mockSelf.postMessage).not.toHaveBeenCalled();
     } finally {
-      // モックをクリーンアップ
+      // Clean up mock
       console.warn = originalConsoleWarn;
     }
   });
@@ -153,7 +153,7 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
         type: "error",
         errorDetail: expect.objectContaining({
           message: `Unhandled error in worker onmessage: ${onmessageInternalError.message}`,
-          type: "internal-error",
+          type: "unknown",
           stack: expect.any(String),
         }),
       }),
@@ -165,22 +165,22 @@ describe("worker self.onmessage error handling and cancellation edge cases", () 
   it("should handle unknown message type", async () => {
     if (!global.self.onmessage) throw new Error("Worker onmessage handler not set up");
     
-    // コンソール警告をモック
+    // Mock console warning
     const originalConsoleWarn = console.warn;
     console.warn = vi.fn();
     
     try {
-      // 不明なタイプのメッセージを送信
+      // Send unknown type message
       const unknownMessage = { type: "unknownType" } as any;
       await global.self.onmessage({ data: unknownMessage } as MessageEvent);
       
-      // 不明なメッセージタイプに対する警告が出力されることを確認
+      // Verify warning is output for unknown message type
       expect(console.warn).toHaveBeenCalledWith(
         "Worker received unknown message type:",
         "unknownType"
       );
     } finally {
-      // コンソール警告を元に戻す
+      // Restore console warning
       console.warn = originalConsoleWarn;
     }
   });

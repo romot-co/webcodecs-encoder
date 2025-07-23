@@ -22,6 +22,7 @@ export class WebMMuxerWrapper {
   private audioConfigured = false;
   private firstAudioTimestamp: number | null = null;
   private firstVideoTimestamp: number | null = null;
+  private firstTimestamp: number | null = null;
   private postMessageToMain: (
     message: MainThreadMessage,
     transfer?: Transferable[],
@@ -75,15 +76,23 @@ export class WebMMuxerWrapper {
           })
         : ("buffer" as const);
 
+    // Check if video is disabled (audio-only encoding)
+    const videoDisabled =
+      config.width === 0 || config.height === 0 || config.videoBitrate === 0;
+
     const optionsForMuxer: any = {
       target,
-      video: {
+    };
+
+    // Only add video configuration if video is enabled
+    if (!videoDisabled) {
+      optionsForMuxer.video = {
         codec: muxerVideoCodec,
         width: config.width,
         height: config.height,
         frameRate: config.frameRate,
-      },
-    };
+      };
+    }
 
     if (!disableAudio) {
       optionsForMuxer.audio = {
@@ -94,7 +103,7 @@ export class WebMMuxerWrapper {
     }
 
     this.muxer = new WebMMuxer(optionsForMuxer);
-    this.videoConfigured = true;
+    this.videoConfigured = !videoDisabled;
     this.audioConfigured = !disableAudio;
   }
 
@@ -122,30 +131,33 @@ export class WebMMuxerWrapper {
       ) {
         if (this.firstVideoTimestamp === null) {
           this.firstVideoTimestamp = chunk.timestamp;
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedVideoChunk({
-            type: chunk.type,
-            timestamp: 0,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
-        } else {
-          const newTimestamp = Math.max(
-            0,
-            chunk.timestamp - this.firstVideoTimestamp,
-          );
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedVideoChunk({
-            type: chunk.type,
-            timestamp: newTimestamp,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
+          // Update shared firstTimestamp if not set
+          if (this.firstTimestamp === null) {
+            this.firstTimestamp = chunk.timestamp;
+          } else {
+            // Use the minimum of audio and video timestamps
+            this.firstTimestamp = Math.min(
+              this.firstTimestamp,
+              chunk.timestamp,
+            );
+          }
         }
+
+        // Always use the shared firstTimestamp for offset calculation
+        const newTimestamp = Math.max(
+          0,
+          chunk.timestamp - (this.firstTimestamp || 0),
+        );
+
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data.buffer);
+        (chunk as any).close?.();
+        adjustedChunk = new EncodedVideoChunk({
+          type: chunk.type,
+          timestamp: newTimestamp,
+          duration: chunk.duration ?? undefined,
+          data: data.buffer,
+        });
       }
 
       this.muxer.addVideoChunk(adjustedChunk, adjustedMeta);
@@ -176,30 +188,33 @@ export class WebMMuxerWrapper {
       ) {
         if (this.firstAudioTimestamp === null) {
           this.firstAudioTimestamp = chunk.timestamp;
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedAudioChunk({
-            type: chunk.type,
-            timestamp: 0,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
-        } else {
-          const newTimestamp = Math.max(
-            0,
-            chunk.timestamp - this.firstAudioTimestamp,
-          );
-          const data = new Uint8Array(chunk.byteLength);
-          chunk.copyTo(data.buffer);
-          (chunk as any).close?.();
-          adjustedChunk = new EncodedAudioChunk({
-            type: chunk.type,
-            timestamp: newTimestamp,
-            duration: chunk.duration ?? undefined,
-            data: data.buffer,
-          });
+          // Update shared firstTimestamp if not set
+          if (this.firstTimestamp === null) {
+            this.firstTimestamp = chunk.timestamp;
+          } else {
+            // Use the minimum of audio and video timestamps
+            this.firstTimestamp = Math.min(
+              this.firstTimestamp,
+              chunk.timestamp,
+            );
+          }
         }
+
+        // Always use the shared firstTimestamp for offset calculation
+        const newTimestamp = Math.max(
+          0,
+          chunk.timestamp - (this.firstTimestamp || 0),
+        );
+
+        const data = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(data.buffer);
+        (chunk as any).close?.();
+        adjustedChunk = new EncodedAudioChunk({
+          type: chunk.type,
+          timestamp: newTimestamp,
+          duration: chunk.duration ?? undefined,
+          data: data.buffer,
+        });
       }
       this.muxer.addAudioChunk(adjustedChunk, adjustedMeta);
     } catch (e: any) {

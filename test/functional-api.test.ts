@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { encode, encodeStream, canEncode } from '../src/index';
 
-// WebCodecs APIのモック
+// Mock WebCodecs API
 const mockVideoEncoder = vi.fn().mockImplementation(() => ({
   configure: vi.fn(),
   encode: vi.fn(),
@@ -45,7 +45,7 @@ global.AudioData = vi.fn().mockImplementation(() => ({
   duration: 21333,
 }));
 
-// Worker のモック
+// Mock Worker
 global.Worker = vi.fn().mockImplementation(() => ({
   postMessage: vi.fn(),
   terminate: vi.fn(),
@@ -55,7 +55,7 @@ global.Worker = vi.fn().mockImplementation(() => ({
   onerror: null,
 }));
 
-// OffscreenCanvas のモック
+// Mock OffscreenCanvas
 global.OffscreenCanvas = vi.fn().mockImplementation((width, height) => ({
   width,
   height,
@@ -71,7 +71,7 @@ global.OffscreenCanvas = vi.fn().mockImplementation((width, height) => ({
   }),
 }));
 
-// ImageData のモック
+// Mock ImageData
 global.ImageData = vi.fn().mockImplementation((width, height) => ({
   width,
   height,
@@ -106,35 +106,35 @@ describe('Functional API', () => {
     });
 
     it('should return false when WebCodecs is not supported', async () => {
-      // エラーが発生した場合は false を返すはず
+      // Should return false when error occurs
       (mockVideoEncoder as any).isConfigSupported = vi.fn().mockRejectedValue(new Error('Not supported'));
       
       const result = await canEncode({
         video: { codec: 'av1' }
       });
       
-      // エラーをキャッチして false を返すか確認
+      // Verify error is caught and false is returned
       expect(typeof result).toBe('boolean');
     });
   });
 
   describe('encode', () => {
     it('should encode static frame array', async () => {
-      // フレーム配列を作成
+      // Create frame array
       const frames = [
         new ImageData(640, 480),
         new ImageData(640, 480),
         new ImageData(640, 480),
       ];
 
-      // 基本的な型チェックとエラーハンドリングをテスト
+      // Test basic type checking and error handling
       try {
         await encode(frames, {
           quality: 'medium',
           frameRate: 30,
         });
       } catch (error) {
-        // Worker実装が未完成のため、エラーは想定内
+        // Error is expected due to incomplete Worker implementation
         expect(error).toBeDefined();
       }
     });

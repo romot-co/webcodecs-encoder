@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-// import * as WorkerModule from "../../src/worker"; // 削除
+// import * as WorkerModule from "../../src/worker"; // Removed
 
 export const mockMuxerInstanceForWorker = {
   addVideoChunk: vi.fn(),
@@ -81,13 +81,13 @@ export function setupGlobals() {
     } as any;
   }
 
-  // AudioDataMock を vi.fn() でラップしてコンストラクタ呼び出しを追跡可能にする
+  // Wrap AudioDataMock with vi.fn() to make constructor calls trackable
   const AudioDataMock = vi.fn(function (this: any, init: any) {
     Object.assign(this, init);
-    // モックインスタンスが close メソッドを持つようにする
-    // this.close = vi.fn(); // こちらではなくプロトタイプに設定する
+    // Make mock instance have close method
+    // this.close = vi.fn(); // Set on prototype instead of here
   });
-  AudioDataMock.prototype.close = vi.fn(); // close メソッドをプロトタイプにモックとして設定
+  AudioDataMock.prototype.close = vi.fn(); // Set close method as mock on prototype
   globalThis.AudioData = AudioDataMock as any;
 }
 

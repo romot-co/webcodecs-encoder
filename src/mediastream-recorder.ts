@@ -16,6 +16,7 @@ export class MediaStreamRecorder {
   private audioTrack?: MediaStreamTrack;
   private audioSource?: MediaStreamAudioSourceNode;
   private recording = false;
+  private finalizing = false;
   private onErrorCallback?: (error: EncodeError) => void;
   private onProgressCallback?: (progress: ProgressInfo) => void;
   private config: any = null;
@@ -57,6 +58,7 @@ export class MediaStreamRecorder {
       await this.initializeWorker();
       
       this.recording = true;
+      this.finalizing = false;
 
       const [vTrack] = stream.getVideoTracks();
       const [aTrack] = stream.getAudioTracks();
@@ -138,7 +140,8 @@ export class MediaStreamRecorder {
       });
 
       // ワーカーを初期化
-      this.communicator.send('initialize', { config: this.config });
+      // MediaStream sources cannot predict totalFrames (real-time)
+      this.communicator.send('initialize', { config: this.config, totalFrames: undefined });
     });
   }
 
@@ -147,9 +150,15 @@ export class MediaStreamRecorder {
     const reader = this.videoReader;
     try {
       while (this.recording) {
-        const { value, done } = await reader.read();
-        if (done || !value) {
-          if (this.recording) {
+        const { value, done } = await Promise.race([
+          reader.read(),
+          new Promise<{ value: null, done: true }>((resolve) => 
+            setTimeout(() => resolve({ value: null, done: true }), 5000)
+          )
+        ]);
+        
+        if (!this.recording || done || !value) {
+          if (this.recording && done) {
             await this.stopRecording();
           }
           break;
@@ -189,9 +198,15 @@ export class MediaStreamRecorder {
     const reader = this.audioReader;
     try {
       while (this.recording) {
-        const { value, done } = await reader.read();
-        if (done || !value) {
-          if (this.recording) {
+        const { value, done } = await Promise.race([
+          reader.read(),
+          new Promise<{ value: null, done: true }>((resolve) => 
+            setTimeout(() => resolve({ value: null, done: true }), 5000)
+          )
+        ]);
+        
+        if (!this.recording || done || !value) {
+          if (this.recording && done) {
             await this.stopRecording();
           }
           break;
@@ -234,7 +249,11 @@ export class MediaStreamRecorder {
     if (!this.recording) {
       throw new EncodeError("invalid-input", "MediaStreamRecorder: not recording.");
     }
+    if (this.finalizing) {
+      return null;
+    }
     
+    this.finalizing = true;
     this.recording = false;
     this.cleanup();
 

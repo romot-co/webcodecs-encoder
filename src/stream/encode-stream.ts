@@ -1,5 +1,5 @@
 /**
- * ストリーミングエンコード関数の実装
+ * Streaming encode function implementation
  */
 
 import {
@@ -7,16 +7,18 @@ import {
   EncodeOptions,
   EncodeError,
   ProgressInfo,
+  VideoFile,
 } from "../types";
 import { inferAndBuildConfig } from "../utils/config-parser";
 import { WorkerCommunicator } from "../worker/worker-communicator";
+import { convertToVideoFrame } from "../utils/video-frame-converter";
 
 /**
- * ストリーミングエンコード関数
+ * Streaming encode function
  *
- * @param source エンコードするビデオソース
- * @param options エンコードオプション
- * @returns エンコードされたチャンクのAsyncGenerator
+ * @param source Video source to encode
+ * @param options Encoding options
+ * @returns AsyncGenerator of encoded chunks
  */
 export async function* encodeStream(
   source: VideoSource,
@@ -31,14 +33,21 @@ export async function* encodeStream(
   const startTime = Date.now();
 
   try {
-    // 設定の推定と正規化（リアルタイムモード優先）
-    const config = await inferAndBuildConfig(source, options);
-    config.latencyMode = "realtime"; // ストリーミング用に強制設定
+    // Configuration inference and normalization (prioritize realtime mode)
+    const baseConfig = await inferAndBuildConfig(source, options);
+    const config = { ...baseConfig, latencyMode: "realtime" as const }; // Force setting for streaming
 
-    // ワーカーとの通信を開始
+    // Calculate totalFrames upfront for progress tracking
+    try {
+      totalFrames = await calculateTotalFrames(source, config);
+    } catch (error) {
+      console.warn("Failed to calculate total frames for streaming:", error);
+    }
+
+    // Start communication with worker
     communicator = new WorkerCommunicator();
 
-    // プログレス情報の更新
+    // Update progress information
     const updateProgress = (stage: string) => {
       if (options?.onProgress) {
         const elapsed = Date.now() - startTime;
@@ -63,12 +72,12 @@ export async function* encodeStream(
       }
     };
 
-    // エンコード処理の開始をPromiseで管理
+    // Manage encoding process start with Promise
     const encodingPromise = new Promise<void>((resolve, reject) => {
-      // ワーカーからのメッセージを処理
+      // Handle messages from worker
       communicator!.on("initialized", () => {
         updateProgress("streaming");
-        // フレーム処理を開始
+        // Start frame processing
         processVideoSource(communicator!, source, config)
           .then(() => {
             updateProgress("finalizing");
@@ -107,52 +116,58 @@ export async function* encodeStream(
         reject(streamError);
       });
 
-      // エンコード開始
-      communicator!.send("initialize", { config });
+      // Start encoding
+      communicator!.send("initialize", { config, totalFrames });
     });
 
-    // バックグラウンドでエンコード処理を実行
-    encodingPromise.catch((error) => {
-      streamError =
-        error instanceof EncodeError
-          ? error
-          : new EncodeError(
-              "encoding-failed",
-              `Streaming failed: ${error.message}`,
-              error,
-            );
+    // Error handling for encoding process
+    // Note: Don't use .catch() here as it would swallow the error
+    // Instead, let errors propagate and handle them later
 
-      if (options?.onError) {
-        options.onError(streamError);
-      }
-    });
-
-    // チャンクを順次yield
+    // Yield chunks sequentially
     while (!isFinalized && !streamError) {
       if (chunks.length > 0) {
         const chunk = chunks.shift()!;
         yield chunk;
       } else {
-        // 少し待ってから再チェック
+        // Wait a bit before checking again
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
     }
 
-    // 残りのチャンクをyield
+    // Yield remaining chunks
     while (chunks.length > 0) {
       const chunk = chunks.shift()!;
       yield chunk;
     }
 
-    // エラーが発生した場合は例外をthrow
+    // Throw exception if error occurred
     if (streamError) {
       throw streamError;
     }
 
-    // エンコード処理の完了を待機
-    await encodingPromise;
+    // Wait for encoding process completion
+    try {
+      await encodingPromise;
+    } catch (error) {
+      // If error occurred during encoding process
+      const encodeError =
+        error instanceof EncodeError
+          ? error
+          : new EncodeError(
+              "encoding-failed",
+              `Streaming failed: ${error instanceof Error ? error.message : String(error)}`,
+              error,
+            );
+
+      if (options?.onError) {
+        options.onError(encodeError);
+      }
+
+      throw encodeError;
+    }
   } catch (error) {
-    // エラーの統一的な処理
+    // Unified error handling
     const encodeError =
       error instanceof EncodeError
         ? error
@@ -168,7 +183,7 @@ export async function* encodeStream(
 
     throw encodeError;
   } finally {
-    // リソースのクリーンアップ
+    // Resource cleanup
     if (communicator) {
       communicator.terminate();
     }
@@ -176,7 +191,7 @@ export async function* encodeStream(
 }
 
 /**
- * VideoSourceを処理してワーカーに送信（ストリーミング向け）
+ * Process VideoSource and send to worker (for streaming)
  */
 async function processVideoSource(
   communicator: WorkerCommunicator,
@@ -184,59 +199,68 @@ async function processVideoSource(
   config: any,
 ): Promise<void> {
   if (Array.isArray(source)) {
-    // 静的フレーム配列の処理
-    await processFrameArray(communicator, source);
+    // Process static frame array
+    await processFrameArray(communicator, source, config);
   } else if (source instanceof MediaStream) {
-    // MediaStreamの処理（リアルタイム）
+    // Process MediaStream (realtime)
     await processMediaStreamRealtime(communicator, source, config);
   } else if (Symbol.asyncIterator in source) {
-    // AsyncIterableの処理
-    await processAsyncIterable(communicator, source);
+    // Process AsyncIterable
+    await processAsyncIterable(communicator, source, config);
   } else {
-    // VideoFileの処理（今回は基本実装）
-    throw new EncodeError(
-      "invalid-input",
-      "VideoFile processing not yet implemented",
-    );
+    // Process VideoFile
+    await processVideoFile(communicator, source as VideoFile, config);
   }
 }
 
 /**
- * フレーム配列を処理（ストリーミング向け）
+ * Process frame array (for streaming)
  */
 async function processFrameArray(
   communicator: WorkerCommunicator,
   frames: import("../types").Frame[],
+  config?: any,
 ): Promise<void> {
+  const frameRate = config?.frameRate || 30;
+  const frameDelay = 1000 / frameRate;
+
+  let lastFrameTime = performance.now();
+
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
-    const timestamp = (i * 1000000) / 30; // 30fpsを仮定してマイクロ秒で計算
+    const timestamp = (i * 1000000) / frameRate;
 
     await addFrameToWorker(communicator, frame, timestamp);
 
-    // ストリーミングのため、少し間隔を空ける
-    await new Promise((resolve) => setTimeout(resolve, 33)); // ~30fps
+    const now = performance.now();
+    const elapsedTime = now - lastFrameTime;
+    const delay = Math.max(0, frameDelay - elapsedTime);
+
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    lastFrameTime = performance.now();
   }
 }
 
 /**
- * AsyncIterableを処理（ストリーミング向け）
+ * Process AsyncIterable (for streaming)
  */
 async function processAsyncIterable(
   communicator: WorkerCommunicator,
   source: AsyncIterable<import("../types").Frame>,
+  config?: any,
 ): Promise<void> {
   let frameIndex = 0;
+  const frameRate = config?.frameRate || 30;
 
   for await (const frame of source) {
-    const timestamp = (frameIndex * 1000000) / 30; // 30fpsを仮定
+    const timestamp = (frameIndex * 1000000) / frameRate; // Use frameRate from config
     await addFrameToWorker(communicator, frame, timestamp);
     frameIndex++;
   }
 }
 
 /**
- * MediaStreamをリアルタイム処理
+ * Process MediaStream in realtime
  */
 async function processMediaStreamRealtime(
   communicator: WorkerCommunicator,
@@ -250,7 +274,7 @@ async function processMediaStreamRealtime(
   const processingPromises: Promise<void>[] = [];
 
   try {
-    // ビデオトラックの処理
+    // Process video tracks
     if (videoTracks.length > 0) {
       const videoTrack = videoTracks[0];
       const processor = new MediaStreamTrackProcessor({ track: videoTrack });
@@ -263,7 +287,7 @@ async function processMediaStreamRealtime(
       );
     }
 
-    // オーディオトラックの処理
+    // Process audio tracks
     if (audioTracks.length > 0) {
       const audioTrack = audioTracks[0];
       const processor = new MediaStreamTrackProcessor({ track: audioTrack });
@@ -274,19 +298,19 @@ async function processMediaStreamRealtime(
       processingPromises.push(processAudioTrackRealtime(communicator, reader));
     }
 
-    // すべての処理が完了するまで待機
+    // Wait for all processing to complete
     await Promise.all(processingPromises);
   } finally {
-    // リーダーをクリーンアップ
+    // Clean up readers
     for (const reader of readers) {
       try {
         reader.cancel();
       } catch (e) {
-        // エラーは無視（既にキャンセル済みの可能性）
+        // Ignore errors (may already be cancelled)
       }
     }
 
-    // トラックを停止
+    // Stop tracks
     for (const track of [...videoTracks, ...audioTracks]) {
       track.stop();
     }
@@ -294,14 +318,14 @@ async function processMediaStreamRealtime(
 }
 
 /**
- * VideoTrackをリアルタイム処理
+ * Process VideoTrack in realtime
  */
 async function processVideoTrackRealtime(
   communicator: WorkerCommunicator,
   reader: ReadableStreamDefaultReader<VideoFrame>,
   _config: any,
 ): Promise<void> {
-  // フレームドロップ機能は将来実装予定
+  // Frame drop functionality planned for future implementation
   // const maxQueueDepth = config.maxQueueDepth || 10;
 
   try {
@@ -326,7 +350,7 @@ async function processVideoTrackRealtime(
 }
 
 /**
- * AudioTrackをリアルタイム処理
+ * Process AudioTrack in realtime
  */
 async function processAudioTrackRealtime(
   communicator: WorkerCommunicator,
@@ -361,14 +385,14 @@ async function processAudioTrackRealtime(
 }
 
 /**
- * フレームをワーカーに送信
+ * Send frame to worker
  */
 async function addFrameToWorker(
   communicator: WorkerCommunicator,
   frame: import("../types").Frame,
   timestamp: number,
 ): Promise<void> {
-  // フレームをVideoFrameに変換
+  // Convert frame to VideoFrame
   const videoFrame = await convertToVideoFrame(frame, timestamp);
 
   try {
@@ -377,86 +401,226 @@ async function addFrameToWorker(
       timestamp,
     });
   } finally {
-    // VideoFrameのリソースを解放
-    if (videoFrame !== frame) {
-      videoFrame.close();
-    }
+    // convertToVideoFrame always returns a new VideoFrame that we own
+    videoFrame.close();
   }
 }
 
 /**
- * FrameをVideoFrameに変換
+ * Process VideoFile and extract frames (for streaming)
  */
-async function convertToVideoFrame(
-  frame: import("../types").Frame,
-  timestamp: number,
-): Promise<VideoFrame> {
-  if (frame instanceof VideoFrame) {
-    return frame;
-  }
+async function processVideoFile(
+  communicator: WorkerCommunicator,
+  videoFile: VideoFile,
+  config: any,
+): Promise<void> {
+  try {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.preload = "metadata";
 
-  // 他のFrame型をVideoFrameに変換
-  if (frame instanceof HTMLCanvasElement) {
-    return new VideoFrame(frame, { timestamp });
-  }
+    const objectUrl = URL.createObjectURL(videoFile.file);
+    video.src = objectUrl;
 
-  if (frame instanceof OffscreenCanvas) {
-    return new VideoFrame(frame, { timestamp });
-  }
-
-  if (frame instanceof ImageBitmap) {
-    return new VideoFrame(frame, { timestamp });
-  }
-
-  if (frame instanceof ImageData) {
-    // ImageDataの場合、BufferInitを使用
-    return new VideoFrame(frame.data, {
-      format: "RGBA",
-      codedWidth: frame.width,
-      codedHeight: frame.height,
-      timestamp,
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("Failed to load video file"));
     });
-  }
 
-  // テスト環境でのモックオブジェクトの場合、プロパティベースで判定
-  if (frame && typeof frame === "object") {
-    // ImageDataに似たオブジェクト
-    if ("width" in frame && "height" in frame && "data" in frame) {
-      const imageDataLike = frame as {
-        width: number;
-        height: number;
-        data: Uint8ClampedArray;
-      };
-      return new VideoFrame(imageDataLike.data, {
-        format: "RGBA",
-        codedWidth: imageDataLike.width,
-        codedHeight: imageDataLike.height,
-        timestamp,
+    const { duration, videoWidth, videoHeight } = video;
+    const frameRate = config.frameRate || 30;
+    const totalFrames = Math.floor(duration * frameRate);
+
+    let audioContext: AudioContext | null = null;
+    let audioBuffer: AudioBuffer | null = null;
+
+    if (config.audioBitrate > 0 && typeof AudioContext !== "undefined") {
+      try {
+        audioContext = new AudioContext();
+        const arrayBuffer = await videoFile.file.arrayBuffer();
+        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        await processAudioFromFile(
+          communicator,
+          audioBuffer,
+          duration,
+          frameRate,
+        );
+      } catch (audioError) {
+        console.warn("Failed to process audio from VideoFile:", audioError);
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      throw new EncodeError(
+        "initialization-failed",
+        "Failed to get canvas context",
+      );
+    }
+
+    for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
+      const timestamp = frameIndex / frameRate;
+      video.currentTime = timestamp;
+
+      await new Promise<void>((resolve, reject) => {
+        const onSeeked = () => {
+          video.removeEventListener("seeked", onSeeked);
+          resolve();
+        };
+        video.addEventListener("seeked", onSeeked, { once: true });
+        video.onerror = () => reject(new Error("Video seek failed"));
       });
+
+      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+      const videoFrame = new VideoFrame(canvas, {
+        timestamp: frameIndex * (1000000 / frameRate),
+      });
+
+      await addFrameToWorker(
+        communicator,
+        videoFrame,
+        frameIndex * (1000000 / frameRate),
+      );
+
+      videoFrame.close();
+
+      // Don't block main thread
+      await new Promise((resolve) => requestAnimationFrame(resolve));
     }
 
-    // Canvasに似たオブジェクト
-    if (
-      "width" in frame &&
-      "height" in frame &&
-      ("getContext" in frame || "transferToImageBitmap" in frame)
-    ) {
-      return new VideoFrame(frame as any, { timestamp });
-    }
+    URL.revokeObjectURL(objectUrl);
+    video.remove();
 
-    // ImageBitmapに似たオブジェクト
-    if (
-      "width" in frame &&
-      "height" in frame &&
-      "close" in frame &&
-      typeof (frame as any).close === "function"
-    ) {
-      return new VideoFrame(frame as any, { timestamp });
+    if (audioContext) {
+      audioContext.close();
     }
+  } catch (error) {
+    throw new EncodeError(
+      "invalid-input",
+      `VideoFile processing failed: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
   }
+}
 
-  throw new EncodeError(
-    "invalid-input",
-    `Unsupported frame type: ${typeof frame}. Frame must be VideoFrame, HTMLCanvasElement, OffscreenCanvas, ImageBitmap, or ImageData.`,
-  );
+/**
+ * Process audio data from AudioBuffer and send to worker (for streaming)
+ */
+async function processAudioFromFile(
+  communicator: WorkerCommunicator,
+  audioBuffer: AudioBuffer,
+  duration: number,
+  frameRate: number,
+): Promise<void> {
+  const sampleRate = audioBuffer.sampleRate;
+  const numberOfChannels = audioBuffer.numberOfChannels;
+  const totalSamples = audioBuffer.length;
+
+  const chunkDurationMs = Math.min(20, 1000 / frameRate);
+  const samplesPerChunk = Math.floor((sampleRate * chunkDurationMs) / 1000);
+
+  for (let offset = 0; offset < totalSamples; offset += samplesPerChunk) {
+    const remainingSamples = Math.min(samplesPerChunk, totalSamples - offset);
+    const timestamp = (offset / sampleRate) * 1000000;
+
+    const channelData: Float32Array[] = [];
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const sourceData = audioBuffer.getChannelData(channel);
+      const chunkData = new Float32Array(remainingSamples);
+      chunkData.set(sourceData.subarray(offset, offset + remainingSamples));
+      channelData.push(chunkData);
+    }
+
+    try {
+      const interleavedData = new Float32Array(
+        remainingSamples * numberOfChannels,
+      );
+      for (let frame = 0; frame < remainingSamples; frame++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          interleavedData[frame * numberOfChannels + channel] =
+            channelData[channel][frame];
+        }
+      }
+
+      const audioData = new AudioData({
+        format: "f32",
+        sampleRate,
+        numberOfFrames: remainingSamples,
+        numberOfChannels,
+        timestamp,
+        data: interleavedData,
+      });
+
+      communicator.send("addAudioData", {
+        audio: audioData,
+        timestamp,
+        format: "f32",
+        sampleRate,
+        numberOfFrames: remainingSamples,
+        numberOfChannels,
+      });
+
+      audioData.close();
+      channelData.length = 0;
+    } catch (error) {
+      console.warn("Failed to create AudioData chunk:", error);
+    }
+
+          // Don't block main thread
+      await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/**
+ * Calculate total frames for different video sources (streaming)
+ */
+async function calculateTotalFrames(
+  source: VideoSource,
+  config: any,
+): Promise<number | undefined> {
+  try {
+    if (Array.isArray(source)) {
+      // Static frame array
+      return source.length;
+    } else if (source instanceof MediaStream) {
+      // MediaStream - cannot predict total frames
+      return undefined;
+    } else if (Symbol.asyncIterator in source) {
+      // AsyncIterable - cannot predict total frames
+      return undefined;
+    } else {
+      // VideoFile - calculate from duration and frame rate
+      const videoFile = source as VideoFile;
+      const video = document.createElement("video");
+      video.muted = true;
+      video.preload = "metadata";
+
+      const objectUrl = URL.createObjectURL(videoFile.file);
+      video.src = objectUrl;
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          video.onloadedmetadata = () => resolve();
+          video.onerror = () =>
+            reject(new Error("Failed to load video metadata"));
+        });
+
+        const frameRate = config.frameRate || 30;
+        const totalFrames = Math.floor(video.duration * frameRate);
+
+        URL.revokeObjectURL(objectUrl);
+        return totalFrames;
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        throw error;
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to calculate total frames for streaming:", error);
+    return undefined;
+  }
 }

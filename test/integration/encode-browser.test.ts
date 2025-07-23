@@ -11,7 +11,7 @@ import http from "http";
 /* eslint-disable no-console */
 // Disable console warnings for test debugging purposes
 
-// ポートがすでに使用されているか確認して、使用されていれば別のポートを使用する
+// Check if port is already in use, use another port if it is
 async function findAvailablePort(startPort: number): Promise<number> {
   const port = startPort;
   const server = http.createServer();
@@ -19,7 +19,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
   return new Promise((resolve, reject) => {
     server.on("error", (e: any) => {
       if (e.code === "EADDRINUSE") {
-        // 既に使用中なので別のポートでリトライ
+        // Already in use, retry with different port
         resolve(findAvailablePort(startPort + 1));
       } else {
         reject(e);
@@ -32,7 +32,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
   });
 }
 
-// 簡易HTTPサーバーを起動する関数
+// Function to start simple HTTP server
 function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -42,13 +42,13 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
         return;
       }
 
-      // URLからパスを取得
+      // Get path from URL
       let filePath = path.join(rootDir, req.url || "");
       console.log(
         `[HTTP Server] Requested URL: ${req.url}, Trying filePath: ${filePath}`,
-      ); // デバッグログ
+      ); // Debug log
 
-      // webcodecs-worker.js のリクエストを worker.js にリダイレクト
+      // Redirect webcodecs-worker.js requests to worker.js
       if (req.url === "/webcodecs-worker.js") {
         filePath = path.join(rootDir, "worker.js");
         console.log(
@@ -56,12 +56,12 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
         );
       }
 
-      // ディレクトリの場合はindex.htmlを探す
+      // Look for index.html if it's a directory
       if (filePath.endsWith("/")) {
         filePath = path.join(filePath, "index.html");
       } else if (!existsSync(filePath) && req.url?.endsWith(".html")) {
-        // ルート直下以外のHTMLファイルも解決できるようにする
-        // 例えば /temp-html/test.html のようなリクエストに対応
+        // Allow resolving HTML files outside of root directory
+        // For example, handle requests like /temp-html/test.html
         const potentialPath = path.join(rootDir, req.url || "");
         if (existsSync(potentialPath)) {
           filePath = potentialPath;
@@ -82,18 +82,18 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-      // ファイルの存在確認
+      // Check if file exists
       if (existsSync(filePath)) {
-        // Content-Typeを設定
+        // Set Content-Type
         const extname = path.extname(filePath);
         let contentType = "text/html";
-        console.log(`[HTTP Server] File found: ${filePath}`); // デバッグログ
+        console.log(`[HTTP Server] File found: ${filePath}`); // Debug log
 
         switch (extname) {
           case ".js":
-          case ".mjs": // .mjsファイルにもapplication/javascriptを設定
+          case ".mjs": // Set application/javascript for .mjs files too
             contentType = "application/javascript";
-            // worker.js の内容をコンソールに出力して確認
+            // Output worker.js content to console for verification
             if (filePath.endsWith("worker.js")) {
               try {
                 const workerContent = readFileSync(filePath, "utf-8");
@@ -123,13 +123,13 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
             break;
         }
 
-        // ファイルを読み込んでレスポンス
+        // Read file and send response
         const content = readFileSync(filePath);
         res.writeHead(200, { "Content-Type": contentType });
         res.end(content, "utf-8");
       } else {
-        // ファイルが見つからない場合は404
-        console.log(`[HTTP Server] File NOT found: ${filePath}`); // デバッグログ
+        // Return 404 if file not found
+        console.log(`[HTTP Server] File NOT found: ${filePath}`); // Debug log
         res.writeHead(404);
         res.end("File not found: " + filePath);
       }
@@ -142,7 +142,7 @@ function startHttpServer(port: number, rootDir: string): Promise<http.Server> {
   });
 }
 
-// 基本的なキャンバスのテスト
+// Basic canvas test
 test("browser can create canvas and draw", async () => {
   let browser: Browser | null = null;
   let page: Page | null = null;
@@ -150,11 +150,11 @@ test("browser can create canvas and draw", async () => {
   let port: number;
 
   try {
-    // テスト用HTMLファイルを作成（非常にシンプルなキャンバステスト）
-    // distディレクトリにHTMLを配置してHTTP経由でアクセスする
+    // Create test HTML file (very simple canvas test)
+    // Place HTML in dist directory and access via HTTP
     const distDir = path.join(__dirname, "../../dist");
-    const tempDir = path.join(distDir, "temp-html"); // 一時HTML用のサブディレクトリ
-    execSync(`mkdir -p ${tempDir}`); // サブディレクトリ作成
+    const tempDir = path.join(distDir, "temp-html"); // Subdirectory for temporary HTML
+    execSync(`mkdir -p ${tempDir}`); // Create subdirectory
 
     const timestamp = Date.now();
     const tempHtmlFilename = `webcodecs-test-${timestamp}.html`;
@@ -167,7 +167,7 @@ test("browser can create canvas and draw", async () => {
         <meta charset="utf-8">
         <title>Canvas Test</title>
         <script>
-          // テスト用の簡単なキャンバス操作
+          // Simple canvas operations for testing
           function runTest() {
             try {
               const canvas = document.createElement("canvas");
@@ -176,21 +176,21 @@ test("browser can create canvas and draw", async () => {
               const ctx = canvas.getContext("2d");
               
               if (ctx) {
-                // 何か描画する
+                // Draw something
                 ctx.fillStyle = "red";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 
-                // ボディに追加
+                // Add to body
                 document.body.appendChild(canvas);
                 
-                // 結果を表示
-                document.getElementById('result').textContent = '成功: キャンバスを作成して描画しました。';
+                // Display result
+                document.getElementById('result').textContent = 'Success: Created and drew on canvas.';
                 return true;
               } else {
                 throw new Error("Failed to get canvas context");
               }
             } catch (error) {
-              document.getElementById('result').textContent = 'エラー: ' + 
+              document.getElementById('result').textContent = 'Error: ' + 
                 (error instanceof Error ? error.message : String(error));
               console.error('Test error:', error);
               return false;
@@ -209,23 +209,23 @@ test("browser can create canvas and draw", async () => {
     writeFileSync(tempHtmlPath, testHtml);
     console.log(`Created test HTML at: ${tempHtmlPath}`);
 
-    // 利用可能なポートを見つける
+    // Find available port
     port = await findAvailablePort(8080);
     console.log(`Using port: ${port} for canvas test`);
 
     // HTTPサーバーを起動 (ルートは distDir)
     server = await startHttpServer(port, distDir);
 
-    // ブラウザを起動
+    // Launch browser
     console.log("Launching browser...");
     browser = await chromium.launch({
-      headless: process.env.HEADLESS === "true", // CI用にヘッドレス制御
+      headless: process.env.HEADLESS === "true", // Headless control for CI
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage", // CI環境でのリソース制限対策
-        "--enable-logging=stderr", // ブラウザログをstderrに出力
-        // WebCodecsやテストに必要な他のフラグがあればここに追加
+        "--disable-dev-shm-usage", // Resource limit countermeasure for CI environment
+        "--enable-logging=stderr", // Output browser logs to stderr
+        // Add other flags needed for WebCodecs and testing here
       ],
     });
 
@@ -237,7 +237,7 @@ test("browser can create canvas and draw", async () => {
     // HTTP経由でアクセス
     await page.goto(`http://localhost:${port}/temp-html/${tempHtmlFilename}`);
 
-    // テストの実行ボタンをクリック
+    // Click test execution button
     console.log("Running canvas test...");
     await page.click("#runButton");
 
@@ -254,17 +254,17 @@ test("browser can create canvas and draw", async () => {
       { timeout: 10000 },
     );
 
-    // 結果を検証
+    // Verify result
     const resultText = await page.locator("#result").textContent();
     console.log(`Test result: ${resultText}`);
 
-    expect(resultText).toContain("成功");
+    expect(resultText).toContain("Success");
     console.log("Test passed - canvas created and drawn successfully");
   } catch (error) {
     console.error("Test failed with error:", error);
     throw error;
   } finally {
-    // リソースのクリーンアップ
+    // Clean up resources
     if (page) await page.close();
     if (browser) await browser.close();
     if (server) server.close();

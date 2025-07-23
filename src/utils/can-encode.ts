@@ -1,28 +1,28 @@
 /**
- * エンコード可能性の検証
+ * Encode capability verification
  */
 
 import { EncodeOptions, VideoConfig, AudioConfig } from "../types";
 
 /**
- * エンコード可能性の検証
+ * Verify encode capability
  *
- * @param options エンコードオプション
- * @returns エンコード可能かどうか
+ * @param options Encode options
+ * @returns Whether encoding is possible
  */
 export async function canEncode(options?: EncodeOptions): Promise<boolean> {
   try {
-    // WebCodecsの基本サポート確認
+    // Check basic WebCodecs support
     if (!isWebCodecsSupported()) {
       return false;
     }
 
-    // デフォルト設定でのテスト
+    // Test with default configuration
     if (!options) {
       return await testDefaultConfiguration();
     }
 
-    // ビデオ設定の確認（ビデオが指定されている場合のみ）
+    // Check video configuration (only if video is specified)
     const hasVideoConfig = options.video && typeof options.video === "object";
     const hasVideo = hasVideoConfig || !options.audio;
     if (hasVideo) {
@@ -35,7 +35,7 @@ export async function canEncode(options?: EncodeOptions): Promise<boolean> {
       }
     }
 
-    // オーディオ設定の確認（オーディオが明示的に指定されている場合のみ）
+    // Check audio configuration (only if audio is explicitly specified)
     const hasAudioConfig = options.audio && typeof options.audio === "object";
     if (hasAudioConfig) {
       const audioCodec = (options.audio as AudioConfig).codec || "aac";
@@ -44,7 +44,7 @@ export async function canEncode(options?: EncodeOptions): Promise<boolean> {
         return false;
       }
     } else if (options.audio === undefined && !hasVideoConfig) {
-      // デフォルト設定の場合のみオーディオもチェック
+      // Only check audio for default configuration
       const audioSupported = await testAudioCodecSupport("aac", options);
       if (!audioSupported) {
         return false;
@@ -53,14 +53,14 @@ export async function canEncode(options?: EncodeOptions): Promise<boolean> {
 
     return true;
   } catch (error) {
-    // エラーが発生した場合は対応していないと判断
+    // If error occurs, assume not supported
     console.warn("canEncode error:", error);
     return false;
   }
 }
 
 /**
- * WebCodecsの基本サポートを確認
+ * Check basic WebCodecs support
  */
 function isWebCodecsSupported(): boolean {
   try {
@@ -76,7 +76,7 @@ function isWebCodecsSupported(): boolean {
 }
 
 /**
- * デフォルト設定でのエンコード可能性を確認
+ * Check encode capability with default configuration
  */
 async function testDefaultConfiguration(): Promise<boolean> {
   try {
@@ -84,7 +84,7 @@ async function testDefaultConfiguration(): Promise<boolean> {
     const defaultHeight = 480;
     const defaultFrameRate = 30;
 
-    // H.264 (AVC) のテスト
+    // Test H.264 (AVC)
     const videoConfig: VideoEncoderConfig = {
       codec: generateAvcCodecString(
         defaultWidth,
@@ -102,7 +102,7 @@ async function testDefaultConfiguration(): Promise<boolean> {
       return false;
     }
 
-    // AAC のテスト
+    // Test AAC
     const audioConfig: AudioEncoderConfig = {
       codec: "mp4a.40.2", // AAC-LC
       sampleRate: 48000,
@@ -118,13 +118,15 @@ async function testDefaultConfiguration(): Promise<boolean> {
 }
 
 /**
- * ビデオコーデックのサポートを確認
+ * Check video codec support
  */
 async function testVideoCodecSupport(
   codec: string,
   options?: EncodeOptions,
 ): Promise<boolean> {
   try {
+    const videoOptions =
+      options?.video && typeof options.video === "object" ? options.video : {};
     const codecString = getVideoCodecString(
       codec,
       options?.width || 640,
@@ -135,28 +137,17 @@ async function testVideoCodecSupport(
       codec: codecString,
       width: options?.width || 640,
       height: options?.height || 480,
-      bitrate:
-        options?.video === false
-          ? 0
-          : (options?.video as any)?.bitrate || 1_000_000,
+      bitrate: videoOptions.bitrate || 1_000_000,
       framerate: options?.frameRate || 30,
     };
 
-    // オプションの詳細設定を追加
-    if (
-      options &&
-      options.video !== false &&
-      (options.video as any)?.hardwareAcceleration
-    ) {
-      config.hardwareAcceleration = (options.video as any).hardwareAcceleration;
+    // Add optional detailed settings
+    if (videoOptions.hardwareAcceleration) {
+      config.hardwareAcceleration = videoOptions.hardwareAcceleration;
     }
 
-    if (
-      options &&
-      options.video !== false &&
-      (options.video as any)?.latencyMode
-    ) {
-      config.latencyMode = (options.video as any).latencyMode;
+    if (videoOptions.latencyMode) {
+      config.latencyMode = videoOptions.latencyMode;
     }
 
     const support = await VideoEncoder.isConfigSupported(config);
@@ -167,7 +158,7 @@ async function testVideoCodecSupport(
 }
 
 /**
- * オーディオコーデックのサポートを確認
+ * Check audio codec support
  */
 async function testAudioCodecSupport(
   codec: string,
@@ -185,7 +176,7 @@ async function testAudioCodecSupport(
       bitrate: audioOptions.bitrate || 128_000,
     };
 
-    // AACの場合、bitrateMode設定を追加
+    // Add bitrateMode setting for AAC
     if (codec === "aac" && audioOptions.bitrateMode) {
       (config as any).bitrateMode = audioOptions.bitrateMode;
     }
@@ -198,7 +189,7 @@ async function testAudioCodecSupport(
 }
 
 /**
- * ビデオコーデック名をWebCodecs用の文字列に変換
+ * Convert video codec name to WebCodecs string
  */
 function getVideoCodecString(
   codec: string,
@@ -218,15 +209,15 @@ function getVideoCodecString(
     case "av1":
       return "av01.0.04M.08"; // AV1 Main Profile Level 4.0
     default:
-      return codec; // そのまま返す（カスタムコーデック文字列の場合）
+      return codec; // Return as is (for custom codec strings)
   }
 }
 
 /**
- * AVC (H.264) コーデック文字列を動的に生成
- * encoder-worker.tsと同じロジックを使用
+ * Dynamically generate AVC (H.264) codec string
+ * Uses same logic as encoder-worker.ts
  */
-function generateAvcCodecString(
+export function generateAvcCodecString(
   width: number,
   height: number,
   frameRate: number,
@@ -251,7 +242,57 @@ function generateAvcCodecString(
 }
 
 /**
- * オーディオコーデック名をWebCodecs用の文字列に変換
+ * Try multiple AVC profiles and return the first supported one
+ */
+export async function generateSupportedAvcCodecString(
+  width: number,
+  height: number,
+  frameRate: number,
+  bitrate: number,
+  preferredProfile?: "high" | "main" | "baseline",
+): Promise<string | null> {
+  // Define profile order based on preference
+  const profiles: ("high" | "main" | "baseline")[] = preferredProfile
+    ? (([preferredProfile, "main", "baseline", "high"] as const).filter(
+        (p, i, arr) => arr.indexOf(p) === i, // remove duplicates
+      ) as ("high" | "main" | "baseline")[])
+    : ["high", "main", "baseline"];
+
+  // Try each profile in order
+  for (const profile of profiles) {
+    const codecString = generateAvcCodecString(
+      width,
+      height,
+      frameRate,
+      profile,
+    );
+
+    try {
+      const config: VideoEncoderConfig = {
+        codec: codecString,
+        width,
+        height,
+        bitrate,
+        framerate: frameRate,
+      };
+
+      const support = await VideoEncoder.isConfigSupported(config);
+      if (support.supported) {
+        return codecString;
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to check support for AVC profile ${profile}:`,
+        error,
+      );
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Convert audio codec name to WebCodecs string
  */
 function getAudioCodecString(codec: string): string {
   switch (codec) {
@@ -260,12 +301,12 @@ function getAudioCodecString(codec: string): string {
     case "opus":
       return "opus"; // Opus
     default:
-      return codec; // そのまま返す（カスタムコーデック文字列の場合）
+      return codec; // Return as is (for custom codec strings)
   }
 }
 
 /**
- * 特定のコーデックとプロファイルでのサポート確認（上級者向け）
+ * Check support for specific codec and profile (for advanced users)
  */
 export async function canEncodeWithProfile(
   videoCodec: string,
@@ -281,7 +322,7 @@ export async function canEncodeWithProfile(
   const result = { video: false, audio: false, overall: false };
 
   try {
-    // ビデオの確認
+    // Check video
     if (videoCodec) {
       const videoConfig: VideoEncoderConfig = {
         codec: getVideoCodecString(videoCodec),
@@ -295,7 +336,7 @@ export async function canEncodeWithProfile(
       result.video = videoSupport.supported || false;
     }
 
-    // オーディオの確認
+    // Check audio
     if (audioCodec) {
       const audioConfig: AudioEncoderConfig = {
         codec: getAudioCodecString(audioCodec),
@@ -307,7 +348,7 @@ export async function canEncodeWithProfile(
       const audioSupport = await AudioEncoder.isConfigSupported(audioConfig);
       result.audio = audioSupport.supported || false;
     } else {
-      result.audio = true; // オーディオなしの場合は対応とみなす
+      result.audio = true; // Consider supported if no audio
     }
 
     result.overall = result.video && result.audio;

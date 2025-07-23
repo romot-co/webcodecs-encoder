@@ -42,8 +42,8 @@ const baseConfig: EncoderConfig = {
   codec: { video: "vp9", audio: "opus" },
 };
 
-// CallbackWritableStream のテスト用に直接アクセスできるようにエクスポート
-// 実際のソースコードでエクスポートされていなくても、テスト目的でモック化して利用する
+// Export for testing CallbackWritableStream with direct access
+// Even if not exported in actual source code, mock it for testing purposes
 class CallbackWritableStream {
   private position = 0;
   constructor(private onData: (chunk: Uint8Array, position: number) => void) {}
@@ -54,8 +54,8 @@ class CallbackWritableStream {
   }
 }
 
-// WebMMuxerWrapperがテスト内で作成するCallbackWritableStreamインスタンスを
-// テストで認識できるようにするためのグローバル参照を追加
+// Add global reference so tests can recognize CallbackWritableStream instances
+// created by WebMMuxerWrapper in tests
 (global as any).CallbackWritableStream = CallbackWritableStream;
 
 describe("CallbackWritableStream", () => {
@@ -77,7 +77,7 @@ describe("CallbackWritableStream", () => {
     const position = 10;
     
     stream.write({ data, position });
-    // position更新後の値をテスト
+    // Test value after position update
     expect((stream as any).position).toBe(position + data.byteLength);
     
     const data2 = new Uint8Array([4, 5]);
@@ -104,7 +104,7 @@ describe("WebMMuxerWrapper", () => {
     it("configures with VP9 codec by default", () => {
       const config: EncoderConfig = {
         ...baseConfig,
-        codec: undefined, // 明示的にcodecを未定義に
+        codec: undefined, // Explicitly set codec to undefined
       };
       new WebMMuxerWrapper(config, postMessageCallback);
       expect(WebMMuxerMock).toHaveBeenCalledWith(
@@ -165,24 +165,24 @@ describe("WebMMuxerWrapper", () => {
         latencyMode: "realtime",
       };
       
-      // モック実装を使わずに直接テスト
+      // Test directly without using mock implementation
       new WebMMuxerWrapper(realtimeConfig, postMessageCallback);
 
       expect(WebMMuxerMock).toHaveBeenCalled();
       const callArgs = WebMMuxerMock.mock.calls[0][0];
       
-      // ターゲットオブジェクトの存在と機能をチェック
+      // Check target object existence and functionality
       expect(callArgs.target).toBeDefined();
       expect(typeof callArgs.target.write).toBe('function');
       
-      // 直接テストを行う - 実際にWritableStreamの機能をテスト
+      // Perform direct test - actually test WritableStream functionality
       const testChunk = new Uint8Array([1, 2, 3, 4, 5]);
       const testPosition = 0;
       
-      // 直接writeメソッドを呼び出す
+      // Call write method directly
       callArgs.target.write({ data: testChunk, position: testPosition });
 
-      // ターゲットのwriteメソッド呼び出しでpostMessageCallbackが呼ばれることを確認
+      // Verify postMessageCallback is called when target's write method is called
       expect(postMessageCallback).toHaveBeenCalledWith(
         {
           type: "dataChunk",

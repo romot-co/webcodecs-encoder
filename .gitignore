@@ -112,3 +112,4 @@ coverage-vitest/ # If you use a specific output like coverage/vitest
 implements.md
 ref
 .claude/
+PUBLISHING.md
