@@ -214,7 +214,7 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
       options.audio === false
         ? undefined
         : (options.audio as any)?.bitrateMode || "variable",
-    firstTimestampBehavior: options.firstTimestampBehavior || "strict",
+    firstTimestampBehavior: options.firstTimestampBehavior || "offset",
     maxVideoQueueSize: options.maxVideoQueueSize || 30,
     maxAudioQueueSize: options.maxAudioQueueSize || 30,
     backpressureStrategy: options.backpressureStrategy || "drop",
@@ -224,7 +224,7 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
 }
 
 /**
- * VideoSourceから最初のフレームを取得
+ * VideoSourceから最初のフレームを取得（AsyncIterableの場合、元のイテレータを消費しない）
  */
 async function getFirstFrame(source: VideoSource): Promise<Frame | null> {
   if (Array.isArray(source)) {
@@ -249,10 +249,18 @@ async function getFirstFrame(source: VideoSource): Promise<Frame | null> {
   }
 
   if (Symbol.asyncIterator in source) {
-    // AsyncIterableの場合は最初の要素を取得
-    for await (const frame of source) {
-      return frame;
+    // AsyncIterableの場合は最初の要素を取得するが、元のイテレータは保持
+    const iterator = source[Symbol.asyncIterator]();
+    const { value, done } = await iterator.next();
+    
+    if (!done && value) {
+      // イテレータを閉じる（リソース解放）
+      if (typeof iterator.return === 'function') {
+        await iterator.return();
+      }
+      return value;
     }
+    
     return null;
   }
 

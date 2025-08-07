@@ -7,8 +7,7 @@ export { canEncode } from "./utils/can-encode";
 export { createEncoder, encoders, examples } from "./factory/encoder";
 export type { EncoderFactory } from "./factory/encoder";
 
-// レガシーサポート：既存のクラスベースAPI（非推奨）
-export { MediaStreamRecorder } from "./mediastream-recorder";
+// Legacy class-based API removed in v0.2.4 - use encodeStream() for MediaStream encoding
 
 // 型定義
 export type {

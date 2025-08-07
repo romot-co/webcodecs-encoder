@@ -3,8 +3,8 @@
  * Demonstrates how to use VideoFile with the streaming API for real-time processing
  */
 
-import { encodeStream } from '../src/stream/encode-stream';
-import type { VideoFile } from '../src/types';
+import { encodeStream } from 'webcodecs-encoder';
+import type { VideoFile } from 'webcodecs-encoder';
 
 async function streamVideoFile() {
   // Create VideoFile from File input
@@ -24,8 +24,7 @@ async function streamVideoFile() {
     // Create VideoFile object
     const videoFile: VideoFile = {
       file,
-      startTime: 0,
-      endTime: undefined, // Process entire file
+      type: file.type,
     };
 
     console.log('Starting VideoFile streaming...');
@@ -115,7 +114,7 @@ async function streamVideoFileRealtime() {
     
     if (!file) return;
 
-    const videoFile: VideoFile = { file, startTime: 0 };
+    const videoFile: VideoFile = { file, type: file.type };
 
     try {
       // Stream with real-time processing

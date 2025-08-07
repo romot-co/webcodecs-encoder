@@ -236,42 +236,54 @@ interface ProgressInfo {
 }
 ```
 
-### Real-time Recording with `MediaStreamRecorder`
+### Real-time MediaStream Recording
 
-For more control over real-time recording from a `MediaStream`, use the `MediaStreamRecorder` class. It provides `start`/`stop` controls and is ideal for applications like video conferencing or user-initiated recordings.
+Use `encodeStream()` for real-time recording from camera, microphone, or screen sharing. This provides progressive encoding with streaming output:
 
 ```typescript
-import { MediaStreamRecorder } from 'webcodecs-encoder';
+import { encodeStream } from 'webcodecs-encoder';
 
 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-const recorder = new MediaStreamRecorder(stream, {
+
+// Collect encoded chunks as they're generated
+const chunks: Uint8Array[] = [];
+
+for await (const chunk of encodeStream(stream, {
   quality: 'medium',
-  firstTimestampBehavior: 'offset' // Recommended for streams
-});
-
-await recorder.start();
-
-// ... recording in progress ...
-
-// Stop recording and get the complete file
-const mp4Data = await recorder.stop();
-const blob = new Blob([mp4Data], { type: 'video/mp4' });
-
-// You can also cancel the recording
-// recorder.cancel();
-
-// Check for browser support
-if (!MediaStreamRecorder.isSupported()) {
-  console.error('MediaStreamRecorder is not supported in this browser.');
+  container: 'mp4',
+  onProgress: (progress) => {
+    console.log(`Recording: ${progress.percent.toFixed(1)}%`);
+  }
+})) {
+  chunks.push(chunk);
+  console.log(`Received chunk: ${chunk.byteLength} bytes`);
+  
+  // Optional: Send chunks to server for real-time streaming
+  // await sendChunkToServer(chunk);
 }
+
+// Stop recording by stopping the media tracks
+setTimeout(() => {
+  stream.getTracks().forEach(track => track.stop());
+}, 5000); // Record for 5 seconds
+
+// Combine chunks into final video file
+const totalSize = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+const finalVideo = new Uint8Array(totalSize);
+let offset = 0;
+for (const chunk of chunks) {
+  finalVideo.set(chunk, offset);
+  offset += chunk.byteLength;
+}
+
+const blob = new Blob([finalVideo], { type: 'video/mp4' });
 ```
 
-**`MediaStreamRecorder` Options**: Extends `EncodeOptions`.
-
-**`MediaStreamRecorder` Methods**:
-- `start(): Promise<void>`
-- `stop(): Promise<Uint8Array>`
-- `cancel(): void`
+**Real-time streaming benefits**:
+- Progressive encoding as data flows
+- Immediate chunk availability for streaming
+- Built-in cancellation support
+- Memory efficient for long recordings
 
 ## Usage Examples
 
@@ -494,6 +506,79 @@ if (!supported) {
    });
    ```
 6. **Consider container format**: MP4 for compatibility, WebM for smaller files.
+
+## Migration Guide
+
+### From v0.2.x to v0.3.0
+
+**Breaking Changes**: The `MediaStreamRecorder` class has been removed in favor of the function-first API.
+
+#### Before (v0.2.x)
+```typescript
+import { MediaStreamRecorder } from 'webcodecs-encoder';
+
+const recorder = new MediaStreamRecorder(options);
+await recorder.start(stream);
+// ... recording in progress
+const mp4Data = await recorder.stop();
+```
+
+#### After (v0.3.0+)
+```typescript
+import { encodeStream } from 'webcodecs-encoder';
+
+const chunks: Uint8Array[] = [];
+for await (const chunk of encodeStream(stream, options)) {
+  chunks.push(chunk);
+}
+
+// Combine chunks into final video
+const totalSize = chunks.reduce((sum, c) => sum + c.byteLength, 0);
+const mp4Data = new Uint8Array(totalSize);
+let offset = 0;
+for (const chunk of chunks) {
+  mp4Data.set(chunk, offset);
+  offset += chunk.byteLength;
+}
+```
+
+#### Migration Benefits
+- **Better tree-shaking**: Smaller bundle sizes with function imports
+- **Streaming support**: Real-time chunk processing
+- **Memory efficiency**: Progressive encoding without buffering entire video
+- **Cancellation**: Built-in AbortController support
+- **Error handling**: Standard async/await error handling
+
+#### Common Migration Patterns
+
+**Recording Control**:
+```typescript
+// Before: recorder.start() / recorder.stop()
+// After: Control via MediaStream tracks
+setTimeout(() => {
+  stream.getTracks().forEach(track => track.stop());
+}, 5000);
+```
+
+**Progress Tracking**:
+```typescript
+// Before: constructor options
+new MediaStreamRecorder({ onProgress })
+
+// After: encodeStream options  
+encodeStream(stream, { onProgress })
+```
+
+**Cancellation**:
+```typescript
+// Before: recorder.cancel()
+// After: AbortController
+const controller = new AbortController();
+encodeStream(stream, { signal: controller.signal });
+controller.abort(); // Cancel encoding
+```
+
+See [`examples/realtime-mediastream.ts`](examples/realtime-mediastream.ts) for complete examples.
 
 ## Changelog
 
