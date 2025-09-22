@@ -263,11 +263,6 @@ async function processMediaStream(
         // Ignore errors (may already be cancelled)
       }
     }
-
-    // Stop tracks
-    for (const track of [...videoTracks, ...audioTracks]) {
-      track.stop();
-    }
   }
 }
 
@@ -364,39 +359,45 @@ async function processVideoFile(
   videoFile: VideoFile,
   config: any,
 ): Promise<void> {
-  try {
-    // Create HTML5 Video element and load file
-    const video = document.createElement("video");
-    video.muted = true;
-    video.preload = "metadata";
+  const video = document.createElement("video");
+  video.muted = true;
+  video.preload = "metadata";
 
-    // Set file as object URL
-    const objectUrl = URL.createObjectURL(videoFile.file);
+  let objectUrl: string | null = null;
+  let audioContext: AudioContext | null = null;
+
+  try {
+    objectUrl = URL.createObjectURL(videoFile.file);
     video.src = objectUrl;
 
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Failed to load video file"));
+      const handleLoaded = () => {
+        cleanup();
+        resolve();
+      };
+      const handleError = () => {
+        cleanup();
+        reject(new Error("Failed to load video file"));
+      };
+      const cleanup = () => {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+      };
+      video.onloadedmetadata = handleLoaded;
+      video.onerror = handleError;
     });
 
-    // Get video information
     const { duration, videoWidth, videoHeight } = video;
-    const frameRate = config.frameRate || 30;
-    const totalFrames = Math.floor(duration * frameRate);
-
-    // Prepare audio processing (if audio is enabled in config)
-    let audioContext: AudioContext | null = null;
-    let audioBuffer: AudioBuffer | null = null;
+    const frameRate =
+      config.frameRate && config.frameRate > 0 ? config.frameRate : 30;
+    const totalFrames = Math.max(1, Math.floor(duration * frameRate) || 1);
 
     if (config.audioBitrate > 0 && typeof AudioContext !== "undefined") {
       try {
         audioContext = new AudioContext();
-
-        // Load audio data from file
         const arrayBuffer = await videoFile.file.arrayBuffer();
-        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        // Split and send audio data
         await processAudioFromFile(
           communicator,
           audioBuffer,
@@ -404,15 +405,18 @@ async function processVideoFile(
           frameRate,
         );
       } catch (audioError) {
-        // Log and continue if audio processing fails
         console.warn("Failed to process audio from VideoFile:", audioError);
       }
     }
 
-    // Create canvas to extract frames
+    const targetWidth =
+      config.width && config.width > 0 ? config.width : videoWidth || 640;
+    const targetHeight =
+      config.height && config.height > 0 ? config.height : videoHeight || 480;
+
     const canvas = document.createElement("canvas");
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext("2d");
 
     if (!ctx) {
@@ -422,40 +426,47 @@ async function processVideoFile(
       );
     }
 
-    // Process each frame of the video
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
       try {
-        const timestamp = frameIndex / frameRate;
-
-        // Seek to specified time in video
-        video.currentTime = timestamp;
+        const timestampSeconds = Math.min(
+          duration || 0,
+          frameIndex / frameRate,
+        );
+        video.currentTime = Number.isFinite(timestampSeconds)
+          ? timestampSeconds
+          : 0;
 
         await new Promise<void>((resolve, reject) => {
-          const onSeeked = () => {
-            video.removeEventListener("seeked", onSeeked);
+          const handleSeeked = () => {
+            cleanup();
             resolve();
           };
-          video.addEventListener("seeked", onSeeked, { once: true });
-          video.onerror = () => reject(new Error("Video seek failed"));
+          const handleError = () => {
+            cleanup();
+            reject(new Error("Video seek failed"));
+          };
+          const cleanup = () => {
+            video.removeEventListener("seeked", handleSeeked);
+            video.removeEventListener("error", handleError);
+          };
+          video.addEventListener("seeked", handleSeeked, { once: true });
+          video.addEventListener("error", handleError, { once: true });
         });
 
-        // Draw current frame to canvas
-        ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-
-        // Create VideoFrame
-        const videoFrame = new VideoFrame(canvas, {
-          timestamp: frameIndex * (1000000 / frameRate), // microseconds
-        });
-
-        // Send to worker
-        await addFrameToWorker(
-          communicator,
-          videoFrame,
-          frameIndex * (1000000 / frameRate),
+        ctx.drawImage(
+          video,
+          0,
+          0,
+          videoWidth || canvas.width,
+          videoHeight || canvas.height,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
         );
 
-        // Close frame to prevent memory leaks
-        videoFrame.close();
+        const chunkTimestamp = Math.round(frameIndex * (1_000_000 / frameRate));
+        await addFrameToWorker(communicator, canvas, chunkTimestamp);
       } catch (frameError) {
         throw new EncodeError(
           "video-encoding-error",
@@ -464,20 +475,26 @@ async function processVideoFile(
         );
       }
     }
-
-    // Clean up resources
-    URL.revokeObjectURL(objectUrl);
-    video.remove();
-
-    if (audioContext) {
-      audioContext.close();
-    }
   } catch (error) {
     throw new EncodeError(
       "invalid-input",
       `VideoFile processing failed: ${error instanceof Error ? error.message : String(error)}`,
       error,
     );
+  } finally {
+    if (audioContext) {
+      try {
+        await audioContext.close();
+      } catch (closeError) {
+        console.warn("Failed to close AudioContext", closeError);
+      }
+    }
+
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+    video.src = "";
+    video.remove();
   }
 }
 

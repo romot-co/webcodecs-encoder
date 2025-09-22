@@ -61,132 +61,122 @@ function createInlineWorker(): { worker: Worker; blobUrl: string } {
  * Create appropriate worker
  */
 export function createWorker(): Worker | { worker: Worker; blobUrl: string } {
-  // Enhanced production environment detection
+  const isTestEnvironment = detectTestEnvironment();
   const isProductionEnvironment = detectProductionEnvironment();
+  const inlineOverride = hasInlineWorkerOverride();
+  const inlineDisabled = isInlineWorkerDisabled();
 
-  // Test environment or development environment detection
-  const isTestEnvironment =
-    // Vitest environment
-    (typeof process !== "undefined" && process.env?.VITEST === "true") ||
-    // Jest environment
-    (typeof process !== "undefined" &&
-      process.env?.JEST_WORKER_ID !== undefined) ||
-    // Node.js environment
-    (typeof process !== "undefined" && process.env?.NODE_ENV === "test") ||
-    // Global test runner exists
-    (typeof global !== "undefined" &&
-      (global as any).process?.env?.NODE_ENV === "test") ||
-    // vitest global function exists
-    (typeof globalThis !== "undefined" && "vi" in globalThis) ||
-    // jsdom environment
-    (typeof window !== "undefined" &&
-      window.navigator?.userAgent?.includes("jsdom")) ||
-    // Variables commonly set in test environments
-    (typeof process !== "undefined" &&
-      process.env?.npm_lifecycle_event?.includes("test"));
-
-  // Enhanced fallback for integration test environments
-  const isIntegrationTestEnvironment =
-    typeof window !== "undefined" &&
-    (window.location?.hostname === "localhost" ||
-      window.location?.hostname === "127.0.0.1") &&
-    window.location?.port;
-
-  // Force disable check via environment variables
-  const forceDisableInlineWorker =
-    (typeof process !== "undefined" &&
-      process.env?.WEBCODECS_DISABLE_INLINE_WORKER === "true") ||
-    (typeof window !== "undefined" &&
-      (window as any).__WEBCODECS_DISABLE_INLINE_WORKER__ === true);
-
-  // Strictly prohibit if production environment or inline worker is explicitly disabled
-  if (
-    (isProductionEnvironment || forceDisableInlineWorker) &&
-    (isTestEnvironment || isIntegrationTestEnvironment)
-  ) {
-    throw new Error(
-      "[WorkerCommunicator] CRITICAL SECURITY ERROR: Inline worker detected in production environment or explicitly disabled. " +
-        "This is a security risk. Please ensure webcodecs-worker.js is properly deployed.",
-    );
+  if (inlineOverride) {
+    if (isProductionEnvironment && !allowInlineOverrideInProduction()) {
+      throw new Error(
+        "[WorkerCommunicator] Inline worker override is disabled in production environments.",
+      );
+    }
+    console.warn("[WorkerCommunicator] Using inline worker (override).");
+    return createInlineWorker();
   }
 
-  // Always use inline worker in test environments
-  if (isTestEnvironment || isIntegrationTestEnvironment) {
+  if (isTestEnvironment && !inlineDisabled) {
     console.warn(
-      "[WorkerCommunicator] Using inline worker for test environment",
+      "[WorkerCommunicator] Using inline worker (test environment).",
     );
     return createInlineWorker();
   }
 
-  // Use only external worker in production environment
   try {
     return createExternalWorker();
   } catch (error) {
-    if (isProductionEnvironment) {
-      throw new Error(
-        "[WorkerCommunicator] PRODUCTION ERROR: External worker failed to load. " +
-          "Inline worker is disabled for security reasons. " +
-          "Please ensure webcodecs-worker.js is accessible at /webcodecs-worker.js",
+    if (!inlineDisabled && !isProductionEnvironment) {
+      console.warn(
+        "[WorkerCommunicator] Failed to create external worker. Falling back to inline worker.",
+        error,
+      );
+      return createInlineWorker();
+    }
+
+    if (!inlineDisabled) {
+      console.error(
+        "[WorkerCommunicator] Failed to create external worker in a production-like environment.",
+        error,
       );
     }
-    console.error(
-      "[WorkerCommunicator] External worker creation failed. Inline worker is not used in production.",
-      error,
-    );
+
     throw error;
   }
 }
 
-/**
- * Detect production environment
- */
-function detectProductionEnvironment(): boolean {
-  // Production detection in Node.js environment
+function detectTestEnvironment(): boolean {
   if (typeof process !== "undefined") {
-    const nodeEnv = process.env?.NODE_ENV;
-    // Production-like environments (production, staging, preview, prod)
-    return (
-      nodeEnv === "production" ||
-      nodeEnv === "staging" ||
-      nodeEnv === "preview" ||
-      nodeEnv === "prod"
-    );
+    if (process.env?.VITEST === "true") return true;
+    if (process.env?.JEST_WORKER_ID !== undefined) return true;
+    if (process.env?.NODE_ENV === "test") return true;
+    if (process.env?.npm_lifecycle_event?.includes("test")) return true;
   }
 
-  // Production detection in browser environment
+  if (typeof globalThis !== "undefined" && (globalThis as any).vi) return true;
+
+  if (typeof global !== "undefined") {
+    const nodeEnv = (global as any).process?.env?.NODE_ENV;
+    if (nodeEnv === "test") return true;
+  }
+
   if (typeof window !== "undefined") {
-    // Whether served over HTTPS
-    const isHttps = window.location?.protocol === "https:";
-    // Host other than localhost
-    const isNotLocalhost =
-      window.location?.hostname !== "localhost" &&
-      window.location?.hostname !== "127.0.0.1" &&
-      !window.location?.hostname?.endsWith(".localhost");
-
-    // Exclude ports commonly used by development servers
-    const isDevelopmentPort =
-      window.location?.port &&
-      ["3000", "3001", "4000", "5000", "5173", "8000", "8080", "9000"].includes(
-        window.location.port,
-      );
-
-    // Check production domain patterns
-    const hostname = window.location?.hostname || "";
-    const isProductionDomain =
-      hostname.includes(".com") ||
-      hostname.includes(".org") ||
-      hostname.includes(".net") ||
-      hostname.includes("staging") ||
-      hostname.includes("preview") ||
-      hostname.includes("prod");
-
-    // More strict production environment determination
-    return (
-      isHttps && isNotLocalhost && !isDevelopmentPort && isProductionDomain
-    );
+    if (window.navigator?.userAgent?.includes("jsdom")) return true;
   }
 
   return false;
+}
+
+function detectProductionEnvironment(): boolean {
+  if (typeof process !== "undefined") {
+    const nodeEnv = process.env?.NODE_ENV;
+    if (!nodeEnv) {
+      const lifecycle = process.env?.npm_lifecycle_event ?? "";
+      return /build|start|serve|preview/i.test(lifecycle);
+    }
+    return ["production", "prod", "staging", "preview"].includes(nodeEnv);
+  }
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location?.protocol;
+    const hostname = window.location?.hostname ?? "";
+    const isLocalHost =
+      hostname === "" ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.endsWith(".localhost");
+
+    return protocol === "https:" && !isLocalHost;
+  }
+
+  return false;
+}
+
+function hasInlineWorkerOverride(): boolean {
+  return (
+    (typeof process !== "undefined" &&
+      process.env?.WEBCODECS_USE_INLINE_WORKER === "true") ||
+    (typeof window !== "undefined" &&
+      (window as any).__WEBCODECS_USE_INLINE_WORKER__ === true)
+  );
+}
+
+function allowInlineOverrideInProduction(): boolean {
+  return (
+    (typeof process !== "undefined" &&
+      process.env?.WEBCODECS_ALLOW_INLINE_IN_PROD === "true") ||
+    (typeof window !== "undefined" &&
+      (window as any).__WEBCODECS_ALLOW_INLINE_IN_PROD__ === true)
+  );
+}
+
+function isInlineWorkerDisabled(): boolean {
+  return (
+    (typeof process !== "undefined" &&
+      process.env?.WEBCODECS_DISABLE_INLINE_WORKER === "true") ||
+    (typeof window !== "undefined" &&
+      (window as any).__WEBCODECS_DISABLE_INLINE_WORKER__ === true)
+  );
 }
 
 /**

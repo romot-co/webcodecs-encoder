@@ -309,11 +309,6 @@ async function processMediaStreamRealtime(
         // Ignore errors (may already be cancelled)
       }
     }
-
-    // Stop tracks
-    for (const track of [...videoTracks, ...audioTracks]) {
-      track.stop();
-    }
   }
 }
 
@@ -414,31 +409,44 @@ async function processVideoFile(
   videoFile: VideoFile,
   config: any,
 ): Promise<void> {
-  try {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.preload = "metadata";
+  const video = document.createElement("video");
+  video.muted = true;
+  video.preload = "metadata";
 
-    const objectUrl = URL.createObjectURL(videoFile.file);
+  let objectUrl: string | null = null;
+  let audioContext: AudioContext | null = null;
+
+  try {
+    objectUrl = URL.createObjectURL(videoFile.file);
     video.src = objectUrl;
 
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Failed to load video file"));
+      const handleLoaded = () => {
+        cleanup();
+        resolve();
+      };
+      const handleError = () => {
+        cleanup();
+        reject(new Error("Failed to load video file"));
+      };
+      const cleanup = () => {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+      };
+      video.onloadedmetadata = handleLoaded;
+      video.onerror = handleError;
     });
 
     const { duration, videoWidth, videoHeight } = video;
-    const frameRate = config.frameRate || 30;
-    const totalFrames = Math.floor(duration * frameRate);
-
-    let audioContext: AudioContext | null = null;
-    let audioBuffer: AudioBuffer | null = null;
+    const frameRate =
+      config.frameRate && config.frameRate > 0 ? config.frameRate : 30;
+    const totalFrames = Math.max(1, Math.floor(duration * frameRate) || 1);
 
     if (config.audioBitrate > 0 && typeof AudioContext !== "undefined") {
       try {
         audioContext = new AudioContext();
         const arrayBuffer = await videoFile.file.arrayBuffer();
-        audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         await processAudioFromFile(
           communicator,
           audioBuffer,
@@ -450,9 +458,14 @@ async function processVideoFile(
       }
     }
 
+    const targetWidth =
+      config.width && config.width > 0 ? config.width : videoWidth || 640;
+    const targetHeight =
+      config.height && config.height > 0 ? config.height : videoHeight || 480;
+
     const canvas = document.createElement("canvas");
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
     const ctx = canvas.getContext("2d");
 
     if (!ctx) {
@@ -463,40 +476,44 @@ async function processVideoFile(
     }
 
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-      const timestamp = frameIndex / frameRate;
-      video.currentTime = timestamp;
+      const timestampSeconds = Math.min(duration || 0, frameIndex / frameRate);
+      video.currentTime = Number.isFinite(timestampSeconds)
+        ? timestampSeconds
+        : 0;
 
       await new Promise<void>((resolve, reject) => {
-        const onSeeked = () => {
-          video.removeEventListener("seeked", onSeeked);
+        const handleSeeked = () => {
+          cleanup();
           resolve();
         };
-        video.addEventListener("seeked", onSeeked, { once: true });
-        video.onerror = () => reject(new Error("Video seek failed"));
+        const handleError = () => {
+          cleanup();
+          reject(new Error("Video seek failed"));
+        };
+        const cleanup = () => {
+          video.removeEventListener("seeked", handleSeeked);
+          video.removeEventListener("error", handleError);
+        };
+        video.addEventListener("seeked", handleSeeked, { once: true });
+        video.addEventListener("error", handleError, { once: true });
       });
 
-      ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-      const videoFrame = new VideoFrame(canvas, {
-        timestamp: frameIndex * (1000000 / frameRate),
-      });
-
-      await addFrameToWorker(
-        communicator,
-        videoFrame,
-        frameIndex * (1000000 / frameRate),
+      ctx.drawImage(
+        video,
+        0,
+        0,
+        videoWidth || canvas.width,
+        videoHeight || canvas.height,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
       );
 
-      videoFrame.close();
+      const chunkTimestamp = Math.round(frameIndex * (1_000_000 / frameRate));
+      await addFrameToWorker(communicator, canvas, chunkTimestamp);
 
-      // Don't block main thread
       await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-
-    URL.revokeObjectURL(objectUrl);
-    video.remove();
-
-    if (audioContext) {
-      audioContext.close();
     }
   } catch (error) {
     throw new EncodeError(
@@ -504,6 +521,20 @@ async function processVideoFile(
       `VideoFile processing failed: ${error instanceof Error ? error.message : String(error)}`,
       error,
     );
+  } finally {
+    if (audioContext) {
+      try {
+        await audioContext.close();
+      } catch (closeError) {
+        console.warn("Failed to close AudioContext", closeError);
+      }
+    }
+
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+    video.src = "";
+    video.remove();
   }
 }
 
@@ -570,8 +601,8 @@ async function processAudioFromFile(
       console.warn("Failed to create AudioData chunk:", error);
     }
 
-          // Don't block main thread
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    // Don't block main thread
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 

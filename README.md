@@ -5,7 +5,7 @@ Function-First API to encode video and audio using WebCodecs API.
 [![CI](https://github.com/romot-co/webcodecs-encoder/actions/workflows/ci.yml/badge.svg)](https://github.com/romot-co/webcodecs-encoder/actions/workflows/ci.yml)
 [![bundle size](https://img.shields.io/bundlephobia/minzip/webcodecs-encoder)](https://bundlephobia.com/result?p=webcodecs-encoder)
 
-A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus) using the WebCodecs API and mux them into MP4 or WebM containers with a simple.
+A TypeScript library to encode video (H.264/AVC, HEVC, VP9, VP8, AV1) and audio (AAC, MP3, Opus, Vorbis, FLAC) using the WebCodecs API and mux them into MP4 or WebM containers with a simple, function-first API.
 
 ## Features
 
@@ -17,7 +17,7 @@ A TypeScript library to encode video (H.264/AVC, VP9, VP8) and audio (AAC, Opus)
 - **🎨 Progressive Enhancement**: Start simple, add complexity as needed
 - **📦 Optimized Bundle Size**: Tree-shakable with ES Modules and `sideEffects: false` for efficient bundling.
 - **🛡️ Type Safety**: Full TypeScript support with comprehensive types
-- **🎵 Audio Support**: AAC and Opus encoding with automatic configuration
+- **🎵 Audio Support**: Automatic AAC↔MP3 fallback for MP4 and Opus/Vorbis/FLAC support for WebM
 - **🎤 Audio-Only Encoding**: Support for `video: false` option (v0.2.2)
 - **📹 VideoFile Audio**: Extract and encode audio from video files (v0.2.2)
 - **⚡ Performance Optimized**: Transferable objects for faster data transfer (v0.2.2)
@@ -32,13 +32,57 @@ yarn add webcodecs-encoder
 
 ### Worker Setup
 
-A dedicated Web Worker (**webcodecs-worker.js**) must be reachable at the site root (default: `/webcodecs-worker.js`). The library falls back to an inline worker only in test environments; in production, the external file **is mandatory for security reasons**.
+The encoder runs inside a dedicated Web Worker (`/webcodecs-worker.js`). Ship that file with your app and ensure it is publicly reachable at the site root.
 
-You need to copy the worker file from `node_modules` to your public directory.
+By default the library:
+
+- **Prefers the external worker** in browsers and production builds.
+- **Falls back to an inline mock** only when running under known test runners (Vitest, Jest, `NODE_ENV=test`) or when you explicitly opt in.
+- **Never uses the inline mock in production** unless you override the safety check.
+
+Inline worker controls:
+
+| Flag | Effect |
+| --- | --- |
+| `WEBCODECS_USE_INLINE_WORKER=true` or `window.__WEBCODECS_USE_INLINE_WORKER__ = true` | Force the inline mock (useful for Storybook, unit tests, etc.). |
+| `WEBCODECS_DISABLE_INLINE_WORKER=true` or `window.__WEBCODECS_DISABLE_INLINE_WORKER__ = true` | Always require the external worker. |
+| `WEBCODECS_ALLOW_INLINE_IN_PROD=true` or `window.__WEBCODECS_ALLOW_INLINE_IN_PROD__ = true` | Explicitly permit the inline mock on production builds (not recommended). |
+
+> ⚠️ The inline worker is a **test stub** that returns placeholder bytes. Use it only for wiring/UI development. Real MP4/WebM output requires the external worker bundle.
+
+Copy the worker file from `node_modules` into your public assets directory during build/deploy:
 
 ```bash
 # Example for a Next.js/Vite project with a 'public' directory
 cp node_modules/webcodecs-encoder/dist/webcodecs-worker.js public/
+```
+
+#### Example: Vite + TypeScript
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite';
+import copy from 'rollup-plugin-copy';
+
+export default defineConfig({
+  plugins: [
+    copy({
+      targets: [
+        {
+          src: 'node_modules/webcodecs-encoder/dist/webcodecs-worker.js',
+          dest: 'public'
+        }
+      ]
+    })
+  ]
+});
+```
+
+```ts
+// main.ts (development helper)
+if (import.meta.env.DEV) {
+  window.__WEBCODECS_USE_INLINE_WORKER__ = true;
+}
 ```
 
 ## Quick Start
@@ -176,7 +220,7 @@ interface EncodeOptions {
 
   /** Set to `false` to disable audio. */
   audio?: {
-    codec?: 'aac' | 'opus';
+    codec?: 'aac' | 'mp3' | 'opus' | 'vorbis' | 'flac';
     bitrate?: number;
     sampleRate?: number;
     channels?: number;
@@ -225,16 +269,24 @@ interface EncodeOptions {
 interface ProgressInfo {
   /** Percentage of completion (0-100) */
   percent: number;
+  /** Total number of frames processed */
+  processedFrames: number;
+  /** Total number of frames to encode (if known) */
+  totalFrames?: number;
   /** Current encoding speed in frames per second */
   fps: number;
-  /** Total number of frames processed */
-  frameCount: number;
-  /** Total number of frames to encode */
-  totalFrameCount: number;
+  /** Current stage label ("streaming", "finalizing", etc.) */
+  stage: string;
   /** Estimated remaining time in milliseconds */
   estimatedRemainingMs?: number;
 }
 ```
+
+> **Audio codec compatibility**
+>
+> - `container: 'mp4'` supports `aac` (default) and automatically falls back to `mp3` if AAC isn’t available.
+> - `container: 'webm'` supports `opus` (default) with `vorbis` and `flac` as fallbacks.
+> - Other codec hints are treated as best-effort; if they can’t be muxed into the requested container the encoder switches to the first compatible alternative.
 
 ### Real-time MediaStream Recording
 
@@ -546,7 +598,6 @@ for (const chunk of chunks) {
 - **Better tree-shaking**: Smaller bundle sizes with function imports
 - **Streaming support**: Real-time chunk processing
 - **Memory efficiency**: Progressive encoding without buffering entire video
-- **Cancellation**: Built-in AbortController support
 - **Error handling**: Standard async/await error handling
 
 #### Common Migration Patterns
@@ -572,11 +623,15 @@ encodeStream(stream, { onProgress })
 **Cancellation**:
 ```typescript
 // Before: recorder.cancel()
-// After: AbortController
-const controller = new AbortController();
-encodeStream(stream, { signal: controller.signal });
-controller.abort(); // Cancel encoding
+// After: Stop MediaStream tracks or break out of the loop
+const stopRecording = () => {
+  stream.getTracks().forEach(track => track.stop());
+};
+
+setTimeout(stopRecording, 5000);
 ```
+
+> The current implementation does not accept an `AbortSignal`. To cancel `encode` / `encodeStream`, stop the MediaStream tracks or end the async generator manually.
 
 See [`examples/realtime-mediastream.ts`](examples/realtime-mediastream.ts) for complete examples.
 

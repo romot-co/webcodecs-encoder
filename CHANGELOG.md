@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-09-22
+
+### 🎧 Added
+- Expanded audio codec coverage to include FLAC, MP3, Vorbis, linear PCM, and μ-law/A-law, with capability probing via `AudioEncoder.isConfigSupported()` and worker fallbacks when a codec is unavailable.
+
+### 🛠️ Improved
+- The configuration parser now infers codec-specific defaults (bitrate, sample rate, channels) without forcing inappropriate values onto PCM or telephony codecs.
+- `canEncode` and the MP4/WebM muxers share stricter compatibility checks so unsupported codec/container combinations are rejected before encoding begins.
+- VideoFile sources read metadata up front, align the encoder resolution, and scale frames when necessary to avoid width/height mismatches.
+- Worker creation prefers external worker scripts; the inline mock worker is now opt-in for development and tests only.
+
+### 🐛 Fixed
+- Preserved `video: false` and `audio: false` flags when merging options, restoring audio-only workflows.
+- Delayed muxer construction until after codec fallbacks complete, ensuring muxers match the actual encoder configuration.
+- MediaStream tracks are no longer stopped automatically during cleanup, leaving ownership with the caller.
+
+### 🧪 Tests
+- Extended coverage across async iterable safety, audio codec probing, worker initialization paths, and configuration merging edge cases.
+
+---
+
 ## [0.3.0] - 2025-08-07
 
 ### 💥 BREAKING CHANGES

@@ -22,13 +22,14 @@ export async function canEncode(options?: EncodeOptions): Promise<boolean> {
       return await testDefaultConfiguration();
     }
 
-    // Check video configuration (only if video is specified)
+    // Check video configuration unless explicitly disabled
     const hasVideoConfig = options.video && typeof options.video === "object";
-    const hasVideo = hasVideoConfig || !options.audio;
-    if (hasVideo) {
-      const videoCodec = hasVideoConfig
-        ? (options.video as VideoConfig).codec || "avc"
-        : "avc";
+    const videoEnabled = options.video !== false;
+    if (videoEnabled) {
+      const videoConfig = hasVideoConfig
+        ? (options.video as VideoConfig)
+        : undefined;
+      const videoCodec = videoConfig?.codec ?? "avc";
       const videoSupported = await testVideoCodecSupport(videoCodec, options);
       if (!videoSupported) {
         return false;
@@ -169,11 +170,34 @@ async function testAudioCodecSupport(
     const audioOptions =
       typeof options?.audio === "object" ? options.audio : {};
 
+    const isTelephonyCodec = codec === "ulaw" || codec === "alaw";
+    const isPcmCodec = codec === "pcm";
+    const defaultSampleRate =
+      audioOptions.sampleRate || (isTelephonyCodec ? 8000 : 48000);
+    const defaultChannels = audioOptions.channels || (isTelephonyCodec ? 1 : 2);
+
+    let defaultBitrate = audioOptions.bitrate;
+    if (defaultBitrate == null) {
+      if (codec === "flac") {
+        defaultBitrate = 512_000;
+      } else if (codec === "mp3") {
+        defaultBitrate = 128_000;
+      } else if (codec === "vorbis") {
+        defaultBitrate = 128_000;
+      } else if (isTelephonyCodec) {
+        defaultBitrate = 64_000;
+      } else if (isPcmCodec) {
+        defaultBitrate = defaultSampleRate * defaultChannels * 16;
+      } else {
+        defaultBitrate = 128_000;
+      }
+    }
+
     const config: AudioEncoderConfig = {
       codec: codecString,
-      sampleRate: audioOptions.sampleRate || 48000,
-      numberOfChannels: audioOptions.channels || 2,
-      bitrate: audioOptions.bitrate || 128_000,
+      sampleRate: defaultSampleRate,
+      numberOfChannels: defaultChannels,
+      bitrate: defaultBitrate,
     };
 
     // Add bitrateMode setting for AAC
@@ -201,9 +225,9 @@ function getVideoCodecString(
     case "avc":
       return generateAvcCodecString(width, height, frameRate);
     case "hevc":
-      return "hev1.1.6.L93.B0"; // H.265 Main Profile
+      return "hvc1"; // Align with worker default
     case "vp9":
-      return "vp09.00.10.08"; // VP9 Profile 0
+      return "vp09.00.50.08"; // Align with worker fallback string
     case "vp8":
       return "vp8"; // VP8
     case "av1":
@@ -300,6 +324,18 @@ function getAudioCodecString(codec: string): string {
       return "mp4a.40.2"; // AAC-LC
     case "opus":
       return "opus"; // Opus
+    case "flac":
+      return "flac";
+    case "mp3":
+      return "mp3";
+    case "vorbis":
+      return "vorbis";
+    case "pcm":
+      return "pcm";
+    case "ulaw":
+      return "ulaw";
+    case "alaw":
+      return "alaw";
     default:
       return codec; // Return as is (for custom codec strings)
   }

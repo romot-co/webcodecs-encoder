@@ -12,6 +12,8 @@ import type {
   VideoEncoderGetter,
   AudioEncoderGetter,
   AudioDataGetter,
+  AudioCodec,
+  AudioEncoderConstructor,
 } from "../types";
 import { EncoderErrorType } from "../types";
 
@@ -22,24 +24,17 @@ if (
 ) {
   self.addEventListener("error", (event: ErrorEvent) => {
     console.error("Unhandled global error in worker. Event:", event);
-    // エラーオブジェクトから詳細情報を取得
-    const errorDetails = {
-      message: event.message || "Unknown global error",
-      name: event.error?.name || "Error",
-      stack: event.error?.stack || undefined,
-      filename: event.filename || undefined,
-      lineno: event.lineno || undefined,
-      colno: event.colno || undefined,
-    };
+    const message =
+      event.message ||
+      `Unhandled global error${event.filename ? ` at ${event.filename}` : ""}`;
     self.postMessage({
-      type: "worker-error",
-      error: {
-        message: `Unhandled global error: ${errorDetails.message} (at ${errorDetails.filename}:${errorDetails.lineno}:${errorDetails.colno})`,
-        name: errorDetails.name,
-        stack: errorDetails.stack,
-        // cause: event.error?.cause // event.errorがErrorインスタンスであればcauseも取得可能
+      type: "error",
+      errorDetail: {
+        message,
+        type: EncoderErrorType.WorkerError,
+        stack: event.error?.stack,
       },
-    });
+    } as MainThreadMessage);
   });
 }
 
@@ -56,30 +51,18 @@ if (
         event.reason,
       );
       const reason = event.reason;
-      let errorDetails;
-      if (reason instanceof Error) {
-        errorDetails = {
-          message: reason.message,
-          name: reason.name,
-          stack: reason.stack,
-          // cause: reason.cause,
-        };
-      } else {
-        errorDetails = {
-          message: String(reason),
-          name: "UnhandledRejection",
-          stack: undefined,
-        };
-      }
+      const message =
+        reason instanceof Error
+          ? `Unhandled promise rejection: ${reason.message}`
+          : `Unhandled promise rejection: ${String(reason)}`;
       self.postMessage({
-        type: "worker-error",
-        error: {
-          message: `Unhandled promise rejection: ${errorDetails.message}`,
-          name: errorDetails.name,
-          stack: errorDetails.stack,
-          // cause: errorDetails.cause,
+        type: "error",
+        errorDetail: {
+          message,
+          type: EncoderErrorType.WorkerError,
+          stack: reason instanceof Error ? reason.stack : undefined,
         },
-      });
+      } as MainThreadMessage);
     },
   );
 }
@@ -240,6 +223,252 @@ class EncoderWorker {
     } as MainThreadMessage);
   }
 
+  private async prepareAudioCodec(
+    container: ContainerType,
+    audioDisabled: boolean,
+  ): Promise<{
+    audioDisabled: boolean;
+    selectedCodec: AudioCodec | null;
+    finalConfig: AudioEncoderConfig | null;
+    encoderCtor: AudioEncoderConstructor | null;
+  }> {
+    if (audioDisabled) {
+      return {
+        audioDisabled: true,
+        selectedCodec: null,
+        finalConfig: null,
+        encoderCtor: null,
+      };
+    }
+
+    const AudioEncoderCtor = getAudioEncoder();
+    if (!AudioEncoderCtor) {
+      this.postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: "Worker: AudioEncoder not available",
+          type: EncoderErrorType.NotSupported,
+        },
+      });
+      return {
+        audioDisabled: true,
+        selectedCodec: null,
+        finalConfig: null,
+        encoderCtor: null,
+      };
+    }
+
+    const config = this.currentConfig;
+    if (!config) {
+      return {
+        audioDisabled: true,
+        selectedCodec: null,
+        finalConfig: null,
+        encoderCtor: AudioEncoderCtor,
+      };
+    }
+
+    const requestedCodec = config.codec?.audio;
+    const preference = buildAudioCodecPreference(container, requestedCodec);
+    let attemptedDefaultCodec = false;
+
+    for (const candidate of preference) {
+      if (candidate === "aac") {
+        attemptedDefaultCodec = true;
+      }
+      const codecString = getAudioEncoderCodecStringFromAudioCodec(candidate);
+      const baseConfig: AudioEncoderConfig & {
+        hardwareAcceleration?:
+          | "prefer-hardware"
+          | "prefer-software"
+          | "no-preference";
+      } = {
+        codec: codecString,
+        sampleRate: config.sampleRate,
+        numberOfChannels: config.channels,
+        bitrate: config.audioBitrate,
+        ...(config.audioBitrateMode && {
+          bitrateMode: config.audioBitrateMode,
+        }),
+        ...(config.hardwareAcceleration && {
+          hardwareAcceleration: config.hardwareAcceleration,
+        }),
+        ...(config.audioEncoderConfig ?? {}),
+      };
+
+      const support = await this.isConfigSupportedWithHwFallback(
+        AudioEncoderCtor,
+        baseConfig,
+        "AudioEncoder",
+      );
+
+      if (!support) {
+        if (candidate === "aac" && container === "mp4") {
+          console.warn(
+            "Worker: AAC audio codec is not supported. Falling back to MP3.",
+          );
+          const mp3AttemptConfig: AudioEncoderConfig & {
+            hardwareAcceleration?:
+              | "prefer-hardware"
+              | "prefer-software"
+              | "no-preference";
+          } = {
+            ...baseConfig,
+            codec: getAudioEncoderCodecStringFromAudioCodec("mp3"),
+          };
+          const mp3Support = await this.isConfigSupportedWithHwFallback(
+            AudioEncoderCtor,
+            mp3AttemptConfig,
+            "AudioEncoder",
+          );
+          if (mp3Support) {
+            const resolvedMp3Config = mp3Support as AudioEncoderConfig;
+            if (
+              resolvedMp3Config.numberOfChannels !== undefined &&
+              resolvedMp3Config.numberOfChannels !== config.channels
+            ) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message: `AudioEncoder reported numberOfChannels (${resolvedMp3Config.numberOfChannels}) does not match configured channels (${config.channels}).`,
+                  type: EncoderErrorType.ConfigurationError,
+                },
+              });
+              return {
+                audioDisabled: true,
+                selectedCodec: null,
+                finalConfig: null,
+                encoderCtor: AudioEncoderCtor,
+              };
+            }
+            if (
+              resolvedMp3Config.sampleRate !== undefined &&
+              resolvedMp3Config.sampleRate !== config.sampleRate
+            ) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message: `AudioEncoder reported sampleRate (${resolvedMp3Config.sampleRate}) does not match configured sampleRate (${config.sampleRate}).`,
+                  type: EncoderErrorType.ConfigurationError,
+                },
+              });
+              return {
+                audioDisabled: true,
+                selectedCodec: null,
+                finalConfig: null,
+                encoderCtor: AudioEncoderCtor,
+              };
+            }
+            if (!isAudioCodecMuxerCompatible(container, "mp3")) {
+              console.warn(
+                "Worker: Audio codec mp3 is not compatible with MP4 muxer. Audio will be disabled.",
+              );
+            } else {
+              console.warn("Worker: Falling back to MP3 for MP4 container.");
+              return {
+                audioDisabled: false,
+                selectedCodec: "mp3",
+                finalConfig: resolvedMp3Config,
+                encoderCtor: AudioEncoderCtor,
+              };
+            }
+          }
+        } else {
+          console.warn(
+            `Worker: Audio codec ${candidate} not supported or config invalid.`,
+          );
+        }
+        continue;
+      }
+
+      const resolvedConfig = support as AudioEncoderConfig;
+
+      if (
+        resolvedConfig.numberOfChannels !== undefined &&
+        resolvedConfig.numberOfChannels !== config.channels
+      ) {
+        this.postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder reported numberOfChannels (${resolvedConfig.numberOfChannels}) does not match configured channels (${config.channels}).`,
+            type: EncoderErrorType.ConfigurationError,
+          },
+        });
+        return {
+          audioDisabled: true,
+          selectedCodec: null,
+          finalConfig: null,
+          encoderCtor: AudioEncoderCtor,
+        };
+      }
+
+      if (
+        resolvedConfig.sampleRate !== undefined &&
+        resolvedConfig.sampleRate !== config.sampleRate
+      ) {
+        this.postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: `AudioEncoder reported sampleRate (${resolvedConfig.sampleRate}) does not match configured sampleRate (${config.sampleRate}).`,
+            type: EncoderErrorType.ConfigurationError,
+          },
+        });
+        return {
+          audioDisabled: true,
+          selectedCodec: null,
+          finalConfig: null,
+          encoderCtor: AudioEncoderCtor,
+        };
+      }
+
+      if (!isAudioCodecMuxerCompatible(container, candidate)) {
+        console.warn(
+          `Worker: Audio codec ${candidate} is not compatible with ${container.toUpperCase()} muxer. Trying fallback codec.`,
+        );
+        continue;
+      }
+
+      if (candidate === "aac") {
+        attemptedDefaultCodec = true;
+        if (container === "mp4" && requestedCodec && requestedCodec !== "aac") {
+          console.warn("Worker: Falling back to AAC for MP4 container.");
+        }
+      }
+      if (container === "mp4" && candidate === "mp3" && attemptedDefaultCodec) {
+        console.warn("Worker: Falling back to MP3 for MP4 container.");
+      }
+
+      return {
+        audioDisabled: false,
+        selectedCodec: candidate,
+        finalConfig: resolvedConfig,
+        encoderCtor: AudioEncoderCtor,
+      };
+    }
+
+    const defaultCodec = DEFAULT_AUDIO_CODEC_BY_CONTAINER[container];
+    const noCodecMessage =
+      container === "mp4"
+        ? "Worker: No supported audio codec (AAC, MP3) found for MP4 container."
+        : `Worker: No supported audio codec found. Requested: ${requestedCodec ?? "(auto)"}. Tried: ${preference.join(", ")}.`;
+    this.postMessageToMainThread({
+      type: "error",
+      errorDetail: {
+        message: noCodecMessage,
+        type: EncoderErrorType.NotSupported,
+      },
+    });
+    console.warn(
+      `Worker: Disabling audio. Consider using ${defaultCodec} for container ${container}.`,
+    );
+    return {
+      audioDisabled: true,
+      selectedCodec: null,
+      finalConfig: null,
+      encoderCtor: AudioEncoderCtor,
+    };
+  }
+
   async initializeEncoders(data: InitializeWorkerMessage): Promise<void> {
     // throw new Error("Intentional test error from worker initializeEncoders"); // ★テスト用エラーいったんコメントアウト
 
@@ -260,7 +489,7 @@ class EncoderWorker {
       return;
     }
 
-    const audioDisabled =
+    let audioDisabled =
       !this.currentConfig.audioBitrate ||
       this.currentConfig.audioBitrate <= 0 ||
       !this.currentConfig.channels ||
@@ -269,27 +498,24 @@ class EncoderWorker {
       this.currentConfig.sampleRate <= 0 ||
       !this.currentConfig.codec?.audio;
 
-    try {
-      const MuxerCtor =
-        this.currentConfig.container === "webm"
-          ? WebMMuxerWrapper
-          : Mp4MuxerWrapper;
-      this.muxer = new MuxerCtor(
-        this.currentConfig,
-        this.postMessageToMainThread.bind(this),
-        {
-          disableAudio: audioDisabled,
-        },
-      );
-    } catch (e: any) {
-      this.postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message: `Worker: Failed to initialize Muxer: ${e.message}`,
-          type: EncoderErrorType.InitializationFailed,
-          stack: e.stack,
-        },
-      });
+    const containerType = getContainerType(this.currentConfig.container);
+    const audioOriginallyDisabled = audioDisabled;
+
+    const audioPlan = await this.prepareAudioCodec(
+      containerType,
+      audioDisabled,
+    );
+    audioDisabled = audioPlan.audioDisabled;
+    let selectedAudioCodec = audioPlan.selectedCodec;
+    let finalAudioEncoderConfig = audioPlan.finalConfig;
+    const preparedAudioEncoderCtor = audioPlan.encoderCtor;
+
+    if (audioDisabled) {
+      selectedAudioCodec = null;
+      finalAudioEncoderConfig = null;
+    }
+
+    if (!audioOriginallyDisabled && audioDisabled) {
       this.cleanup();
       return;
     }
@@ -507,6 +733,38 @@ class EncoderWorker {
       }
     }
 
+    const codecConfigForMuxer: EncoderConfig["codec"] = {
+      ...(this.currentConfig.codec ?? {}),
+      video: videoDisabled ? undefined : videoCodec,
+      audio:
+        audioDisabled || !selectedAudioCodec ? undefined : selectedAudioCodec,
+    };
+
+    this.currentConfig.codec = codecConfigForMuxer;
+
+    try {
+      const MuxerCtor =
+        containerType === "webm" ? WebMMuxerWrapper : Mp4MuxerWrapper;
+      this.muxer = new MuxerCtor(
+        this.currentConfig,
+        this.postMessageToMainThread.bind(this),
+        {
+          disableAudio: audioDisabled,
+        },
+      );
+    } catch (e: any) {
+      this.postMessageToMainThread({
+        type: "error",
+        errorDetail: {
+          message: `Worker: Failed to initialize Muxer: ${e.message}`,
+          type: EncoderErrorType.InitializationFailed,
+          stack: e.stack,
+        },
+      });
+      this.cleanup();
+      return;
+    }
+
     // Only initialize video encoder if video is enabled
     if (!videoDisabled) {
       try {
@@ -568,275 +826,19 @@ class EncoderWorker {
       }
     } // End of video encoder initialization
 
-    let finalAudioEncoderConfig: AudioEncoderConfig | null = null;
-    let audioCodec =
-      this.currentConfig.codec?.audio ??
-      (this.currentConfig.container === "webm" ? "opus" : "aac");
-    if (this.currentConfig.container === "webm" && audioCodec === "aac") {
-      console.warn(
-        "Worker: AAC audio codec is not compatible with WebM. Switching to Opus.",
-      );
-      audioCodec = "opus";
-    }
-
     if (!audioDisabled) {
-      const resolvedAudioCodecString =
-        this.currentConfig.codecString?.audio ??
-        (audioCodec === "opus" ? "opus" : "mp4a.40.2");
-
-      const baseAudioConfig = {
-        sampleRate: this.currentConfig.sampleRate,
-        numberOfChannels: this.currentConfig.channels,
-        bitrate: this.currentConfig.audioBitrate,
-        codec: resolvedAudioCodecString,
-        ...(this.currentConfig.audioBitrateMode && {
-          bitrateMode: this.currentConfig.audioBitrateMode,
-        }),
-        ...(this.currentConfig.latencyMode && {
-          latencyMode: this.currentConfig.latencyMode,
-        }),
-        ...(this.currentConfig.hardwareAcceleration && {
-          hardwareAcceleration: this.currentConfig.hardwareAcceleration,
-        }),
-        ...(this.currentConfig.audioEncoderConfig ?? {}),
-      };
-
-      const AudioEncoderCtor: any = getAudioEncoder();
-      if (!AudioEncoderCtor) {
-        this.postMessageToMainThread({
-          type: "error",
-          errorDetail: {
-            message: "Worker: AudioEncoder not available",
-            type: EncoderErrorType.NotSupported,
-          },
-        });
+      if (
+        !selectedAudioCodec ||
+        !finalAudioEncoderConfig ||
+        !preparedAudioEncoderCtor
+      ) {
+        // prepareAudioCodec already posted an error message
         this.cleanup();
         return;
       }
 
-      let audioSupportConfig = await this.isConfigSupportedWithHwFallback(
-        AudioEncoderCtor,
-        baseAudioConfig,
-        "AudioEncoder",
-      );
-      if (audioSupportConfig) {
-        if (
-          audioSupportConfig.numberOfChannels !== this.currentConfig.channels
-        ) {
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
-              type: EncoderErrorType.ConfigurationError,
-            },
-          });
-          this.cleanup();
-          return;
-        }
-        if (
-          audioSupportConfig.sampleRate !== undefined &&
-          audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
-        ) {
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
-              type: EncoderErrorType.ConfigurationError,
-            },
-          });
-          this.cleanup();
-          return;
-        }
-        finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
-      } else if (audioCodec === "opus") {
-        console.warn(
-          `Worker: Audio codec ${audioCodec} not supported or config invalid.`,
-        );
-        if (this.currentConfig.container === "webm") {
-          // WebMコンテナではOpusが必須なので、フォールバックできない
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message:
-                "Worker: Opus audio codec not supported for WebM container. WebM requires Opus audio.",
-              type: EncoderErrorType.NotSupported,
-            },
-          });
-          this.cleanup();
-          return;
-        } else {
-          // MP4コンテナの場合はAACにフォールバック
-          console.warn("Worker: Falling back to AAC for MP4 container.");
-          audioCodec = "aac";
-          const fallbackAudioConfig = {
-            ...baseAudioConfig,
-            codec: this.currentConfig.codecString?.audio ?? "mp4a.40.2",
-          };
-          audioSupportConfig = await this.isConfigSupportedWithHwFallback(
-            AudioEncoderCtor,
-            fallbackAudioConfig,
-            "AudioEncoder",
-          );
-          if (audioSupportConfig) {
-            if (
-              audioSupportConfig.numberOfChannels !==
-              this.currentConfig.channels
-            ) {
-              this.postMessageToMainThread({
-                type: "error",
-                errorDetail: {
-                  message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
-                  type: EncoderErrorType.ConfigurationError,
-                },
-              });
-              this.cleanup();
-              return;
-            }
-            if (
-              audioSupportConfig.sampleRate !== undefined &&
-              audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
-            ) {
-              this.postMessageToMainThread({
-                type: "error",
-                errorDetail: {
-                  message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
-                  type: EncoderErrorType.ConfigurationError,
-                },
-              });
-              this.cleanup();
-              return;
-            }
-            finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
-          } else {
-            // AAC もだめなら Opus に戻す（MP4でも可能）
-            console.warn(
-              "Worker: AAC audio codec is not supported. Falling back to Opus.",
-            );
-            audioCodec = "opus";
-            const opusFallback = { ...baseAudioConfig, codec: "opus" };
-            audioSupportConfig = await this.isConfigSupportedWithHwFallback(
-              AudioEncoderCtor,
-              opusFallback,
-              "AudioEncoder",
-            );
-            if (audioSupportConfig) {
-              if (
-                audioSupportConfig.numberOfChannels !==
-                this.currentConfig.channels
-              ) {
-                this.postMessageToMainThread({
-                  type: "error",
-                  errorDetail: {
-                    message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
-                    type: EncoderErrorType.ConfigurationError,
-                  },
-                });
-                this.cleanup();
-                return;
-              }
-              if (
-                audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
-              ) {
-                this.postMessageToMainThread({
-                  type: "error",
-                  errorDetail: {
-                    message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
-                    type: EncoderErrorType.ConfigurationError,
-                  },
-                });
-                this.cleanup();
-                return;
-              }
-              finalAudioEncoderConfig =
-                audioSupportConfig as AudioEncoderConfig;
-            } else {
-              this.postMessageToMainThread({
-                type: "error",
-                errorDetail: {
-                  message:
-                    "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
-                  type: EncoderErrorType.NotSupported,
-                },
-              });
-              this.cleanup();
-              return;
-            }
-          }
-        }
-      } else if (audioCodec === "aac") {
-        // AACが失敗した場合の処理
-        console.warn(
-          `Worker: Audio codec ${audioCodec} not supported or config invalid.`,
-        );
-        if (this.currentConfig.container === "webm") {
-          // WebMではAACは使えないのでOpusを試すが、これは既に初期チェックで弾かれているはず
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message:
-                "Worker: AAC audio codec not supported. WebM container requires Opus.",
-              type: EncoderErrorType.NotSupported,
-            },
-          });
-          this.cleanup();
-          return;
-        } else {
-          // MP4コンテナの場合はOpusにフォールバック
-          console.warn("Worker: Falling back to Opus for MP4 container.");
-          audioCodec = "opus";
-          const opusFallback = { ...baseAudioConfig, codec: "opus" };
-          audioSupportConfig = await this.isConfigSupportedWithHwFallback(
-            AudioEncoderCtor,
-            opusFallback,
-            "AudioEncoder",
-          );
-          if (audioSupportConfig) {
-            if (
-              audioSupportConfig.numberOfChannels !==
-              this.currentConfig.channels
-            ) {
-              this.postMessageToMainThread({
-                type: "error",
-                errorDetail: {
-                  message: `AudioEncoder reported numberOfChannels (${audioSupportConfig.numberOfChannels}) does not match configured channels (${this.currentConfig.channels}).`,
-                  type: EncoderErrorType.ConfigurationError,
-                },
-              });
-              this.cleanup();
-              return;
-            }
-            if (
-              audioSupportConfig.sampleRate !== undefined &&
-              audioSupportConfig.sampleRate !== this.currentConfig.sampleRate
-            ) {
-              this.postMessageToMainThread({
-                type: "error",
-                errorDetail: {
-                  message: `AudioEncoder reported sampleRate (${audioSupportConfig.sampleRate}) does not match configured sampleRate (${this.currentConfig.sampleRate}).`,
-                  type: EncoderErrorType.ConfigurationError,
-                },
-              });
-              this.cleanup();
-              return;
-            }
-            finalAudioEncoderConfig = audioSupportConfig as AudioEncoderConfig;
-          } else {
-            this.postMessageToMainThread({
-              type: "error",
-              errorDetail: {
-                message:
-                  "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
-                type: EncoderErrorType.NotSupported,
-              },
-            });
-            this.cleanup();
-            return;
-          }
-        }
-      }
-
       try {
-        this.audioEncoder = new AudioEncoderCtor({
+        this.audioEncoder = new preparedAudioEncoderCtor({
           output: (chunk: any, meta: any) => {
             if (this.isCancelled || !this.muxer) return;
             this.muxer.addAudioChunk(chunk, meta);
@@ -855,19 +857,7 @@ class EncoderWorker {
           },
         });
         if (this.audioEncoder) {
-          if (finalAudioEncoderConfig) {
-            this.audioEncoder.configure(finalAudioEncoderConfig);
-          } else {
-            this.postMessageToMainThread({
-              type: "error",
-              errorDetail: {
-                message: "Worker: Final audio encoder config is null.",
-                type: EncoderErrorType.InitializationFailed,
-              },
-            });
-            this.cleanup();
-            return;
-          }
+          this.audioEncoder.configure(finalAudioEncoderConfig);
         } else {
           this.postMessageToMainThread({
             type: "error",
@@ -1280,3 +1270,74 @@ const encoder = new EncoderWorker();
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   await encoder.handleMessage(event.data);
 };
+type ContainerType = "mp4" | "webm";
+
+const DEFAULT_AUDIO_CODEC_BY_CONTAINER: Record<ContainerType, AudioCodec> = {
+  mp4: "aac",
+  webm: "opus",
+};
+
+const AUDIO_ENCODER_CODEC_MAP: Record<AudioCodec, string> = {
+  aac: "mp4a.40.2",
+  opus: "opus",
+  flac: "flac",
+  mp3: "mp3",
+  vorbis: "vorbis",
+  pcm: "pcm",
+  ulaw: "ulaw",
+  alaw: "alaw",
+};
+
+const MUXER_COMPATIBLE_AUDIO: Record<ContainerType, Set<AudioCodec>> = {
+  mp4: new Set<AudioCodec>(["aac", "mp3"]),
+  webm: new Set<AudioCodec>(["opus", "vorbis", "flac"]),
+};
+
+function getAudioEncoderCodecStringFromAudioCodec(codec: AudioCodec): string {
+  return AUDIO_ENCODER_CODEC_MAP[codec] ?? codec;
+}
+
+function getContainerType(container?: string): ContainerType {
+  return container === "webm" ? "webm" : "mp4";
+}
+
+function buildAudioCodecPreference(
+  container: ContainerType,
+  requested?: AudioCodec,
+): AudioCodec[] {
+  const preference: AudioCodec[] = [];
+  const addCodec = (codec: AudioCodec) => {
+    if (!preference.includes(codec)) {
+      preference.push(codec);
+    }
+  };
+
+  if (requested) {
+    addCodec(requested);
+  }
+
+  addCodec(DEFAULT_AUDIO_CODEC_BY_CONTAINER[container]);
+
+  for (const codec of MUXER_COMPATIBLE_AUDIO[container]) {
+    addCodec(codec);
+  }
+
+  if (container === "mp4") {
+    addCodec("aac");
+    addCodec("mp3");
+  } else {
+    addCodec("opus");
+    addCodec("vorbis");
+    addCodec("flac");
+    addCodec("aac");
+  }
+
+  return preference;
+}
+
+function isAudioCodecMuxerCompatible(
+  container: ContainerType,
+  codec: AudioCodec,
+): boolean {
+  return MUXER_COMPATIBLE_AUDIO[container].has(codec);
+}

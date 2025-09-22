@@ -270,6 +270,42 @@ describe("Mp4MuxerWrapper", () => {
     });
   });
 
+  describe("video disabled", () => {
+    it("should omit video track when video is disabled", () => {
+      const audioOnlyConfig: EncoderConfig = {
+        ...baseConfig,
+        width: 0,
+        height: 0,
+        videoBitrate: 0,
+        codec: { audio: "aac" },
+      };
+
+      const wrapper = new Mp4MuxerWrapper(audioOnlyConfig, postMessageCallback);
+      const callArgs = MuxerMock.mock.calls[0][0] as any;
+
+      expect(callArgs.video).toBeUndefined();
+      expect(wrapper).toBeInstanceOf(Mp4MuxerWrapper);
+
+      mockMuxerMethods.addVideoChunk.mockClear();
+      postMessageCallback.mockClear();
+
+      wrapper.addVideoChunk({
+        byteLength: 0,
+        copyTo: vi.fn(),
+      } as unknown as EncodedVideoChunk);
+
+      expect(mockMuxerMethods.addVideoChunk).not.toHaveBeenCalled();
+      expect(postMessageCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "error",
+          errorDetail: expect.objectContaining({
+            type: "configuration-error",
+          }),
+        }),
+      );
+    });
+  });
+
   describe("realtime mode (StreamTarget)", () => {
     it("should use StreamTarget and fragmented fastStart in realtime mode", () => {
       const realtimeConfig: EncoderConfig = {

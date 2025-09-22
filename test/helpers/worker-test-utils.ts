@@ -24,12 +24,48 @@ export const mockSelf = {
   },
 } as any;
 
+const workerEventListeners = new Map<string, Set<EventListener>>();
+
+function storeEventListener(type: string, handler: EventListener) {
+  if (!workerEventListeners.has(type)) {
+    workerEventListeners.set(type, new Set());
+  }
+  workerEventListeners.get(type)!.add(handler);
+}
+
+function removeStoredEventListener(type: string, handler: EventListener) {
+  workerEventListeners.get(type)?.delete(handler);
+  if (workerEventListeners.get(type)?.size === 0) {
+    workerEventListeners.delete(type);
+  }
+}
+
+export function getWorkerEventListeners(type: string): EventListener[] {
+  return Array.from(workerEventListeners.get(type) ?? []);
+}
+
 export async function importWorker() {
   await import("../../src/worker/encoder-worker");
 }
 
 export function setupGlobals() {
   global.self = mockSelf;
+
+  workerEventListeners.clear();
+
+  mockSelf.addEventListener = vi.fn((type: string, handler: EventListener) => {
+    storeEventListener(type, handler);
+  });
+  mockSelf.removeEventListener = vi.fn(
+    (type: string, handler: EventListener) => {
+      removeStoredEventListener(type, handler);
+    },
+  );
+  mockSelf.dispatchEvent = vi.fn((event: Event) => {
+    const listeners = getWorkerEventListeners(event.type);
+    listeners.forEach((listener) => listener(event));
+    return true;
+  });
 
   // @ts-ignore
   mockSelf.VideoEncoder = vi.fn(() => ({
@@ -55,10 +91,10 @@ export function setupGlobals() {
     encodeQueueSize: 0,
   }));
   // @ts-ignore
-  mockSelf.AudioEncoder.isConfigSupported = vi.fn(() =>
+  mockSelf.AudioEncoder.isConfigSupported = vi.fn((cfg: any) =>
     Promise.resolve({
       supported: true,
-      config: { codec: "mp4a.40.2", numberOfChannels: 2 },
+      config: { ...cfg },
     }),
   );
 
@@ -100,6 +136,9 @@ export function cleanupGlobals() {
 
 export function resetMocks() {
   mockSelf.postMessage.mockClear();
+  mockSelf.addEventListener?.mockClear?.();
+  mockSelf.removeEventListener?.mockClear?.();
+  mockSelf.dispatchEvent?.mockClear?.();
   mockMuxerInstanceForWorker.addVideoChunk.mockClear();
   mockMuxerInstanceForWorker.addAudioChunk.mockClear();
   mockMuxerInstanceForWorker.finalize.mockClear();

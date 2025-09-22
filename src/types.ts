@@ -29,8 +29,18 @@ export interface VideoConfig {
 }
 
 // Audio configuration
+export type AudioCodec =
+  | 'aac'
+  | 'opus'
+  | 'flac'
+  | 'mp3'
+  | 'vorbis'
+  | 'pcm'
+  | 'ulaw'
+  | 'alaw';
+
 export interface AudioConfig {
-  codec?: 'aac' | 'opus';
+  codec?: AudioCodec;
   bitrate?: number;
   sampleRate?: number;
   channels?: number;
@@ -128,7 +138,7 @@ export interface EncoderConfig {
   container?: "mp4" | "webm"; // Default: 'mp4'. Set 'webm' for WebM output.
   codec?: {
     video?: "avc" | "hevc" | "vp9" | "vp8" | "av1"; // Default: 'avc' (H.264)
-    audio?: "aac" | "opus"; // Default: 'aac'
+    audio?: AudioCodec; // Default: 'aac'
   };
   /**
    * Optional codec string overrides passed directly to the encoders.

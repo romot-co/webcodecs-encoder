@@ -12,6 +12,7 @@ import {
   importWorker,
   mockSelf,
   mockMuxerInstanceForWorker,
+  getWorkerEventListeners,
 } from "./helpers/worker-test-utils";
 import { Mp4MuxerWrapper as ActualMp4MuxerWrapper } from "../src/muxers/mp4muxer";
 
@@ -259,6 +260,57 @@ describe("worker", () => {
     );
   });
 
+  it("configures MP3 audio for MP4 container when supported", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const mp3Config: EncoderConfig = {
+      ...config,
+      codec: { video: "avc", audio: "mp3" },
+      audioBitrate: 128_000,
+      sampleRate: 44_100,
+      channels: 2,
+    };
+
+    mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (cfg: any) => ({
+      supported: cfg.codec === "mp3",
+      config: cfg,
+    }));
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: mp3Config };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "initialized", actualAudioCodec: "mp3" }),
+    );
+  });
+
+  it("configures Vorbis audio for WebM container when supported", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const vorbisConfig: EncoderConfig = {
+      ...config,
+      container: "webm",
+      codec: { video: "vp9", audio: "vorbis" },
+      audioBitrate: 160_000,
+      sampleRate: 48_000,
+      channels: 2,
+    };
+
+    mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (cfg: any) => ({
+      supported: cfg.codec === "vorbis",
+      config: cfg,
+    }));
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: vorbisConfig };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "initialized", actualAudioCodec: "vorbis" }),
+    );
+  });
+
   // Add more tests for addVideoData, addAudioData, error handling, etc.
   describe("worker error handling during initialization", () => {
     it("should post an error if video codec is not supported", async () => {
@@ -308,7 +360,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
+            message: "Worker: No supported audio codec (AAC, MP3) found for MP4 container.",
             type: "not-supported",
           },
         },
@@ -567,57 +619,60 @@ describe("worker", () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it("should fallback to opus if fallback audio codec (aac) is not supported but opus is", async () => {
+    it("should fallback to mp3 if fallback audio codec (aac) is not supported but mp3 is", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
-      const opusConfig = {
-        ...config,
-        codec: { ...config.codec, audio: "opus" as const },
-      };
       const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      let mp3Attempted = false;
       // @ts-ignore
-      let opusCalled = false;
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
-        if (_cfg.codec === "opus") {
-          if (!opusCalled) {
-            opusCalled = true;
-            return { supported: false, config: null };
-          }
-          return {
-            supported: true,
-            config: { ..._cfg, codec: "opus.test", numberOfChannels: opusConfig.channels },
-          };
+        if (_cfg.codec === "mp4a.40.2") {
+          return { supported: false, config: null }; // AAC unsupported
         }
-        return { supported: false, config: null }; // AAC unsupported
+        if (_cfg.codec === "mp3") {
+          if (mp3Attempted) {
+            return {
+              supported: true,
+              config: {
+                ..._cfg,
+                codec: "mp3",
+                numberOfChannels: config.channels,
+                sampleRate: config.sampleRate,
+              },
+            };
+          }
+          mp3Attempted = true;
+          return { supported: false, config: null }; // Simulate retry via fallback helper
+        }
+        return { supported: false, config: null };
       });
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
-        config: opusConfig,
+        config,
       };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Worker: AAC audio codec is not supported. Falling back to Opus.",
+        "Worker: AAC audio codec is not supported. Falling back to MP3.",
+      );
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "Worker: Falling back to MP3 for MP4 container.",
       );
       expect(mockSelf.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "initialized",
-          actualAudioCodec: "opus.test",
+          actualAudioCodec: "mp3",
         }),
       );
       consoleWarnSpy.mockRestore();
     });
 
-    it("should post error if both aac and opus are unsupported", async () => {
+    it("should post error if both aac and mp3 are unsupported", async () => {
       if (!global.self.onmessage)
         throw new Error("Worker onmessage handler not set up");
       mockSelf.postMessage.mockClear();
-      const opusConfig = {
-        ...config,
-        codec: { ...config.codec, audio: "opus" as const },
-      };
       // @ts-ignore
       mockSelf.AudioEncoder.isConfigSupported = vi.fn(async (_cfg) => {
         return { supported: false, config: null }; // All codecs unsupported
@@ -625,7 +680,7 @@ describe("worker", () => {
 
       const initMessage: InitializeWorkerMessage = {
         type: "initialize",
-        config: opusConfig,
+        config,
       };
       await global.self.onmessage({ data: initMessage } as MessageEvent);
 
@@ -633,7 +688,7 @@ describe("worker", () => {
         {
           type: "error",
           errorDetail: {
-            message: "Worker: No supported audio codec (AAC, Opus) found for MP4 container.",
+            message: "Worker: No supported audio codec (AAC, MP3) found for MP4 container.",
             type: "not-supported",
           },
         },
@@ -946,6 +1001,55 @@ describe("worker", () => {
       );
       consoleWarnSpy.mockRestore();
     });
+  });
+
+  it("forwards global errors to the main thread", () => {
+    const errorListeners = getWorkerEventListeners("error");
+    expect(errorListeners.length).toBeGreaterThan(0);
+
+    const handler = errorListeners[0];
+    const err = new Error("global crash");
+    mockSelf.postMessage.mockClear();
+
+    handler({
+      type: "error",
+      message: "global crash",
+      filename: "worker.js",
+      lineno: 1,
+      colno: 2,
+      error: err,
+    } as unknown as ErrorEvent);
+
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        errorDetail: expect.objectContaining({
+          message: expect.stringContaining("global crash"),
+          type: "worker-error",
+        }),
+      }),
+    );
+  });
+
+  it("forwards unhandled promise rejections to the main thread", () => {
+    const rejectionListeners = getWorkerEventListeners("unhandledrejection");
+    expect(rejectionListeners.length).toBeGreaterThan(0);
+
+    const handler = rejectionListeners[0] as (event: PromiseRejectionEvent) => void;
+    const err = new Error("promise failed");
+    mockSelf.postMessage.mockClear();
+
+    handler({ reason: err } as PromiseRejectionEvent);
+
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "error",
+        errorDetail: expect.objectContaining({
+          message: expect.stringContaining("promise failed"),
+          type: "worker-error",
+        }),
+      }),
+    );
   });
 
 });

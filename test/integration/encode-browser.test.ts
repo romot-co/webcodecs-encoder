@@ -1764,7 +1764,6 @@ test("WebCodecsEncoder can encode canvas to WebM", async () => {
   }
 }, 120000); // 2分のタイムアウト
 
-
 // realtime encoding streams data to MediaSource (from realtime-stream.test.ts)
 test("realtime encoding streams data to MediaSource", async () => {
   let browser: Browser | null = null;

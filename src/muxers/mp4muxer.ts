@@ -18,7 +18,7 @@ type BaseOptions = ConstructorParameters<
 interface ExtendedMuxerOptions
   extends Omit<BaseOptions, "target" | "video" | "audio"> {
   target: ArrayBufferTarget | StreamTarget;
-  video: NonNullable<BaseOptions["video"]>;
+  video?: NonNullable<BaseOptions["video"]>;
   audio?: NonNullable<BaseOptions["audio"]>;
   fastStart?:
     | false
@@ -56,41 +56,53 @@ export class Mp4MuxerWrapper {
   ) {
     this.config = config;
     this.postMessageToMain = postMessageCallback;
-    const disableAudio = options?.disableAudio ?? false;
+    let disableAudio = options?.disableAudio ?? false;
 
-    const videoCodecOption = config.codec?.video ?? "avc";
-    // mp4-muxer expects 'avc' for H.264. Other video codecs might need mapping.
-    // VP9 is 'vp09', AV1 is 'av01' in mp4-muxer.
-    let muxerVideoCodec: "avc" | "hevc" | "vp9" | "av1";
-    switch (videoCodecOption) {
-      case "hevc":
-        muxerVideoCodec = "hevc";
-        break;
-      case "vp9":
-        muxerVideoCodec = "vp9"; // mp4-muxer uses 'vp09' for codec string, but VideoEncoder uses 'vp9' or 'vp09.xx.xx.xx'
-        // Assuming VideoEncoder provides data compatible with 'vp9' in mp4-muxer
-        break;
-      case "av1":
-        muxerVideoCodec = "av1";
-        break;
-      case "avc":
-      default:
-        muxerVideoCodec = "avc";
-        break;
-    }
+    const videoDisabled =
+      config.width <= 0 || config.height <= 0 || config.videoBitrate <= 0;
 
     const audioCodecOption = config.codec?.audio ?? "aac";
-    // mp4-muxer directly supports 'aac' and 'opus'.
+    const supportedAudioCodecsForMp4 = new Set(["aac", "mp3"]);
+    if (!supportedAudioCodecsForMp4.has(audioCodecOption)) {
+      console.warn(
+        `MP4 muxer: Audio codec ${audioCodecOption} is not supported. Disabling audio track.`,
+      );
+      disableAudio = true;
+    }
+
     const muxerAudioCodec = audioCodecOption;
 
-    const commonMuxerOptions: Partial<ExtendedMuxerOptions> = {
-      video: {
+    const commonMuxerOptions: Partial<ExtendedMuxerOptions> = {};
+
+    if (!videoDisabled) {
+      const videoCodecOption = config.codec?.video ?? "avc";
+      // mp4-muxer expects 'avc' for H.264. Other video codecs might need mapping.
+      // VP9 is 'vp09', AV1 is 'av01' in mp4-muxer.
+      let muxerVideoCodec: "avc" | "hevc" | "vp9" | "av1";
+      switch (videoCodecOption) {
+        case "hevc":
+          muxerVideoCodec = "hevc";
+          break;
+        case "vp9":
+          muxerVideoCodec = "vp9"; // mp4-muxer uses 'vp09' for codec string, but VideoEncoder uses 'vp9' or 'vp09.xx.xx.xx'
+          // Assuming VideoEncoder provides data compatible with 'vp9' in mp4-muxer
+          break;
+        case "av1":
+          muxerVideoCodec = "av1";
+          break;
+        case "avc":
+        default:
+          muxerVideoCodec = "avc";
+          break;
+      }
+
+      commonMuxerOptions.video = {
         codec: muxerVideoCodec,
         width: config.width,
         height: config.height,
         // framerate is not directly a muxer option here, but good to have in config
-      },
-    };
+      };
+    }
 
     if (!disableAudio) {
       (commonMuxerOptions as any).audio = {
@@ -132,7 +144,7 @@ export class Mp4MuxerWrapper {
       } as ExtendedMuxerOptions);
     }
 
-    this.videoConfigured = true;
+    this.videoConfigured = !videoDisabled;
     this.audioConfigured = !disableAudio;
   }
 

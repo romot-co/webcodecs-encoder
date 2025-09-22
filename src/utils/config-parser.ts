@@ -8,6 +8,7 @@ import {
   Frame,
   QualityPreset,
   EncoderConfig,
+  VideoFile,
 } from "../types";
 
 /**
@@ -50,6 +51,10 @@ async function inferConfigFromSource(
       config.height = dimensions.height;
     }
 
+    if (isVideoFileSource(source)) {
+      await enrichConfigFromVideoFile(config, source);
+    }
+
     // MediaStreamの場合はビデオ・オーディオトラックの有無も確認
     if (source instanceof MediaStream) {
       const videoTracks = source.getVideoTracks();
@@ -88,23 +93,48 @@ function mergeWithUserOptions(
   inferredConfig: Partial<EncodeOptions>,
   userOptions?: EncodeOptions,
 ): EncodeOptions {
+  const mergeNestedConfig = <T extends Record<string, any>>(
+    inferredValue: T | false | undefined,
+    userValue: T | false | undefined,
+  ): T | false | undefined => {
+    if (userValue === false) {
+      return false;
+    }
+
+    if (userValue === undefined) {
+      if (inferredValue === false) {
+        return false;
+      }
+      if (inferredValue && typeof inferredValue === "object") {
+        return { ...inferredValue };
+      }
+      return inferredValue;
+    }
+
+    if (inferredValue === false || inferredValue == null) {
+      return { ...userValue } as T;
+    }
+
+    return {
+      ...(inferredValue as T),
+      ...(userValue as T),
+    };
+  };
+
   return {
     // 推定された設定をベースに
     ...inferredConfig,
     // ユーザー指定の設定で上書き
     ...userOptions,
     // ネストしたオブジェクトは個別にマージ
-    video: {
-      ...inferredConfig.video,
-      ...userOptions?.video,
-    },
-    audio:
-      userOptions?.audio === false
-        ? false
-        : {
-            ...(inferredConfig.audio as any),
-            ...userOptions?.audio,
-          },
+    video: mergeNestedConfig(
+      inferredConfig.video as any,
+      userOptions?.video as any,
+    ) as any,
+    audio: mergeNestedConfig(
+      inferredConfig.audio as any,
+      userOptions?.audio as any,
+    ) as any,
   };
 }
 
@@ -148,6 +178,25 @@ function applyQualityPreset(
       return config;
   }
 
+  const mergedAudio =
+    config.audio === false
+      ? false
+      : {
+          ...(config.audio as any),
+        };
+
+  if (mergedAudio && typeof mergedAudio === "object") {
+    const codec = (mergedAudio.codec || "aac") as any;
+    if (
+      codec !== "pcm" &&
+      codec !== "ulaw" &&
+      codec !== "alaw" &&
+      mergedAudio.bitrate == null
+    ) {
+      mergedAudio.bitrate = audioBitrate;
+    }
+  }
+
   return {
     ...config,
     video:
@@ -157,13 +206,7 @@ function applyQualityPreset(
             ...(config.video as any),
             bitrate: (config.video as any)?.bitrate || videoBitrate,
           },
-    audio:
-      config.audio === false
-        ? false
-        : {
-            ...(config.audio as any),
-            bitrate: (config.audio as any)?.bitrate || audioBitrate,
-          },
+    audio: mergedAudio,
   };
 }
 
@@ -179,22 +222,16 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
       options.video === false
         ? 0
         : (options.video as any)?.bitrate || 1_000_000,
-    audioBitrate:
-      options.audio === false ? 0 : (options.audio as any)?.bitrate || 128_000,
-    sampleRate:
-      options.audio === false ? 0 : (options.audio as any)?.sampleRate || 48000,
-    channels:
-      options.audio === false ? 0 : (options.audio as any)?.channels || 2,
+    audioBitrate: 0,
+    sampleRate: 0,
+    channels: 0,
     container: options.container || "mp4",
     codec: {
       video:
         options.video === false
           ? undefined
           : (options.video as any)?.codec || "avc",
-      audio:
-        options.audio === false
-          ? undefined
-          : (options.audio as any)?.codec || "aac",
+      audio: undefined,
     },
     latencyMode:
       options.video === false
@@ -210,15 +247,59 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
       options.video === false
         ? undefined
         : (options.video as any)?.keyFrameInterval,
-    audioBitrateMode:
-      options.audio === false
-        ? undefined
-        : (options.audio as any)?.bitrateMode || "variable",
+    audioBitrateMode: undefined,
     firstTimestampBehavior: options.firstTimestampBehavior || "offset",
     maxVideoQueueSize: options.maxVideoQueueSize || 30,
     maxAudioQueueSize: options.maxAudioQueueSize || 30,
     backpressureStrategy: options.backpressureStrategy || "drop",
   };
+
+  if (options.audio !== false) {
+    const audioOptions = (options.audio as any) || {};
+    const requestedCodec = (audioOptions.codec || "aac") as any;
+    const isTelephonyCodec =
+      requestedCodec === "ulaw" || requestedCodec === "alaw";
+    const isPcmCodec = requestedCodec === "pcm";
+
+    const defaultSampleRate =
+      audioOptions.sampleRate || (isTelephonyCodec ? 8000 : 48000);
+    const defaultChannels = audioOptions.channels || (isTelephonyCodec ? 1 : 2);
+
+    let defaultBitrate: number | undefined = audioOptions.bitrate;
+    if (defaultBitrate == null) {
+      if (isPcmCodec) {
+        defaultBitrate = defaultSampleRate * defaultChannels * 16; // Approximate bits per second
+      } else if (isTelephonyCodec) {
+        defaultBitrate = 64_000;
+      } else if (requestedCodec === "mp3") {
+        defaultBitrate = 128_000;
+      } else if (requestedCodec === "flac") {
+        defaultBitrate = 512_000;
+      } else if (requestedCodec === "vorbis") {
+        defaultBitrate = 128_000;
+      } else {
+        defaultBitrate = 128_000;
+      }
+    }
+
+    config.sampleRate = defaultSampleRate;
+    config.channels = defaultChannels;
+    config.audioBitrate = defaultBitrate;
+    config.codec = {
+      ...config.codec,
+      audio: requestedCodec,
+    };
+    config.audioBitrateMode =
+      audioOptions.bitrateMode ||
+      (requestedCodec === "aac" ? "variable" : "constant");
+  }
+
+  if (options.audio === false) {
+    config.codec = {
+      ...config.codec,
+      audio: undefined,
+    };
+  }
 
   return config;
 }
@@ -248,24 +329,90 @@ async function getFirstFrame(source: VideoSource): Promise<Frame | null> {
     return null;
   }
 
-  if (Symbol.asyncIterator in source) {
-    // AsyncIterableの場合は最初の要素を取得するが、元のイテレータは保持
-    const iterator = source[Symbol.asyncIterator]();
-    const { value, done } = await iterator.next();
-    
-    if (!done && value) {
-      // イテレータを閉じる（リソース解放）
-      if (typeof iterator.return === 'function') {
-        await iterator.return();
-      }
-      return value;
-    }
-    
+  if (source && typeof (source as any)[Symbol.asyncIterator] === "function") {
+    // AsyncIterableは先頭フレームを安全にプレビューする手段がないため
+    // ここでは推定を行わず、後続処理でデフォルト値にフォールバックする
     return null;
   }
 
   // VideoFileの場合は実装が必要（今回は簡略化）
   return null;
+}
+
+async function enrichConfigFromVideoFile(
+  config: Partial<EncodeOptions>,
+  videoFile: VideoFile,
+): Promise<void> {
+  if (typeof document === "undefined" || typeof URL === "undefined") {
+    return;
+  }
+
+  const file = videoFile.file;
+  if (!(typeof Blob !== "undefined" && file instanceof Blob)) {
+    return;
+  }
+
+  const video = document.createElement("video");
+  video.preload = "metadata";
+
+  let objectUrl: string | null = null;
+  try {
+    objectUrl = URL.createObjectURL(file);
+    video.src = objectUrl;
+
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        video.onloadedmetadata = null;
+        video.onerror = null;
+      };
+      video.onloadedmetadata = () => {
+        cleanup();
+        resolve();
+      };
+      video.onerror = () => {
+        cleanup();
+        reject(new Error("Failed to load video metadata"));
+      };
+    });
+
+    if (video.videoWidth && video.videoHeight) {
+      config.width = video.videoWidth;
+      config.height = video.videoHeight;
+    }
+
+    if (!config.container && typeof videoFile.type === "string") {
+      if (videoFile.type.includes("webm")) {
+        config.container = "webm";
+      } else if (videoFile.type.includes("mp4")) {
+        config.container = "mp4";
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to infer metadata from VideoFile", error);
+  } finally {
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+    video.src = "";
+    video.remove?.();
+  }
+}
+
+function isVideoFileSource(source: VideoSource): source is VideoFile {
+  if (!source || typeof source !== "object") {
+    return false;
+  }
+
+  const maybeVideoFile = source as Partial<VideoFile> & { file?: unknown };
+  if (!("file" in maybeVideoFile)) {
+    return false;
+  }
+
+  const file = maybeVideoFile.file;
+  if (typeof Blob !== "undefined" && file instanceof Blob) {
+    return true;
+  }
+  return false;
 }
 
 /**

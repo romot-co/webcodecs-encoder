@@ -39,7 +39,7 @@ export class WebMMuxerWrapper {
   ) {
     this.config = config;
     this.postMessageToMain = postMessageCallback;
-    const disableAudio = options?.disableAudio ?? false;
+    let disableAudio = options?.disableAudio ?? false;
 
     const videoCodecOption = config.codec?.video ?? "vp9";
     let muxerVideoCodec: string;
@@ -58,7 +58,27 @@ export class WebMMuxerWrapper {
         break;
     }
 
-    const muxerAudioCodec = "A_OPUS"; // only opus supported
+    const requestedAudioCodec = config.codec?.audio ?? "opus";
+    let muxerAudioCodec: string | null = null;
+    switch (requestedAudioCodec) {
+      case "opus":
+        muxerAudioCodec = "A_OPUS";
+        break;
+      case "vorbis":
+        muxerAudioCodec = "A_VORBIS";
+        break;
+      case "flac":
+        muxerAudioCodec = "A_FLAC";
+        break;
+      default:
+        if (!disableAudio) {
+          console.warn(
+            `WebM muxer: Audio codec ${requestedAudioCodec} is not supported. Disabling audio track.`,
+          );
+          disableAudio = true;
+        }
+        break;
+    }
 
     const target =
       config.latencyMode === "realtime"
@@ -94,7 +114,7 @@ export class WebMMuxerWrapper {
       };
     }
 
-    if (!disableAudio) {
+    if (!disableAudio && muxerAudioCodec) {
       optionsForMuxer.audio = {
         codec: muxerAudioCodec,
         numberOfChannels: config.channels,

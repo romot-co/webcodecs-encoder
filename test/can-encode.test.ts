@@ -98,16 +98,31 @@ describe('canEncode utility', () => {
       expect(mockAudioEncoder.isConfigSupported).not.toHaveBeenCalled();
     });
 
-    it('should return true for audio-only encoding when audio codec is supported', async () => {
+    it('should return true for audio-only encoding when audio codec is supported and video is disabled', async () => {
       mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
       const result = await canEncode({
-        audio: { codec: 'aac' }
+        audio: { codec: 'aac' },
+        video: false
       });
 
       expect(result).toBe(true);
       expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalled();
       expect(mockVideoEncoder.isConfigSupported).not.toHaveBeenCalled();
+    });
+
+    it('should handle mp3 audio codec by probing support', async () => {
+      mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+
+      const result = await canEncode({
+        audio: { codec: 'mp3' },
+        video: false
+      });
+
+      expect(typeof result).toBe('boolean');
+      expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledWith(
+        expect.objectContaining({ codec: 'mp3' })
+      );
     });
   });
 
@@ -151,7 +166,7 @@ describe('canEncode utility', () => {
 
       expect(result).toBe(true);
       expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalledWith({
-        codec: 'vp09.00.10.08',
+        codec: 'vp09.00.50.08',
         width: 640,
         height: 480,
         bitrate: 2000000,
@@ -190,7 +205,7 @@ describe('canEncode utility', () => {
 
       expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalledWith(
         expect.objectContaining({
-          codec: 'vp09.00.10.08'
+          codec: 'vp09.00.50.08'
         })
       );
     });
@@ -213,7 +228,8 @@ describe('canEncode utility', () => {
       mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
       await canEncode({
-        audio: { codec: 'aac' }
+        audio: { codec: 'aac' },
+        video: false
       });
 
       expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledWith(
@@ -227,7 +243,8 @@ describe('canEncode utility', () => {
       mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
       await canEncode({
-        audio: { codec: 'opus' }
+        audio: { codec: 'opus' },
+        video: false
       });
 
       expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledWith(
@@ -253,7 +270,8 @@ describe('canEncode utility', () => {
       mockAudioEncoder.isConfigSupported.mockRejectedValue(new Error('API not supported'));
 
       const result = await canEncode({
-        audio: { codec: 'aac' }
+        audio: { codec: 'aac' },
+        video: false
       });
 
       expect(result).toBe(false);
@@ -275,7 +293,8 @@ describe('canEncode utility', () => {
       global.AudioEncoder = undefined as any;
 
       const result = await canEncode({
-        audio: { codec: 'aac' }
+        audio: { codec: 'aac' },
+        video: false
       });
 
       expect(result).toBe(false);

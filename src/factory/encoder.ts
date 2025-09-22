@@ -86,21 +86,40 @@ function mergeOptions(
     return { ...base };
   }
 
+  const mergeNestedConfig = <T extends Record<string, any>>(
+    baseValue: T | false | undefined,
+    additionalValue: Partial<T> | false | undefined,
+  ): T | false | undefined => {
+    if (additionalValue === false) {
+      return false;
+    }
+
+    if (additionalValue === undefined) {
+      if (baseValue === false) {
+        return false;
+      }
+      if (baseValue && typeof baseValue === "object") {
+        return { ...baseValue };
+      }
+      return baseValue;
+    }
+
+    if (baseValue === false || baseValue == null) {
+      return { ...(additionalValue as T) };
+    }
+
+    return {
+      ...(baseValue as T),
+      ...(additionalValue as T),
+    };
+  };
+
   return {
     ...base,
     ...additional,
     // ネストしたオブジェクトは個別にマージ
-    video: {
-      ...base.video,
-      ...additional.video,
-    },
-    audio:
-      additional.audio === false
-        ? false
-        : {
-            ...(base.audio as any),
-            ...(additional.audio as any),
-          },
+    video: mergeNestedConfig(base.video as any, additional.video as any) as any,
+    audio: mergeNestedConfig(base.audio as any, additional.audio as any) as any,
   };
 }
 
