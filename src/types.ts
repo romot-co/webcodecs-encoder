@@ -19,10 +19,29 @@ export type VideoSource =
 // Quality presets
 export type QualityPreset = 'low' | 'medium' | 'high' | 'lossless';
 
+export type AvcBitstreamFormatOption = "annexb" | "avc";
+export type HevcBitstreamFormatOption = "annexb" | "hevc";
+export type AacBitstreamFormatOption = "aac" | "adts";
+
 // Video configuration
 export interface VideoConfig {
   codec?: 'avc' | 'hevc' | 'vp9' | 'vp8' | 'av1';
+  /** Override codec string passed to VideoEncoder (e.g. "avc1.640028"). */
+  codecString?: string;
   bitrate?: number;
+  /**
+   * Optional quantizer hint. Browser support varies by codec/platform.
+   * When set, it is forwarded to VideoEncoderConfig.
+   */
+  quantizer?: number;
+  /** AVC-specific options. */
+  avc?: {
+    format?: AvcBitstreamFormatOption;
+  };
+  /** HEVC-specific options. */
+  hevc?: {
+    format?: HevcBitstreamFormatOption;
+  };
   hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software';
   latencyMode?: 'quality' | 'realtime';
   keyFrameInterval?: number;
@@ -41,10 +60,16 @@ export type AudioCodec =
 
 export interface AudioConfig {
   codec?: AudioCodec;
+  /** Override codec string passed to AudioEncoder (e.g. "mp4a.40.2"). */
+  codecString?: string;
   bitrate?: number;
   sampleRate?: number;
   channels?: number;
   bitrateMode?: 'constant' | 'variable';
+  /** AAC-specific options. */
+  aac?: {
+    format?: AacBitstreamFormatOption;
+  };
 }
 
 // Progress information

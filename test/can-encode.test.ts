@@ -86,8 +86,9 @@ describe('canEncode utility', () => {
       expect(result).toBe(false);
     });
 
-    it('should return true for video-only encoding when video codec is supported', async () => {
+    it('should return true for default audio+video encoding when video codec is supported', async () => {
       mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+      mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
       const result = await canEncode({
         video: { codec: 'vp8' }
@@ -95,7 +96,19 @@ describe('canEncode utility', () => {
 
       expect(result).toBe(true);
       expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalled();
-      expect(mockAudioEncoder.isConfigSupported).not.toHaveBeenCalled();
+      expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalled();
+    });
+
+    it('should return false when default audio codecs are unavailable', async () => {
+      mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+      mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: false });
+
+      const result = await canEncode({
+        video: { codec: 'vp8' }
+      });
+
+      expect(result).toBe(false);
+      expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalled();
     });
 
     it('should return true for audio-only encoding when audio codec is supported and video is disabled', async () => {
@@ -224,6 +237,47 @@ describe('canEncode utility', () => {
       );
     });
 
+    it('should pass codecString, quantizer, and avc.format to video support probe', async () => {
+      mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+
+      await canEncode({
+        video: {
+          codec: 'avc',
+          codecString: 'avc1.640028',
+          quantizer: 24,
+          avc: { format: 'annexb' },
+        },
+        audio: false,
+      });
+
+      expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalledWith(
+        expect.objectContaining({
+          codec: 'avc1.640028',
+          quantizer: 24,
+          avc: { format: 'annexb' },
+        }),
+      );
+    });
+
+    it('should pass hevc.format to video support probe', async () => {
+      mockVideoEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+
+      await canEncode({
+        video: {
+          codec: 'hevc',
+          hevc: { format: 'annexb' },
+        },
+        audio: false,
+      });
+
+      expect(mockVideoEncoder.isConfigSupported).toHaveBeenCalledWith(
+        expect.objectContaining({
+          codec: 'hvc1',
+          hevc: { format: 'annexb' },
+        }),
+      );
+    });
+
     it('should generate correct AAC codec strings', async () => {
       mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
 
@@ -251,6 +305,26 @@ describe('canEncode utility', () => {
         expect.objectContaining({
           codec: 'opus'
         })
+      );
+    });
+
+    it('should pass codecString and aac.format to audio support probe', async () => {
+      mockAudioEncoder.isConfigSupported.mockResolvedValue({ supported: true });
+
+      await canEncode({
+        video: false,
+        audio: {
+          codec: 'aac',
+          codecString: 'mp4a.40.5',
+          aac: { format: 'adts' },
+        },
+      });
+
+      expect(mockAudioEncoder.isConfigSupported).toHaveBeenCalledWith(
+        expect.objectContaining({
+          codec: 'mp4a.40.5',
+          aac: { format: 'adts' },
+        }),
       );
     });
   });

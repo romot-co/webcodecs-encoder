@@ -4,25 +4,40 @@
 
 import { EncodeError } from "../types";
 
+function resolveWorkerUrl(): string {
+  const processUrl =
+    typeof process !== "undefined"
+      ? process.env?.WEBCODECS_WORKER_URL
+      : undefined;
+  const windowUrl =
+    typeof window !== "undefined"
+      ? (window as any).__WEBCODECS_WORKER_URL__
+      : undefined;
+
+  const configuredUrl =
+    (typeof windowUrl === "string" && windowUrl.trim()) ||
+    (typeof processUrl === "string" && processUrl.trim());
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+
+  if (typeof document !== "undefined" && document.baseURI) {
+    return new URL("webcodecs-worker.js", document.baseURI).toString();
+  }
+
+  return "/webcodecs-worker.js";
+}
+
 /**
  * Create external worker
  */
 function createExternalWorker(): Worker {
   try {
-    // Use external worker file
-    const worker = new Worker("/webcodecs-worker.js", { type: "module" });
-
-    // Worker error handling
-    worker.onerror = (event) => {
-      console.error("Worker error:", event);
-      throw new EncodeError("worker-error", `Worker error: ${event.message}`);
-    };
-
-    return worker;
+    return new Worker(resolveWorkerUrl(), { type: "module" });
   } catch (error) {
     throw new EncodeError(
       "initialization-failed",
-      "Failed to create external worker. Make sure webcodecs-worker.js is available in your public directory.",
+      "Failed to create external worker. Make sure webcodecs-worker.js is available and WEBCODECS_WORKER_URL is configured when needed.",
       error,
     );
   }
@@ -38,14 +53,6 @@ function createInlineWorker(): { worker: Worker; blobUrl: string } {
     const blobUrl = URL.createObjectURL(blob);
 
     const worker = new Worker(blobUrl, { type: "module" });
-
-    worker.onerror = (event) => {
-      console.error("Inline worker error:", event);
-      throw new EncodeError(
-        "worker-error",
-        `Inline worker error: ${event.message}`,
-      );
-    };
 
     return { worker, blobUrl };
   } catch (error) {
@@ -258,6 +265,7 @@ export class WorkerCommunicator {
   private worker: Worker;
   private messageHandlers: Map<string, (data: any) => void> = new Map();
   private workerBlobUrl: string | null = null;
+  private pendingWorkerError: { errorDetail: any } | null = null;
 
   constructor() {
     const workerResult = createWorker();
@@ -270,6 +278,7 @@ export class WorkerCommunicator {
       this.worker = workerResult;
     }
     this.worker.onmessage = this.handleMessage.bind(this);
+    this.worker.onerror = this.handleWorkerError.bind(this);
   }
 
   private handleMessage(event: MessageEvent): void {
@@ -280,11 +289,41 @@ export class WorkerCommunicator {
     }
   }
 
+  private handleWorkerError(event: ErrorEvent): void {
+    if (typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
+
+    const payload = {
+      errorDetail: {
+        message: event.message
+          ? `Worker error: ${event.message}`
+          : "Worker error",
+        type: "worker-error",
+        stack: (event as any).error?.stack,
+      },
+    };
+
+    const handler = this.messageHandlers.get("error");
+    if (handler) {
+      handler(payload);
+      return;
+    }
+
+    this.pendingWorkerError = payload;
+    console.error("Worker error before error handler registration:", event);
+  }
+
   /**
    * Register message handler
    */
   on(type: string, handler: (data: any) => void): void {
     this.messageHandlers.set(type, handler);
+    if (type === "error" && this.pendingWorkerError) {
+      const pending = this.pendingWorkerError;
+      this.pendingWorkerError = null;
+      handler(pending);
+    }
   }
 
   /**

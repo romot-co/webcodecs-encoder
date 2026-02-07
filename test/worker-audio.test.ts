@@ -203,6 +203,7 @@ describe("handleAddAudioData", () => {
     await global.self.onmessage({ data: addAudioMessage } as MessageEvent);
     expect(mockAudioEncoderInstance.encode).toHaveBeenCalledWith(mockAudioDataInstance);
     expect((globalThis as any).AudioData).not.toHaveBeenCalled();
+    expect(mockAudioDataInstance.close).toHaveBeenCalled();
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       {
         type: "queueSize",

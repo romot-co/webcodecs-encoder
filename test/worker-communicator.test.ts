@@ -6,6 +6,7 @@ const mockWorker = {
   postMessage: vi.fn(),
   terminate: vi.fn(),
   onmessage: null as ((event: any) => void) | null,
+  onerror: null as ((event: any) => void) | null,
 };
 
 // Mock Blob and createObjectURL
@@ -170,6 +171,53 @@ describe("WorkerCommunicator", () => {
       }
     });
 
+    it("workerのエラーイベントがerrorハンドラーに中継される", () => {
+      const communicator = new WorkerCommunicator();
+      const errorHandler = vi.fn();
+      communicator.on("error", errorHandler);
+
+      const workerErrorHandler = (mockWorker as any).onerror;
+      expect(workerErrorHandler).toBeTypeOf("function");
+
+      workerErrorHandler({
+        message: "boom",
+        error: new Error("boom"),
+        preventDefault: vi.fn(),
+      });
+
+      expect(errorHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorDetail: expect.objectContaining({
+            message: "Worker error: boom",
+            type: "worker-error",
+          }),
+        }),
+      );
+    });
+
+    it("errorハンドラー登録前のworkerエラーを後から受け取れる", () => {
+      const communicator = new WorkerCommunicator();
+      const workerErrorHandler = (mockWorker as any).onerror;
+      expect(workerErrorHandler).toBeTypeOf("function");
+
+      workerErrorHandler({
+        message: "early-error",
+        error: new Error("early-error"),
+        preventDefault: vi.fn(),
+      });
+
+      const errorHandler = vi.fn();
+      communicator.on("error", errorHandler);
+      expect(errorHandler).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorDetail: expect.objectContaining({
+            message: "Worker error: early-error",
+            type: "worker-error",
+          }),
+        }),
+      );
+    });
+
     it("リソースのクリーンアップが動作する", () => {
       const communicator = new WorkerCommunicator();
 
@@ -210,6 +258,32 @@ describe("WorkerCommunicator", () => {
       // Verify basic communication functionality works
       expect(typeof communicator.send).toBe("function");
       expect(typeof communicator.terminate).toBe("function");
+    });
+
+    it("WEBCODECS_WORKER_URLが指定されている場合はそのURLを使う", () => {
+      const prevDisableInline = process.env.WEBCODECS_DISABLE_INLINE_WORKER;
+      const prevWorkerUrl = process.env.WEBCODECS_WORKER_URL;
+
+      process.env.WEBCODECS_DISABLE_INLINE_WORKER = "true";
+      process.env.WEBCODECS_WORKER_URL = "/custom-worker.js";
+
+      try {
+        new WorkerCommunicator();
+        expect(global.Worker).toHaveBeenCalledWith("/custom-worker.js", {
+          type: "module",
+        });
+      } finally {
+        if (prevDisableInline === undefined) {
+          delete process.env.WEBCODECS_DISABLE_INLINE_WORKER;
+        } else {
+          process.env.WEBCODECS_DISABLE_INLINE_WORKER = prevDisableInline;
+        }
+        if (prevWorkerUrl === undefined) {
+          delete process.env.WEBCODECS_WORKER_URL;
+        } else {
+          process.env.WEBCODECS_WORKER_URL = prevWorkerUrl;
+        }
+      }
     });
   });
 });

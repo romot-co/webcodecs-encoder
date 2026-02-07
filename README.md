@@ -47,6 +47,7 @@ Inline worker controls:
 | `WEBCODECS_USE_INLINE_WORKER=true` or `window.__WEBCODECS_USE_INLINE_WORKER__ = true` | Force the inline mock (useful for Storybook, unit tests, etc.). |
 | `WEBCODECS_DISABLE_INLINE_WORKER=true` or `window.__WEBCODECS_DISABLE_INLINE_WORKER__ = true` | Always require the external worker. |
 | `WEBCODECS_ALLOW_INLINE_IN_PROD=true` or `window.__WEBCODECS_ALLOW_INLINE_IN_PROD__ = true` | Explicitly permit the inline mock on production builds (not recommended). |
+| `WEBCODECS_WORKER_URL=/assets/webcodecs-worker.js` or `window.__WEBCODECS_WORKER_URL__ = '/assets/webcodecs-worker.js'` | Override the external worker URL when your app is served from a sub-path/CDN. |
 
 > ⚠️ The inline worker is a **test stub** that returns placeholder bytes. Use it only for wiring/UI development. Real MP4/WebM output requires the external worker bundle.
 
@@ -213,7 +214,11 @@ interface EncodeOptions {
   /** Set to `false` for audio-only encoding. */
   video?: {
     codec?: 'avc' | 'hevc' | 'vp9' | 'vp8' | 'av1';
+    codecString?: string; // e.g. 'avc1.640028'
     bitrate?: number;
+    quantizer?: number;
+    avc?: { format?: 'annexb' | 'avc' };
+    hevc?: { format?: 'annexb' | 'hevc' };
     hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software';
     keyFrameInterval?: number;
   } | false;
@@ -221,10 +226,12 @@ interface EncodeOptions {
   /** Set to `false` to disable audio. */
   audio?: {
     codec?: 'aac' | 'mp3' | 'opus' | 'vorbis' | 'flac';
+    codecString?: string; // e.g. 'mp4a.40.2'
     bitrate?: number;
     sampleRate?: number;
     channels?: number;
     bitrateMode?: 'constant' | 'variable';
+    aac?: { format?: 'aac' | 'adts' };
   } | false;
 
   container?: 'mp4' | 'webm';

@@ -148,15 +148,6 @@ class EncoderWorker {
     }
   }
 
-  private avcProfileFromCodecString(
-    codec: string,
-  ): ("high" | "main" | "baseline") | null {
-    if (codec.startsWith("avc1.64")) return "high";
-    if (codec.startsWith("avc1.4d")) return "main";
-    if (codec.startsWith("avc1.42")) return "baseline";
-    return null;
-  }
-
   private async isConfigSupportedWithHwFallback<
     T extends VideoEncoderConfig | AudioEncoderConfig,
   >(
@@ -269,6 +260,7 @@ class EncoderWorker {
     }
 
     const requestedCodec = config.codec?.audio;
+    const requestedCodecString = config.codecString?.audio;
     const preference = buildAudioCodecPreference(container, requestedCodec);
     let attemptedDefaultCodec = false;
 
@@ -276,7 +268,10 @@ class EncoderWorker {
       if (candidate === "aac") {
         attemptedDefaultCodec = true;
       }
-      const codecString = getAudioEncoderCodecStringFromAudioCodec(candidate);
+      const codecString =
+        requestedCodec && requestedCodecString && candidate === requestedCodec
+          ? requestedCodecString
+          : getAudioEncoderCodecStringFromAudioCodec(candidate);
       const baseConfig: AudioEncoderConfig & {
         hardwareAcceleration?:
           | "prefer-hardware"
@@ -293,7 +288,10 @@ class EncoderWorker {
         ...(config.hardwareAcceleration && {
           hardwareAcceleration: config.hardwareAcceleration,
         }),
-        ...(config.audioEncoderConfig ?? {}),
+        ...(getAudioEncoderConfigOverridesForCodec(
+          candidate,
+          config.audioEncoderConfig,
+        ) as any),
       };
 
       const support = await this.isConfigSupportedWithHwFallback(
@@ -313,8 +311,20 @@ class EncoderWorker {
               | "prefer-software"
               | "no-preference";
           } = {
-            ...baseConfig,
             codec: getAudioEncoderCodecStringFromAudioCodec("mp3"),
+            sampleRate: config.sampleRate,
+            numberOfChannels: config.channels,
+            bitrate: config.audioBitrate,
+            ...(config.audioBitrateMode && {
+              bitrateMode: config.audioBitrateMode,
+            }),
+            ...(config.hardwareAcceleration && {
+              hardwareAcceleration: config.hardwareAcceleration,
+            }),
+            ...(getAudioEncoderConfigOverridesForCodec(
+              "mp3",
+              config.audioEncoderConfig,
+            ) as any),
           };
           const mp3Support = await this.isConfigSupportedWithHwFallback(
             AudioEncoderCtor,
@@ -526,182 +536,224 @@ class EncoderWorker {
       this.currentConfig.height === 0 ||
       this.currentConfig.videoBitrate === 0;
 
-    let videoCodec =
+    let videoCodec: "avc" | "hevc" | "vp9" | "vp8" | "av1" | undefined =
       this.currentConfig.codec?.video ??
       (this.currentConfig.container === "webm" ? "vp9" : "avc");
-    if (
-      this.currentConfig.container === "webm" &&
-      (videoCodec === "avc" || videoCodec === "hevc")
-    ) {
-      console.warn(
-        `Worker: Video codec ${videoCodec} not compatible with WebM. Switching to VP9.`,
-      );
-      videoCodec = "vp9";
-    }
+    const requestedVideoCodec = videoCodec;
     let finalVideoEncoderConfig: VideoEncoderConfig | null = null;
+    let resolvedVideoCodecString: string | null = null;
+    let VideoEncoderCtor: typeof VideoEncoder | undefined;
 
-    const resolvedVideoCodecString =
-      this.currentConfig.codecString?.video ??
-      (videoCodec === "avc"
-        ? this.defaultAvcCodecString(
-            this.currentConfig.width,
-            this.currentConfig.height,
-            this.currentConfig.frameRate,
-          )
-        : videoCodec === "vp9"
-          ? "vp09.00.50.08"
-          : videoCodec === "vp8"
-            ? "vp8"
-            : videoCodec === "hevc"
-              ? "hvc1"
-              : videoCodec === "av1"
-                ? "av01.0.04M.08"
-                : videoCodec);
-
-    const videoEncoderConfig: VideoEncoderConfig = {
-      codec: resolvedVideoCodecString,
-      width: this.currentConfig.width,
-      height: this.currentConfig.height,
-      bitrate: this.currentConfig.videoBitrate,
-      framerate: this.currentConfig.frameRate,
-      ...(this.currentConfig.container === "mp4" && videoCodec === "avc"
-        ? { avc: { format: "avc" } }
-        : {}),
-      ...(this.currentConfig.hardwareAcceleration
-        ? { hardwareAcceleration: this.currentConfig.hardwareAcceleration }
-        : {}),
-    };
-
-    const VideoEncoderCtor = getVideoEncoder();
-    if (!VideoEncoderCtor) {
-      this.postMessageToMainThread({
-        type: "error",
-        errorDetail: {
-          message: "Worker: VideoEncoder not available",
-          type: EncoderErrorType.NotSupported,
-        },
-      });
-      this.cleanup();
-      return;
-    }
-
-    // まず明示的に指定されたコーデックを試す
-    const initialSupport =
-      await VideoEncoderCtor.isConfigSupported(videoEncoderConfig);
-
-    if (initialSupport?.supported && initialSupport.config) {
-      finalVideoEncoderConfig = initialSupport.config;
-    } else {
-      // 明示的な指定がされていないか、サポートされていない場合
+    if (!videoDisabled) {
       if (
-        videoCodec === "vp9" ||
-        videoCodec === "vp8" ||
-        videoCodec === "av1"
+        this.currentConfig.container === "webm" &&
+        (videoCodec === "avc" || videoCodec === "hevc")
       ) {
         console.warn(
-          "Worker: Video codec " +
-            videoCodec +
-            " not supported or config invalid. Looking for fallback...",
+          `Worker: Video codec ${videoCodec} not compatible with WebM. Switching to VP9.`,
         );
+        videoCodec = "vp9";
+      }
 
-        let fallbackSuccessful = false;
+      resolvedVideoCodecString =
+        (this.currentConfig.codecString?.video &&
+        videoCodec === requestedVideoCodec
+          ? this.currentConfig.codecString.video
+          : undefined) ??
+        (videoCodec === "avc"
+          ? this.defaultAvcCodecString(
+              this.currentConfig.width,
+              this.currentConfig.height,
+              this.currentConfig.frameRate,
+            )
+          : videoCodec === "vp9"
+            ? "vp09.00.50.08"
+            : videoCodec === "vp8"
+              ? "vp8"
+              : videoCodec === "hevc"
+                ? "hvc1"
+                : videoCodec === "av1"
+                  ? "av01.0.04M.08"
+                  : videoCodec!);
 
-        // WebMコンテナの場合：VP9 → VP8 の順でフォールバック
-        if (this.currentConfig.container === "webm") {
-          const webmCodecs: ("vp9" | "vp8")[] = ["vp9", "vp8"];
+      const videoEncoderConfig: VideoEncoderConfig = {
+        codec: resolvedVideoCodecString,
+        width: this.currentConfig.width,
+        height: this.currentConfig.height,
+        bitrate: this.currentConfig.videoBitrate,
+        framerate: this.currentConfig.frameRate,
+        ...(this.currentConfig.container === "mp4" && videoCodec === "avc"
+          ? { avc: { format: "avc" } }
+          : {}),
+        ...(this.currentConfig.hardwareAcceleration
+          ? { hardwareAcceleration: this.currentConfig.hardwareAcceleration }
+          : {}),
+        ...(getVideoEncoderConfigOverridesForCodec(
+          videoCodec,
+          this.currentConfig.videoEncoderConfig,
+        ) as any),
+      };
 
-          for (const fallbackCodec of webmCodecs) {
-            if (fallbackCodec === videoCodec) continue; // 既に試したコーデックはスキップ
+      VideoEncoderCtor = getVideoEncoder();
+      if (!VideoEncoderCtor) {
+        this.postMessageToMainThread({
+          type: "error",
+          errorDetail: {
+            message: "Worker: VideoEncoder not available",
+            type: EncoderErrorType.NotSupported,
+          },
+        });
+        this.cleanup();
+        return;
+      }
 
-            console.warn(
-              `Worker: Trying fallback to ${fallbackCodec} for WebM container.`,
-            );
+      // まず明示的に指定されたコーデックを試す
+      const initialSupport =
+        await VideoEncoderCtor.isConfigSupported(videoEncoderConfig);
 
-            const fallbackCodecString = this.getCodecString(
-              fallbackCodec,
+      if (initialSupport?.supported && initialSupport.config) {
+        finalVideoEncoderConfig = initialSupport.config;
+      } else {
+        // 明示的な指定がされていないか、サポートされていない場合
+        if (
+          videoCodec === "vp9" ||
+          videoCodec === "vp8" ||
+          videoCodec === "av1"
+        ) {
+          console.warn(
+            "Worker: Video codec " +
+              videoCodec +
+              " not supported or config invalid. Looking for fallback...",
+          );
+
+          let fallbackSuccessful = false;
+
+          // WebMコンテナの場合：VP9 → VP8 の順でフォールバック
+          if (this.currentConfig.container === "webm") {
+            const webmCodecs: ("vp9" | "vp8")[] = ["vp9", "vp8"];
+
+            for (const fallbackCodec of webmCodecs) {
+              if (fallbackCodec === videoCodec) continue; // 既に試したコーデックはスキップ
+
+              console.warn(
+                `Worker: Trying fallback to ${fallbackCodec} for WebM container.`,
+              );
+
+              const fallbackCodecString = this.getCodecString(
+                fallbackCodec,
+                this.currentConfig.width,
+                this.currentConfig.height,
+                this.currentConfig.frameRate,
+              );
+
+              const fallbackConfig: VideoEncoderConfig & {
+                hardwareAcceleration?:
+                  | "prefer-hardware"
+                  | "prefer-software"
+                  | "no-preference";
+              } = {
+                ...videoEncoderConfig,
+                codec: fallbackCodecString,
+                ...(getVideoEncoderConfigOverridesForCodec(
+                  fallbackCodec,
+                  this.currentConfig.videoEncoderConfig,
+                ) as any),
+              };
+
+              const support = await this.isConfigSupportedWithHwFallback(
+                VideoEncoderCtor,
+                fallbackConfig,
+                "VideoEncoder",
+              );
+
+              if (support) {
+                console.warn(
+                  `Worker: Successfully fell back to ${fallbackCodec} for WebM.`,
+                );
+                videoCodec = fallbackCodec;
+                finalVideoEncoderConfig = support;
+                fallbackSuccessful = true;
+                break;
+              }
+            }
+
+            if (!fallbackSuccessful) {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message:
+                    "Worker: No compatible video codec (VP9, VP8) found for WebM container.",
+                  type: EncoderErrorType.NotSupported,
+                },
+              });
+              this.cleanup();
+              return;
+            }
+          } else {
+            // MP4コンテナの場合：AVC (H.264) にフォールバック
+            console.warn("Worker: Falling back to AVC for MP4 container.");
+            videoCodec = "avc";
+
+            const avcCodecString = this.defaultAvcCodecString(
               this.currentConfig.width,
               this.currentConfig.height,
               this.currentConfig.frameRate,
             );
 
-            const fallbackConfig: VideoEncoderConfig & {
+            const avcConfig: VideoEncoderConfig & {
               hardwareAcceleration?:
                 | "prefer-hardware"
                 | "prefer-software"
                 | "no-preference";
             } = {
               ...videoEncoderConfig,
-              codec: fallbackCodecString,
+              codec: avcCodecString,
+              ...(this.currentConfig.container === "mp4"
+                ? { avc: { format: "avc" as const } }
+                : {}),
+              ...(getVideoEncoderConfigOverridesForCodec(
+                "avc",
+                this.currentConfig.videoEncoderConfig,
+              ) as any),
             };
 
             const support = await this.isConfigSupportedWithHwFallback(
               VideoEncoderCtor,
-              fallbackConfig,
+              avcConfig,
               "VideoEncoder",
             );
 
             if (support) {
-              console.warn(
-                `Worker: Successfully fell back to ${fallbackCodec} for WebM.`,
-              );
-              videoCodec = fallbackCodec;
               finalVideoEncoderConfig = support;
               fallbackSuccessful = true;
-              break;
+            } else {
+              this.postMessageToMainThread({
+                type: "error",
+                errorDetail: {
+                  message:
+                    "Worker: AVC (H.264) video codec is not supported after fallback.",
+                  type: EncoderErrorType.NotSupported,
+                },
+              });
+              this.cleanup();
+              return;
             }
           }
-
-          if (!fallbackSuccessful) {
-            this.postMessageToMainThread({
-              type: "error",
-              errorDetail: {
-                message:
-                  "Worker: No compatible video codec (VP9, VP8) found for WebM container.",
-                type: EncoderErrorType.NotSupported,
-              },
-            });
-            this.cleanup();
-            return;
-          }
         } else {
-          // MP4コンテナの場合：AVC (H.264) にフォールバック
-          console.warn("Worker: Falling back to AVC for MP4 container.");
-          videoCodec = "avc";
-
-          const avcCodecString = this.defaultAvcCodecString(
-            this.currentConfig.width,
-            this.currentConfig.height,
-            this.currentConfig.frameRate,
-          );
-
-          const avcConfig: VideoEncoderConfig & {
-            hardwareAcceleration?:
-              | "prefer-hardware"
-              | "prefer-software"
-              | "no-preference";
-          } = {
-            ...videoEncoderConfig,
-            codec: avcCodecString,
-            ...(this.currentConfig.container === "mp4"
-              ? { avc: { format: "avc" as const } }
-              : {}),
-          };
-
-          const support = await this.isConfigSupportedWithHwFallback(
+          // フォールバックの必要のない他のコーデックでテスト
+          const result = await this.isConfigSupportedWithHwFallback(
             VideoEncoderCtor,
-            avcConfig,
+            videoEncoderConfig,
             "VideoEncoder",
           );
 
-          if (support) {
-            finalVideoEncoderConfig = support;
-            fallbackSuccessful = true;
+          if (result) {
+            finalVideoEncoderConfig = result;
           } else {
             this.postMessageToMainThread({
               type: "error",
               errorDetail: {
-                message:
-                  "Worker: AVC (H.264) video codec is not supported after fallback.",
+                message: `Worker: Video codec ${videoCodec} config not supported.`,
                 type: EncoderErrorType.NotSupported,
               },
             });
@@ -709,28 +761,9 @@ class EncoderWorker {
             return;
           }
         }
-      } else {
-        // フォールバックの必要のない他のコーデックでテスト
-        const result = await this.isConfigSupportedWithHwFallback(
-          VideoEncoderCtor,
-          videoEncoderConfig,
-          "VideoEncoder",
-        );
-
-        if (result) {
-          finalVideoEncoderConfig = result;
-        } else {
-          this.postMessageToMainThread({
-            type: "error",
-            errorDetail: {
-              message: `Worker: Video codec ${videoCodec} config not supported.`,
-              type: EncoderErrorType.NotSupported,
-            },
-          });
-          this.cleanup();
-          return;
-        }
       }
+    } else {
+      videoCodec = undefined;
     }
 
     const codecConfigForMuxer: EncoderConfig["codec"] = {
@@ -768,6 +801,18 @@ class EncoderWorker {
     // Only initialize video encoder if video is enabled
     if (!videoDisabled) {
       try {
+        if (!VideoEncoderCtor) {
+          this.postMessageToMainThread({
+            type: "error",
+            errorDetail: {
+              message: "Worker: VideoEncoder not available",
+              type: EncoderErrorType.NotSupported,
+            },
+          });
+          this.cleanup();
+          return;
+        }
+
         this.videoEncoder = new VideoEncoderCtor({
           output: (chunk: any, meta: any) => {
             if (this.isCancelled || !this.muxer) return;
@@ -805,7 +850,7 @@ class EncoderWorker {
           this.postMessageToMainThread({
             type: "error",
             errorDetail: {
-              message: `Worker: VideoEncoder: Failed to find a supported hardware acceleration configuration for codec ${resolvedVideoCodecString}`,
+              message: `Worker: VideoEncoder: Failed to find a supported hardware acceleration configuration for codec ${resolvedVideoCodecString ?? "(unknown)"}`,
               type: EncoderErrorType.NotSupported,
             },
           });
@@ -992,6 +1037,17 @@ class EncoderWorker {
     if (this.isCancelled || !this.audioEncoder || !this.currentConfig) return;
 
     if (data.audio) {
+      const audioData = data.audio;
+      let audioClosed = false;
+      const closeAudioData = (context: string) => {
+        if (audioClosed) return;
+        try {
+          audioData.close();
+          audioClosed = true;
+        } catch (closeErr) {
+          console.warn(`Worker: Ignored error closing ${context}`, closeErr);
+        }
+      };
       try {
         const currentQueueSize = this.audioEncoder.encodeQueueSize;
         const maxQueueSize = this.currentConfig.maxAudioQueueSize || 30;
@@ -1004,14 +1060,7 @@ class EncoderWorker {
             console.warn(
               `Audio queue full (${currentQueueSize}/${maxQueueSize}), dropping audio data`,
             );
-            try {
-              data.audio.close();
-            } catch (closeErr) {
-              console.warn(
-                "Worker: Ignored error closing dropped AudioData",
-                closeErr,
-              );
-            }
+            closeAudioData("dropped AudioData");
             return;
           } else if (strategy === "wait") {
             // Wait for queue to drain with exponential backoff
@@ -1033,20 +1082,13 @@ class EncoderWorker {
               console.warn(
                 `Audio queue still full after waiting, dropping audio data`,
               );
-              try {
-                data.audio.close();
-              } catch (closeErr) {
-                console.warn(
-                  "Worker: Ignored error closing waited AudioData",
-                  closeErr,
-                );
-              }
+              closeAudioData("waited AudioData");
               return;
             }
           }
         }
 
-        this.audioEncoder.encode(data.audio);
+        this.audioEncoder.encode(audioData);
         this.postQueueSize();
       } catch (error: any) {
         this.postMessageToMainThread({
@@ -1058,6 +1100,8 @@ class EncoderWorker {
           },
         } as MainThreadMessage);
         this.cleanup();
+      } finally {
+        closeAudioData("AudioData");
       }
       return;
     }
@@ -1295,6 +1339,37 @@ const MUXER_COMPATIBLE_AUDIO: Record<ContainerType, Set<AudioCodec>> = {
 
 function getAudioEncoderCodecStringFromAudioCodec(codec: AudioCodec): string {
   return AUDIO_ENCODER_CODEC_MAP[codec] ?? codec;
+}
+
+function getVideoEncoderConfigOverridesForCodec(
+  codec: "avc" | "hevc" | "vp9" | "vp8" | "av1",
+  overrides?: Partial<VideoEncoderConfig>,
+): Partial<VideoEncoderConfig> {
+  if (!overrides) {
+    return {};
+  }
+  const sanitized = { ...(overrides as any) };
+  if (codec !== "avc") {
+    delete sanitized.avc;
+  }
+  if (codec !== "hevc") {
+    delete sanitized.hevc;
+  }
+  return sanitized;
+}
+
+function getAudioEncoderConfigOverridesForCodec(
+  codec: AudioCodec,
+  overrides?: Partial<AudioEncoderConfig>,
+): Partial<AudioEncoderConfig> {
+  if (!overrides) {
+    return {};
+  }
+  const sanitized = { ...(overrides as any) };
+  if (codec !== "aac") {
+    delete sanitized.aac;
+  }
+  return sanitized;
 }
 
 function getContainerType(container?: string): ContainerType {

@@ -36,19 +36,28 @@ export async function canEncode(options?: EncodeOptions): Promise<boolean> {
       }
     }
 
-    // Check audio configuration (only if audio is explicitly specified)
+    // Check audio configuration
     const hasAudioConfig = options.audio && typeof options.audio === "object";
-    if (hasAudioConfig) {
-      const audioCodec = (options.audio as AudioConfig).codec || "aac";
-      const audioSupported = await testAudioCodecSupport(audioCodec, options);
-      if (!audioSupported) {
-        return false;
-      }
-    } else if (options.audio === undefined && !hasVideoConfig) {
-      // Only check audio for default configuration
-      const audioSupported = await testAudioCodecSupport("aac", options);
-      if (!audioSupported) {
-        return false;
+    const audioEnabled = options.audio !== false;
+    if (audioEnabled) {
+      if (hasAudioConfig) {
+        const audioCodec = (options.audio as AudioConfig).codec || "aac";
+        const audioSupported = await testAudioCodecSupport(audioCodec, options);
+        if (!audioSupported) {
+          return false;
+        }
+      } else {
+        const fallbackCodecs = getDefaultAudioProbeOrder(options.container);
+        let foundSupportedAudioCodec = false;
+        for (const codec of fallbackCodecs) {
+          if (await testAudioCodecSupport(codec, options)) {
+            foundSupportedAudioCodec = true;
+            break;
+          }
+        }
+        if (!foundSupportedAudioCodec) {
+          return false;
+        }
       }
     }
 
@@ -128,12 +137,14 @@ async function testVideoCodecSupport(
   try {
     const videoOptions =
       options?.video && typeof options.video === "object" ? options.video : {};
-    const codecString = getVideoCodecString(
-      codec,
-      options?.width || 640,
-      options?.height || 480,
-      options?.frameRate || 30,
-    );
+    const codecString =
+      videoOptions.codecString ||
+      getVideoCodecString(
+        codec,
+        options?.width || 640,
+        options?.height || 480,
+        options?.frameRate || 30,
+      );
     const config: VideoEncoderConfig = {
       codec: codecString,
       width: options?.width || 640,
@@ -151,6 +162,16 @@ async function testVideoCodecSupport(
       config.latencyMode = videoOptions.latencyMode;
     }
 
+    if (typeof videoOptions.quantizer === "number") {
+      (config as any).quantizer = videoOptions.quantizer;
+    }
+    if (codec === "avc" && videoOptions.avc?.format) {
+      (config as any).avc = { format: videoOptions.avc.format };
+    }
+    if (codec === "hevc" && videoOptions.hevc?.format) {
+      (config as any).hevc = { format: videoOptions.hevc.format };
+    }
+
     const support = await VideoEncoder.isConfigSupported(config);
     return support.supported || false;
   } catch {
@@ -166,9 +187,9 @@ async function testAudioCodecSupport(
   options?: EncodeOptions,
 ): Promise<boolean> {
   try {
-    const codecString = getAudioCodecString(codec);
     const audioOptions =
       typeof options?.audio === "object" ? options.audio : {};
+    const codecString = audioOptions.codecString || getAudioCodecString(codec);
 
     const isTelephonyCodec = codec === "ulaw" || codec === "alaw";
     const isPcmCodec = codec === "pcm";
@@ -203,6 +224,9 @@ async function testAudioCodecSupport(
     // Add bitrateMode setting for AAC
     if (codec === "aac" && audioOptions.bitrateMode) {
       (config as any).bitrateMode = audioOptions.bitrateMode;
+    }
+    if (codec === "aac" && audioOptions.aac?.format) {
+      (config as any).aac = { format: audioOptions.aac.format };
     }
 
     const support = await AudioEncoder.isConfigSupported(config);
@@ -339,6 +363,15 @@ function getAudioCodecString(codec: string): string {
     default:
       return codec; // Return as is (for custom codec strings)
   }
+}
+
+function getDefaultAudioProbeOrder(
+  container?: EncodeOptions["container"],
+): string[] {
+  if (container === "webm") {
+    return ["opus", "vorbis", "flac"];
+  }
+  return ["aac", "mp3"];
 }
 
 /**

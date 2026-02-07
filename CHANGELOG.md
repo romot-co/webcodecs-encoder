@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-02-07
+
+### ✨ Added
+- Added advanced codec option support for WebCodecs:
+  - `video.codecString` / `audio.codecString`
+  - `video.quantizer`
+  - `video.avc.format` / `video.hevc.format`
+  - `audio.aac.format`
+- Exported codec option helper types for those advanced fields from the public API.
+
+### 🛠️ Improved
+- `canEncode()` now probes codec-specific configuration details (codec strings and codec-specific option blocks) for more accurate capability checks in Chrome/WebCodecs environments.
+- Worker initialization now applies and sanitizes codec-specific encoder overrides so only options valid for the selected codec are passed through.
+- Added configurable external worker URL support via `WEBCODECS_WORKER_URL` and `window.__WEBCODECS_WORKER_URL__`.
+
+### 🐛 Fixed
+- Fixed audio-only initialization to skip unnecessary video encoder setup and capability checks.
+- Fixed `AudioData` lifecycle handling to ensure internally created or provided audio frames are always closed after encode attempts.
+- Improved worker error forwarding so error handlers receive worker errors consistently even when handler registration is delayed.
+
+### 🧪 Tests
+- Expanded coverage for audio-only worker initialization, codec override parsing, capability probe option forwarding, and worker error propagation behavior.
+
+---
+
 ## [0.3.1] - 2025-09-22
 
 ### 🎧 Added

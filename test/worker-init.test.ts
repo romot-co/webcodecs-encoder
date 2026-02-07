@@ -161,6 +161,63 @@ describe("worker", () => {
     );
   });
 
+  it("applies video encoder config overrides (quantizer and avc.format)", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const cfg = {
+      ...config,
+      videoEncoderConfig: {
+        quantizer: 23,
+        avc: { format: "annexb" },
+      } as any,
+    };
+
+    const spy = vi.fn(async (c: any) => {
+      return { supported: true, config: { ...c } };
+    });
+    mockSelf.VideoEncoder.isConfigSupported = spy;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: cfg };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[0][0]).toMatchObject({
+      quantizer: 23,
+      avc: { format: "annexb" },
+    });
+  });
+
+  it("applies audio codec string override and AAC format option", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    const cfg = {
+      ...config,
+      codecString: {
+        audio: "mp4a.40.5",
+      },
+      audioEncoderConfig: {
+        aac: { format: "adts" },
+      } as any,
+    };
+
+    const audioSupportSpy = vi.fn(async (c: any) => ({
+      supported: true,
+      config: { ...c },
+    }));
+    mockSelf.AudioEncoder.isConfigSupported = audioSupportSpy;
+
+    const initMessage: InitializeWorkerMessage = { type: "initialize", config: cfg };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(audioSupportSpy).toHaveBeenCalled();
+    expect(audioSupportSpy.mock.calls[0][0]).toMatchObject({
+      codec: "mp4a.40.5",
+      aac: { format: "adts" },
+    });
+  });
+
   it("computes default avc profile/level when codec string is not supplied", async () => {
     if (!global.self.onmessage)
       throw new Error("Worker onmessage handler not set up");
@@ -257,6 +314,43 @@ describe("worker", () => {
     );
     expect(mockSelf.postMessage).toHaveBeenCalledWith(
       { type: "initialized", actualVideoCodec: "avc1.42001f", actualAudioCodec: null },
+    );
+  });
+
+  it("skips video encoder initialization for audio-only config", async () => {
+    if (!global.self.onmessage)
+      throw new Error("Worker onmessage handler not set up");
+
+    mockSelf.postMessage.mockClear();
+    mockSelf.VideoEncoder.mockClear();
+    mockSelf.VideoEncoder.isConfigSupported.mockClear();
+
+    const audioOnlyConfig: EncoderConfig = {
+      ...config,
+      width: 0,
+      height: 0,
+      videoBitrate: 0,
+      codec: { audio: "aac" },
+    };
+
+    const initMessage: InitializeWorkerMessage = {
+      type: "initialize",
+      config: audioOnlyConfig,
+    };
+    await global.self.onmessage({ data: initMessage } as MessageEvent);
+
+    expect(mockSelf.VideoEncoder).not.toHaveBeenCalled();
+    expect(mockSelf.VideoEncoder.isConfigSupported).not.toHaveBeenCalled();
+    expect(Mp4MuxerWrapperMock).toHaveBeenCalledWith(
+      audioOnlyConfig,
+      expect.any(Function),
+      { disableAudio: false },
+    );
+    expect(mockSelf.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "initialized",
+        actualAudioCodec: "mp4a.40.2",
+      }),
     );
   });
 

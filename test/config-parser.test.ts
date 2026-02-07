@@ -52,4 +52,42 @@ describe('config-parser', () => {
       bitrate: 64_000,
     });
   });
+
+  it('maps codecString and codec-specific encoder options to internal config', async () => {
+    const config = await inferAndBuildConfig([], {
+      video: {
+        codec: 'avc',
+        codecString: 'avc1.640028',
+        quantizer: 23,
+        avc: { format: 'annexb' },
+      },
+      audio: {
+        codec: 'aac',
+        codecString: 'mp4a.40.5',
+        aac: { format: 'adts' },
+      },
+      container: 'mp4',
+    });
+
+    expect(config.codecString).toEqual({
+      video: 'avc1.640028',
+      audio: 'mp4a.40.5',
+    });
+    expect((config.videoEncoderConfig as any)?.quantizer).toBe(23);
+    expect((config.videoEncoderConfig as any)?.avc).toEqual({ format: 'annexb' });
+    expect((config.audioEncoderConfig as any)?.aac).toEqual({ format: 'adts' });
+  });
+
+  it('maps HEVC format option to videoEncoderConfig', async () => {
+    const config = await inferAndBuildConfig([], {
+      video: {
+        codec: 'hevc',
+        hevc: { format: 'annexb' },
+      },
+      audio: false,
+      container: 'mp4',
+    });
+
+    expect((config.videoEncoderConfig as any)?.hevc).toEqual({ format: 'annexb' });
+  });
 });

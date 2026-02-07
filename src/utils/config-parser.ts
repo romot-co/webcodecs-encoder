@@ -214,45 +214,62 @@ function applyQualityPreset(
  * EncodeOptionsから内部のEncoderConfigに変換
  */
 function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
+  const videoOptions =
+    options.video && typeof options.video === "object" ? options.video : null;
+
   const config: EncoderConfig = {
     width: options.video === false ? 0 : options.width || 640,
     height: options.video === false ? 0 : options.height || 480,
     frameRate: options.frameRate || 30,
     videoBitrate:
-      options.video === false
-        ? 0
-        : (options.video as any)?.bitrate || 1_000_000,
+      options.video === false ? 0 : videoOptions?.bitrate || 1_000_000,
     audioBitrate: 0,
     sampleRate: 0,
     channels: 0,
     container: options.container || "mp4",
     codec: {
-      video:
-        options.video === false
-          ? undefined
-          : (options.video as any)?.codec || "avc",
+      video: options.video === false ? undefined : videoOptions?.codec || "avc",
       audio: undefined,
     },
     latencyMode:
       options.video === false
         ? "quality"
-        : options.latencyMode ||
-          (options.video as any)?.latencyMode ||
-          "quality",
+        : options.latencyMode || videoOptions?.latencyMode || "quality",
     hardwareAcceleration:
       options.video === false
         ? "no-preference"
-        : (options.video as any)?.hardwareAcceleration || "no-preference",
+        : videoOptions?.hardwareAcceleration || "no-preference",
     keyFrameInterval:
-      options.video === false
-        ? undefined
-        : (options.video as any)?.keyFrameInterval,
+      options.video === false ? undefined : videoOptions?.keyFrameInterval,
     audioBitrateMode: undefined,
     firstTimestampBehavior: options.firstTimestampBehavior || "offset",
     maxVideoQueueSize: options.maxVideoQueueSize || 30,
     maxAudioQueueSize: options.maxAudioQueueSize || 30,
     backpressureStrategy: options.backpressureStrategy || "drop",
   };
+
+  if (options.video !== false && videoOptions?.codecString) {
+    config.codecString = {
+      ...(config.codecString ?? {}),
+      video: videoOptions.codecString,
+    };
+  }
+
+  if (options.video !== false && videoOptions) {
+    const videoEncoderConfig: Partial<VideoEncoderConfig> = {};
+    if (typeof videoOptions.quantizer === "number") {
+      (videoEncoderConfig as any).quantizer = videoOptions.quantizer;
+    }
+    if (config.codec?.video === "avc" && videoOptions.avc?.format) {
+      (videoEncoderConfig as any).avc = { format: videoOptions.avc.format };
+    }
+    if (config.codec?.video === "hevc" && videoOptions.hevc?.format) {
+      (videoEncoderConfig as any).hevc = { format: videoOptions.hevc.format };
+    }
+    if (Object.keys(videoEncoderConfig).length > 0) {
+      config.videoEncoderConfig = videoEncoderConfig;
+    }
+  }
 
   if (options.audio !== false) {
     const audioOptions = (options.audio as any) || {};
@@ -292,6 +309,21 @@ function convertToEncoderConfig(options: EncodeOptions): EncoderConfig {
     config.audioBitrateMode =
       audioOptions.bitrateMode ||
       (requestedCodec === "aac" ? "variable" : "constant");
+
+    if (audioOptions.codecString) {
+      config.codecString = {
+        ...(config.codecString ?? {}),
+        audio: audioOptions.codecString,
+      };
+    }
+
+    const audioEncoderConfig: Partial<AudioEncoderConfig> = {};
+    if (requestedCodec === "aac" && audioOptions.aac?.format) {
+      (audioEncoderConfig as any).aac = { format: audioOptions.aac.format };
+    }
+    if (Object.keys(audioEncoderConfig).length > 0) {
+      config.audioEncoderConfig = audioEncoderConfig;
+    }
   }
 
   if (options.audio === false) {
